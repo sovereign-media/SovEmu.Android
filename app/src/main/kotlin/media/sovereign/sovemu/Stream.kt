@@ -171,6 +171,9 @@ class Stream(
         var sent = -1
         var sentHotkeys = 0
         var lastSend = 0L
+        var analogSeq = 0
+        var sentAnalog = Protocol.Analog.CENTRED
+        var lastAnalogSend = 0L
         while (scope.isActive) {
             if (channel.state() == DataChannel.State.OPEN) {
                 val r = if (suspended) Controller.Reading(0, false, false) else controller.read()
@@ -183,6 +186,13 @@ class Stream(
                     sent = r.buttons
                     sentHotkeys = hotkeys
                     lastSend = now
+                }
+                // Sticks: on change, and as a heartbeat while off-centre.
+                if (r.analog != sentAnalog || (!r.analog.centred && now - lastAnalogSend > 100)) {
+                    analogSeq++
+                    send(Protocol.encodeAnalog(analogSeq, listOf(r.analog)))
+                    sentAnalog = r.analog
+                    lastAnalogSend = now
                 }
             }
             delay(4)

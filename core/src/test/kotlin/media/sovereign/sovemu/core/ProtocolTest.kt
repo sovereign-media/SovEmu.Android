@@ -23,6 +23,19 @@ class ProtocolTest {
     }
 
     @Test
+    fun encodesAnalogLikeTheRustReference() {
+        // `analog_layout_is_stable_and_round_trips` in SovEmu.Protocol.
+        val encoded = Protocol.encodeAnalog(0x04030201, listOf(Protocol.Analog(-32768, 32767, 1, -2, 0, 0x1234)))
+        assertArrayEquals(
+            bytes(0x03, 1, 1, 2, 3, 4, 1, 0x00, 0x80, 0xff, 0x7f, 1, 0, 0xfe, 0xff, 0, 0, 0x34, 0x12),
+            encoded,
+        )
+        // Out-of-range values clamp rather than wrap.
+        val clamped = Protocol.encodeAnalog(0, listOf(Protocol.Analog(lx = 40000)))
+        assertArrayEquals(bytes(0xff, 0x7f), clamped.copyOfRange(7, 9))
+    }
+
+    @Test
     fun decodesTheRustReferenceAck() {
         val ack = Protocol.decodeAck(bytes(0x81, 1, 1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0))
         assertEquals(Protocol.Ack(1, 2, 3), ack)
