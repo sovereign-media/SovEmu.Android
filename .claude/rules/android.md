@@ -1,0 +1,19 @@
+---
+paths:
+  - "**/*.kt"
+  - "**/*.kts"
+---
+
+# SovEmu.Android
+
+- **`core` stays plain Kotlin/JVM.** Anything testable without Android (the wire protocol, API
+  models, parsing) goes there, with JUnit tests. `app` only wires it to Android and Compose.
+- **The wire protocol is shared.** `core/.../Protocol.kt` mirrors `SovEmu.Protocol/src/input.rs`
+  and `SovEmu.Web/src/lib/protocol.ts` byte for byte; `ProtocolTest` uses the same vectors.
+  Change all three in the same release.
+- **Gamepad buttons map by position** (bottom face = RetroPad B, right = A), matching the web
+  client. Android's `KEYCODE_BUTTON_A` is the bottom face.
+- **While a game is playing, controller events go to the game**, not to Compose focus
+  (`MainActivity.dispatchKeyEvent`). Back always opens the in-game menu.
+- Signalling is one POST of the complete offer (wait for ICE gathering), as on the web.
+- Versions live in `gradle/libs.versions.toml`. Before a PR: `./gradlew :core:test :app:assembleDebug`.
