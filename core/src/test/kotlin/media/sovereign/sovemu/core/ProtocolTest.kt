@@ -63,7 +63,7 @@ class ProtocolTest {
     fun parsesApiJson() {
         val s = ApiJson.decodeFromString<SystemSummary>(
             """{"id":"nes","name":"Nintendo Entertainment System","short":"NES","manufacturer":"Nintendo",
-               "year":1983,"color":"#c0392b","game_count":2,"playable":true,"extra":1}""",
+               "year":1983,"color":"#c0392b","gameCount":2,"playable":true,"needsGpu":false,"extra":1}""",
         )
         assertEquals("NES", s.short)
         assertEquals(0xffc0392bL, parseColor(s.color))

@@ -13,7 +13,6 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import media.sovereign.sovemu.core.IceServer
 import media.sovereign.sovemu.core.Protocol
-import media.sovereign.sovemu.core.SessionDescription as Sdp
 import org.webrtc.DataChannel
 import org.webrtc.DefaultVideoDecoderFactory
 import org.webrtc.EglBase
@@ -146,8 +145,8 @@ class Stream(
         setLocal(offer)
         withTimeoutOrNull(1500) { iceGathered.await() }
         val local = pc.localDescription ?: offer
-        val answer = api.offer(sessionId, Sdp("offer", local.description))
-        setRemote(SessionDescription(SessionDescription.Type.ANSWER, answer.sdp))
+        val answer = api.offer(sessionId, local.description)
+        setRemote(SessionDescription(SessionDescription.Type.ANSWER, answer))
         pump = scope.launch { pumpInput() }
     }
 
