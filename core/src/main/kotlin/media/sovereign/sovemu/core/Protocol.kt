@@ -15,6 +15,7 @@ object Protocol {
 
     private const val TYPE_INPUT: Byte = 0x01
     private const val TYPE_HOTKEYS: Byte = 0x02
+    private const val TYPE_ANALOG: Byte = 0x03
     private const val TYPE_ACK: Byte = 0x81.toByte()
 
     fun encodeInput(seq: Int, clientTimeMs: Int, ports: IntArray): ByteArray {
@@ -28,6 +29,30 @@ object Protocol {
     fun encodeHotkeys(fastForward: Boolean, rewind: Boolean): ByteArray {
         val flags = (if (fastForward) 1 else 0) or (if (rewind) 2 else 0)
         return byteArrayOf(TYPE_HOTKEYS, INPUT_VERSION, flags.toByte())
+    }
+
+    /**
+     * One port's analog controls: sticks −32768..32767 (x right, y down, libretro's convention),
+     * triggers 0..32767.
+     */
+    data class Analog(val lx: Int = 0, val ly: Int = 0, val rx: Int = 0, val ry: Int = 0, val l2: Int = 0, val r2: Int = 0) {
+        val centred: Boolean get() = this == CENTRED
+
+        companion object {
+            val CENTRED = Analog()
+        }
+    }
+
+    /** Sticks and triggers (`0x03`); sent alongside the button packets, with its own sequence. */
+    fun encodeAnalog(seq: Int, ports: List<Analog>): ByteArray {
+        val n = minOf(ports.size, MAX_PORTS)
+        val buf = ByteBuffer.allocate(7 + 12 * n).order(ByteOrder.LITTLE_ENDIAN)
+        buf.put(TYPE_ANALOG).put(INPUT_VERSION).putInt(seq).put(n.toByte())
+        for (i in 0 until n) {
+            val a = ports[i]
+            for (v in intArrayOf(a.lx, a.ly, a.rx, a.ry, a.l2, a.r2)) buf.putShort(v.coerceIn(-32768, 32767).toShort())
+        }
+        return buf.array()
     }
 
     data class Ack(val seq: Long, val clientTimeMs: Long, val frame: Long)

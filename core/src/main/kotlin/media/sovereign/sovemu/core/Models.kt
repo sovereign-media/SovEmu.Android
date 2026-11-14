@@ -23,6 +23,10 @@ data class SystemSummary(
     val color: String,
     @SerialName("game_count") val gameCount: Int,
     val playable: Boolean,
+    /** A 3D system: renders with OpenGL and reads analog sticks. */
+    @SerialName("needs_gpu") val needsGpu: Boolean = false,
+    /** For a 3D system: `gpu`, `software` (slow) or `off`. */
+    val rendering: String? = null,
 )
 
 @Serializable

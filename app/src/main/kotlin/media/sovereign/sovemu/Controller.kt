@@ -4,7 +4,12 @@ import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import media.sovereign.sovemu.core.Button
+import media.sovereign.sovemu.core.Protocol
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.math.abs
+import kotlin.math.roundToInt
+import kotlin.math.sign
 
 /**
  * Port 0's RetroPad state from physical gamepads, keyboards and the touch controller, combined.
@@ -17,6 +22,13 @@ class Controller {
     private val keys = AtomicInteger(0)
     private val axes = AtomicInteger(0)
     private val touch = AtomicInteger(0)
+    private val analog = AtomicReference(Protocol.Analog.CENTRED)
+
+    /**
+     * The game reads analog sticks (a 3D system): the left stick moves the stick, not the D-pad.
+     * Otherwise it doubles as a D-pad, as in 2D frontends.
+     */
+    @Volatile var analogSticks = false
 
     private fun keyButton(code: Int): Button? = when (code) {
         // By position, as the web client does: Android names face buttons after the Xbox layout
@@ -53,8 +65,20 @@ class Controller {
     /** Analogue stick and hat (D-pad) from a joystick. Returns true if consumed. */
     fun onMotion(event: MotionEvent): Boolean {
         if (event.source and InputDevice.SOURCE_JOYSTICK != InputDevice.SOURCE_JOYSTICK) return false
-        val x = event.getAxisValue(MotionEvent.AXIS_X) + event.getAxisValue(MotionEvent.AXIS_HAT_X)
-        val y = event.getAxisValue(MotionEvent.AXIS_Y) + event.getAxisValue(MotionEvent.AXIS_HAT_Y)
+        val sx = event.getAxisValue(MotionEvent.AXIS_X)
+        val sy = event.getAxisValue(MotionEvent.AXIS_Y)
+        analog.set(
+            Protocol.Analog(
+                lx = stick(sx), ly = stick(sy),
+                rx = stick(event.getAxisValue(MotionEvent.AXIS_Z)), ry = stick(event.getAxisValue(MotionEvent.AXIS_RZ)),
+                l2 = trigger(maxOf(event.getAxisValue(MotionEvent.AXIS_LTRIGGER), event.getAxisValue(MotionEvent.AXIS_BRAKE))),
+                r2 = trigger(maxOf(event.getAxisValue(MotionEvent.AXIS_RTRIGGER), event.getAxisValue(MotionEvent.AXIS_GAS))),
+            ),
+        )
+        val hatX = event.getAxisValue(MotionEvent.AXIS_HAT_X)
+        val hatY = event.getAxisValue(MotionEvent.AXIS_HAT_Y)
+        val x = if (analogSticks) hatX else sx + hatX
+        val y = if (analogSticks) hatY else sy + hatY
         var state = 0
         if (x < -0.5f) state = state or Button.LEFT.bit
         if (x > 0.5f) state = state or Button.RIGHT.bit
@@ -72,11 +96,17 @@ class Controller {
         keys.set(0)
         axes.set(0)
         touch.set(0)
+        analog.set(Protocol.Analog.CENTRED)
     }
 
     private val raw: Int get() = keys.get() or axes.get() or touch.get()
 
-    data class Reading(val buttons: Int, val fastForward: Boolean, val rewind: Boolean)
+    data class Reading(
+        val buttons: Int,
+        val fastForward: Boolean,
+        val rewind: Boolean,
+        val analog: Protocol.Analog = Protocol.Analog.CENTRED,
+    )
 
     fun read(): Reading {
         val state = raw
@@ -84,7 +114,21 @@ class Controller {
         val ff = select && state and Button.R.bit != 0
         val rewind = select && state and Button.L.bit != 0
         val masked = if (ff || rewind) state and (Button.SELECT.bit or Button.L.bit or Button.R.bit).inv() else state
-        return Reading(masked, ff, rewind)
+        return Reading(masked, ff, rewind, analog.get())
+    }
+
+    companion object {
+        private const val DEADZONE = 0.15f
+
+        /** A stick axis (−1..1) in libretro's range, with the dead zone taken out. */
+        fun stick(v: Float): Int {
+            val m = abs(v)
+            if (m < DEADZONE) return 0
+            val scaled = ((m - DEADZONE) / (1 - DEADZONE)).coerceAtMost(1f)
+            return (sign(v) * scaled * 32767).roundToInt()
+        }
+
+        fun trigger(v: Float): Int = (v.coerceIn(0f, 1f) * 32767).roundToInt()
     }
 
     /** Select+Start together opens the in-game menu. */

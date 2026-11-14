@@ -62,7 +62,7 @@ class MainActivity : ComponentActivity() {
                 BackHandler { screen = Screen.Systems }
                 GamesScreen(api, s.system, onPlay = { screen = Screen.Player(s.system, it) }, onBack = { screen = Screen.Systems })
             }
-            is Screen.Player -> PlayerScreen(api, s.system, s.game, controller) {
+            is Screen.Player -> PlayerScreen(api, s.system, s.game, controller.also { it.analogSticks = s.system.needsGpu }) {
                 controller.clear()
                 screen = Screen.Games(s.system)
             }
