@@ -4,17 +4,20 @@ import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
-import media.sovereign.sovemu.core.ApiJson
-import media.sovereign.sovemu.core.AuthStatus
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import media.sovereign.sovemu.core.ApiException
 import media.sovereign.sovemu.core.ClientConfig
-import media.sovereign.sovemu.core.Credentials
 import media.sovereign.sovemu.core.Game
+import media.sovereign.sovemu.core.GameSaves
+import media.sovereign.sovemu.core.GraphQL
+import media.sovereign.sovemu.core.Queries
 import media.sovereign.sovemu.core.SaveSlot
-import media.sovereign.sovemu.core.SessionDescription
 import media.sovereign.sovemu.core.SessionInfo
-import media.sovereign.sovemu.core.StartSession
+import media.sovereign.sovemu.core.SystemGames
 import media.sovereign.sovemu.core.SystemSummary
 import media.sovereign.sovemu.core.User
+import media.sovereign.sovemu.core.Viewer
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
@@ -24,8 +27,6 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
-
-class ApiException(val status: Int, message: String) : Exception(message)
 
 /** The server address and the sign-in cookie, kept across launches. */
 class Settings(context: Context) {
@@ -54,7 +55,7 @@ private class SessionCookieJar(private val settings: Settings) : CookieJar {
     }
 }
 
-/** Calls to the SovEmu API (`SovEmu.Server`). */
+/** Calls to the SovEmu GraphQL API (`POST /graphql` on `SovEmu.Server`). */
 class SovEmuApi(private val settings: Settings) {
     private val client = OkHttpClient.Builder()
         .cookieJar(SessionCookieJar(settings))
@@ -63,49 +64,59 @@ class SovEmuApi(private val settings: Settings) {
         .build()
     private val jsonType = "application/json".toMediaType()
 
-    private fun url(path: String): HttpUrl =
-        "${settings.serverUrl}/api$path".toHttpUrlOrNull() ?: throw ApiException(0, "Invalid server address")
+    private fun url(): HttpUrl =
+        "${settings.serverUrl}/graphql".toHttpUrlOrNull() ?: throw ApiException("BAD_REQUEST", "Invalid server address")
 
-    private suspend fun call(method: String, path: String, body: String? = null): String = withContext(Dispatchers.IO) {
+    /** Sends one operation; returns the raw response body and its HTTP status. */
+    private suspend fun post(query: String, variables: JsonObject): Pair<String, Int> = withContext(Dispatchers.IO) {
         val request = Request.Builder()
-            .url(url(path))
-            .method(method, body?.toRequestBody(jsonType) ?: if (method == "POST") "".toRequestBody(jsonType) else null)
+            .url(url())
+            .post(GraphQL.body(query, variables).toRequestBody(jsonType))
             .build()
-        client.newCall(request).execute().use { response ->
-            val text = response.body.string()
-            if (!response.isSuccessful) {
-                val message = runCatching {
-                    ApiJson.parseToJsonElement(text) as JsonObject
-                }.getOrNull()?.get("error")?.toString()?.trim('"') ?: response.message
-                throw ApiException(response.code, message)
-            }
-            text
-        }
+        client.newCall(request).execute().use { response -> response.body.string() to response.code }
     }
 
-    private suspend inline fun <reified T> get(path: String): T = ApiJson.decodeFromString(call("GET", path))
-    private suspend inline fun <reified T, reified B> post(path: String, body: B): T =
-        ApiJson.decodeFromString(call("POST", path, ApiJson.encodeToString(body)))
+    /** Runs [query] and decodes `data.<field>`; GraphQL errors become [ApiException]s. */
+    private suspend inline fun <reified T> request(
+        query: String,
+        field: String,
+        variables: JsonObject = JsonObject(emptyMap()),
+    ): T {
+        val (text, status) = post(query, variables)
+        return GraphQL.decode(text, field, status)
+    }
 
-    suspend fun status(): AuthStatus = get("/auth/status")
-    suspend fun login(username: String, password: String): User = post("/auth/login", Credentials(username, password))
+    suspend fun status(): Viewer = request(Queries.VIEWER, "viewer")
+    suspend fun login(username: String, password: String): User =
+        request(Queries.LOGIN, "login", buildJsonObject { put("username", username); put("password", password) })
     suspend fun logout() {
-        call("POST", "/auth/logout")
+        request<Boolean>(Queries.LOGOUT, "logout")
         settings.sessionCookie = null
     }
-    suspend fun config(): ClientConfig = get("/config")
-    suspend fun systems(): List<SystemSummary> = get("/systems")
-    suspend fun games(system: String): List<Game> = get("/systems/$system/games")
-    suspend fun startSession(gameId: Long): SessionInfo = post("/sessions", StartSession(gameId))
-    suspend fun offer(sessionId: String, offer: SessionDescription): SessionDescription = post("/sessions/$sessionId/offer", offer)
+    suspend fun config(): ClientConfig = request(Queries.CLIENT_CONFIG, "clientConfig")
+    suspend fun systems(): List<SystemSummary> = request(Queries.SYSTEMS, "systems")
+    suspend fun games(system: String): List<Game> =
+        request<SystemGames?>(Queries.SYSTEM_GAMES, "system", buildJsonObject { put("id", system) })?.games
+            ?: throw ApiException("NOT_FOUND", "No such system")
+    suspend fun startSession(gameId: Long): SessionInfo =
+        request(Queries.START_SESSION, "startSession", buildJsonObject { put("gameId", gameId) })
+    /** Sends the complete offer SDP; returns the answer SDP. */
+    suspend fun offer(sessionId: String, sdp: String): String =
+        request(Queries.SESSION_OFFER, "sessionOffer", buildJsonObject { put("id", sessionId); put("sdp", sdp) })
     suspend fun stopSession(sessionId: String) {
-        call("DELETE", "/sessions/$sessionId")
+        request<Boolean>(Queries.STOP_SESSION, "stopSession", buildJsonObject { put("id", sessionId) })
     }
-    suspend fun states(gameId: Long): List<SaveSlot> = get("/games/$gameId/states")
+    suspend fun states(gameId: Long): List<SaveSlot> =
+        request<GameSaves>(Queries.SAVES, "game", buildJsonObject { put("id", gameId) }).saves
     suspend fun saveState(sessionId: String, slot: Int) {
-        call("POST", "/sessions/$sessionId/states/$slot")
+        request<Boolean>(Queries.SAVE_STATE, "saveState", slotVariables(sessionId, slot))
     }
     suspend fun loadState(sessionId: String, slot: Int) {
-        call("POST", "/sessions/$sessionId/states/$slot/load")
+        request<Boolean>(Queries.LOAD_STATE, "loadState", slotVariables(sessionId, slot))
+    }
+
+    private fun slotVariables(sessionId: String, slot: Int) = buildJsonObject {
+        put("sessionId", sessionId)
+        put("slot", slot)
     }
 }

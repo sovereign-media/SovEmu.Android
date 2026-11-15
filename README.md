@@ -10,8 +10,8 @@ Checked out as a submodule of `SovEmu` (unpinned, `branch = main`); it builds on
 
 | Module | What |
 |---|---|
-| `core` | Plain Kotlin/JVM: the input wire protocol (`Protocol.kt`) and the API's JSON models. Its tests use the same byte vectors as `SovEmu.Protocol` (Rust) and `SovEmu.Web` (TypeScript). |
-| `app` | Jetpack Compose UI (sign-in, system carousel, game list, player), OkHttp for the API, and Stream's libwebrtc build for the stream. |
+| `core` | Plain Kotlin/JVM: the input wire protocol (`Protocol.kt`), the GraphQL query documents and response decoding (`GraphQL.kt`, against the server's `schema.graphql`) and the API models. Its tests use the same byte vectors as `SovEmu.Protocol` (Rust) and `SovEmu.Web` (TypeScript). |
+| `app` | Jetpack Compose UI (sign-in, system carousel, game list, player), OkHttp for the API (`POST /graphql`), and Stream's libwebrtc build for the stream. |
 
 ## Building
 

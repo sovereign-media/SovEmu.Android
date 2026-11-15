@@ -47,9 +47,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
-import media.sovereign.sovemu.ApiException
 import media.sovereign.sovemu.Settings
 import media.sovereign.sovemu.SovEmuApi
+import media.sovereign.sovemu.core.ApiException
 import media.sovereign.sovemu.core.Game
 import media.sovereign.sovemu.core.SystemSummary
 import media.sovereign.sovemu.core.parseColor
@@ -123,7 +123,7 @@ fun SystemsScreen(api: SovEmuApi, onOpen: (SystemSummary) -> Unit, onSignedOut: 
             systems = api.systems().filter { it.gameCount > 0 }
             focused = systems?.firstOrNull()
         } catch (e: ApiException) {
-            if (e.status == 401) onSignedOut() else error = e.message
+            if (e.unauthenticated) onSignedOut() else error = e.message
         } catch (e: Exception) {
             error = "Cannot reach the server: ${e.message}"
         }
@@ -212,7 +212,7 @@ fun GamesScreen(api: SovEmuApi, system: SystemSummary, onPlay: (Game) -> Unit, o
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                     ) {
                         Text(game.title, fontSize = 18.sp, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                        if (game.tags.isNotEmpty()) Text(game.tags, fontSize = 12.sp, color = Muted)
+                        if (game.tags.isNotEmpty()) Text(game.tags.joinToString(", "), fontSize = 12.sp, color = Muted)
                     }
                 }
             }
@@ -228,8 +228,8 @@ fun GamesScreen(api: SovEmuApi, system: SystemSummary, onPlay: (Game) -> Unit, o
                     contentAlignment = Alignment.Center,
                 ) { Text(system.short, fontSize = 48.sp, fontWeight = FontWeight.Black, color = Color.White) }
                 Text(game.title, fontSize = 26.sp, fontWeight = FontWeight.Black, color = Color.White)
-                if (game.tags.isNotEmpty()) Text(game.tags, color = Muted)
-                Text("Played ${game.playCount ?: 0} time${if (game.playCount == 1) "" else "s"}", color = Muted)
+                if (game.tags.isNotEmpty()) Text(game.tags.joinToString(", "), color = Muted)
+                Text("Played ${game.playCount} time${if (game.playCount == 1) "" else "s"}", color = Muted)
                 Button(onClick = { onPlay(game) }, modifier = Modifier.fillMaxWidth()) { Text("Play") }
             }
         }

@@ -1,17 +1,17 @@
 package media.sovereign.sovemu.core
 
-import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-/** The JSON shapes of the SovEmu API (`SovEmu.Server`). */
+/** The JSON shapes of the SovEmu GraphQL API (`SovEmu.Server/schema.graphql`). */
 val ApiJson = Json { ignoreUnknownKeys = true }
 
 @Serializable
-data class User(val id: Long, val username: String, @SerialName("is_admin") val isAdmin: Boolean)
+data class User(val id: Long, val username: String, val isAdmin: Boolean)
 
+/** `Query.viewer`: who is signed in, and whether first-run setup is needed. */
 @Serializable
-data class AuthStatus(@SerialName("setup_required") val setupRequired: Boolean, val user: User? = null)
+data class Viewer(val setupRequired: Boolean, val user: User? = null)
 
 @Serializable
 data class SystemSummary(
@@ -21,11 +21,11 @@ data class SystemSummary(
     val manufacturer: String,
     val year: Int,
     val color: String,
-    @SerialName("game_count") val gameCount: Int,
+    val gameCount: Int,
     val playable: Boolean,
     /** A 3D system: renders with OpenGL and reads analog sticks. */
-    @SerialName("needs_gpu") val needsGpu: Boolean = false,
-    /** For a 3D system: `gpu`, `software` (slow) or `off`. */
+    val needsGpu: Boolean = false,
+    /** For a 3D system: `GPU`, `SOFTWARE` (slow) or `OFF`. */
     val rendering: String? = null,
 )
 
@@ -34,41 +34,51 @@ data class Game(
     val id: Long,
     val system: String,
     val title: String,
-    val tags: String = "",
-    val size: Long = 0,
-    @SerialName("last_played_at") val lastPlayedAt: String? = null,
-    @SerialName("play_count") val playCount: Int? = null,
+    /** No-Intro tags from the file name: "USA", "Rev 1" … */
+    val tags: List<String> = emptyList(),
+    /** Bytes (a GraphQL `Float`). */
+    val size: Double = 0.0,
+    val lastPlayedAt: String? = null,
+    val playCount: Int = 0,
 )
 
 @Serializable
 data class SessionInfo(
     val id: String,
-    @SerialName("game_id") val gameId: Long,
+    val gameId: Long,
     val system: String,
     val title: String,
     val core: String,
     val width: Int,
     val height: Int,
     val fps: Double,
+    /** A client is streaming it. */
+    val connected: Boolean = false,
 )
-
-@Serializable
-data class SessionDescription(val type: String, val sdp: String)
 
 @Serializable
 data class IceServer(val urls: kotlinx.serialization.json.JsonElement, val username: String? = null, val credential: String? = null)
 
 @Serializable
-data class ClientConfig(@SerialName("ice_servers") val iceServers: List<IceServer> = emptyList())
+data class ClientConfig(val iceServers: List<IceServer> = emptyList())
 
 @Serializable
-data class SaveSlot(val slot: Int, @SerialName("saved_at") val savedAt: Long, val screenshot: Boolean)
+data class SaveSlot(
+    /** 0 is the auto save; 1–9 are the player's. */
+    val slot: Int,
+    /** Unix seconds (a GraphQL `Float`). */
+    val savedAt: Double,
+    /** Relative to the server's origin; changes with each save. */
+    val screenshotUrl: String? = null,
+)
 
+/** `System.games`, as `Query.system` returns it. */
 @Serializable
-data class Credentials(val username: String, val password: String)
+data class SystemGames(val games: List<Game> = emptyList())
 
+/** `Game.saves`, as `Query.game` returns it. */
 @Serializable
-data class StartSession(@SerialName("game_id") val gameId: Long)
+data class GameSaves(val saves: List<SaveSlot> = emptyList())
 
 /** Parses an API colour (`#rrggbb`) to ARGB. */
 fun parseColor(hex: String): Long {
