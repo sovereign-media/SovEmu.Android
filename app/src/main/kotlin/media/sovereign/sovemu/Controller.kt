@@ -17,6 +17,7 @@ import media.sovereign.sovemu.core.InputDeviceInfo
 import media.sovereign.sovemu.core.InputMixer
 import media.sovereign.sovemu.core.Keys
 import media.sovereign.sovemu.core.Protocol
+import media.sovereign.sovemu.core.RebindCapture
 import media.sovereign.sovemu.core.axisInputs
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -28,7 +29,7 @@ import kotlin.math.sign
  * port; keyboards share the keyboard mapping; the touch controller is player 1. The activity
  * feeds key and motion events in; the stream reads [read].
  *
- * A remap screen can [startCapture] the next input of one controller model instead.
+ * A remap screen can [startCapture] the input to bind on one controller model instead.
  */
 class Controller {
     val mixer = InputMixer()
@@ -197,79 +198,121 @@ class Controller {
 
     private class Capture(
         val model: ControllerModel,
+        val machine: RebindCapture,
         val onInput: (String) -> Unit,
-        val onCancel: () -> Unit,
+        val onCancel: (timedOut: Boolean) -> Unit,
         val onRejected: (String) -> Unit,
     )
 
     @Volatile private var capture: Capture? = null
+    /** Every device's held keys and axis inputs, tracked always so a capture knows what was already held. */
+    private val heldKeys = HashMap<Int, MutableSet<Int>>()
     private val heldAxes = HashMap<Int, Set<String>>()
     /** Keys whose press a capture consumed: their release is consumed too. */
     private val swallow = HashSet<Int>()
+    private val main = Handler(Looper.getMainLooper())
+    private val tick = object : Runnable {
+        override fun run() {
+            if (capture == null) return
+            evaluate()
+            if (capture != null) main.postDelayed(this, 50)
+        }
+    }
 
     val capturing: Boolean get() = capture != null
 
     /**
-     * The next input of a device of [model] (any keyboard, for the keyboard) goes to [onInput]
-     * instead of anywhere else. Back or Escape calls [onCancel]; a key that cannot be bound
-     * calls [onRejected] and keeps waiting. Callbacks run on the main thread.
+     * Waits for the input to bind on a device of [model] (any keyboard, for the keyboard), as
+     * docs/CONTROLLERS.md's "Remapping" says ([RebindCapture]): a new input binds; a tap of Back
+     * (the pad's B/east, Escape) cancels and holding it 1 s binds it; home/guide, the system Back
+     * or 8 s without input cancel. Callbacks run on the main thread.
      */
-    fun startCapture(model: ControllerModel, onInput: (String) -> Unit, onCancel: () -> Unit, onRejected: (String) -> Unit) {
-        heldAxes.clear()
-        capture = Capture(model, onInput, onCancel, onRejected)
+    fun startCapture(model: ControllerModel, onInput: (String) -> Unit, onCancel: (timedOut: Boolean) -> Unit, onRejected: (String) -> Unit) {
+        val back = RebindCapture.backInput(model.id)
+        capture = Capture(model, RebindCapture(back, held(model), now()), onInput, onCancel, onRejected)
+        main.removeCallbacks(tick)
+        main.postDelayed(tick, 50)
     }
 
     fun cancelCapture() {
         capture = null
+        main.removeCallbacks(tick)
+    }
+
+    private fun now() = android.os.SystemClock.uptimeMillis()
+
+    /** The inputs held now on devices of [model]: bindable keyboard codes, or a pad's positional inputs. */
+    private fun held(model: ControllerModel): Set<String> = buildSet {
+        for ((id, codes) in heldKeys) {
+            val pad = mixer.isPad(id)
+            if (model.id == Controllers.KEYBOARD) {
+                if (!pad) codes.mapNotNull(Keys::keyboardCode).filter(Keys::bindable).forEach(::add)
+            } else if (mixer.model(id)?.id == model.id) {
+                codes.mapNotNull(Keys::padInput).forEach(::add)
+            }
+        }
+        if (model.id != Controllers.KEYBOARD) {
+            for ((id, axes) in heldAxes) if (mixer.model(id)?.id == model.id) addAll(axes)
+        }
+    }
+
+    private fun evaluate(guide: Boolean = false) {
+        val c = capture ?: return
+        when (val outcome = c.machine.update(held(c.model), now(), guide)) {
+            is RebindCapture.Outcome.Bind -> {
+                cancelCapture()
+                c.onInput(outcome.input)
+            }
+            is RebindCapture.Outcome.Cancel -> {
+                cancelCapture()
+                c.onCancel(outcome.timedOut)
+            }
+            RebindCapture.Outcome.Waiting -> {}
+        }
     }
 
     /** Called first for every key event. Returns true if a capture (or its aftermath) took it. */
     fun captureKey(event: KeyEvent): Boolean {
+        val id = event.deviceId
+        when (event.action) {
+            KeyEvent.ACTION_DOWN -> heldKeys.getOrPut(id) { HashSet() } += event.keyCode
+            KeyEvent.ACTION_UP -> heldKeys[id]?.remove(event.keyCode)
+        }
         val c = capture
-        if (event.action == KeyEvent.ACTION_UP && swallow.remove(event.keyCode)) return true
+        if (event.action == KeyEvent.ACTION_UP && swallow.remove(event.keyCode)) {
+            if (c != null) evaluate()
+            return true
+        }
         if (c == null) return false
         if (event.action != KeyEvent.ACTION_DOWN) return true
         swallow += event.keyCode
         if (event.repeatCount > 0) return true
-        if (event.keyCode == KeyEvent.KEYCODE_BACK || event.keyCode == KeyEvent.KEYCODE_ESCAPE) {
-            capture = null
-            c.onCancel()
+        // The system's own Back (a phone's gesture or a pad's Back button) always cancels.
+        if (event.keyCode == KeyEvent.KEYCODE_BACK) {
+            cancelCapture()
+            c.onCancel(false)
             return true
         }
-        val id = event.deviceId
+        val keyboard = c.model.id == Controllers.KEYBOARD
         val pad = mixer.isPad(id) || KeyEvent.isGamepadButton(event.keyCode)
-        if (c.model.id == Controllers.KEYBOARD) {
-            if (pad) return true
+        if (keyboard && !pad) {
             val code = Keys.keyboardCode(event.keyCode)
             when {
                 code == null -> c.onRejected("That key can't be bound")
                 !Keys.bindable(code) -> c.onRejected("$code is the ${if (code == Keys.FAST_FORWARD) "fast-forward" else "rewind"} key")
-                else -> {
-                    capture = null
-                    c.onInput(code)
-                }
             }
-        } else {
-            if (mixer.model(id)?.id != c.model.id) return true
-            val input = Keys.padInput(event.keyCode) ?: return true
-            capture = null
-            c.onInput(input)
         }
+        val guide = !keyboard && event.keyCode == KeyEvent.KEYCODE_BUTTON_MODE && mixer.model(id)?.id == c.model.id
+        evaluate(guide)
         return true
     }
 
     /** Called first for every motion event: a pad's trigger or hat can be captured too. */
     fun captureMotion(event: MotionEvent): Boolean {
-        val c = capture ?: return false
         if (!event.isFromSource(InputDevice.SOURCE_JOYSTICK)) return false
-        val id = event.deviceId
-        val now = axes(event)
-        val pressed = now - (heldAxes[id] ?: emptySet())
-        heldAxes[id] = now
-        if (mixer.model(id)?.id == c.model.id && pressed.isNotEmpty()) {
-            capture = null
-            c.onInput(pressed.first())
-        }
+        heldAxes[event.deviceId] = axes(event)
+        if (capture == null) return false
+        evaluate()
         return true
     }
 

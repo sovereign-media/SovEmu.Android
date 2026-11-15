@@ -619,3 +619,49 @@ class InputMixer {
         const val KEYBOARD_DEVICE = Int.MIN_VALUE
     }
 }
+
+/**
+ * Waiting for the input to bind to a button, on one device (docs/CONTROLLERS.md, "Remapping").
+ * Fed the inputs [update] sees held and a clock: any other new input binds at once; the menu
+ * Back input ([back]: `east` on a pad, `Escape` on a keyboard) cancels on a quick tap and binds
+ * once held for [HOLD_MS]; home/guide cancels; [TIMEOUT_MS] without a new input cancels. Inputs
+ * held when the wait starts are ignored until released.
+ */
+class RebindCapture(private val back: String, alreadyHeld: Set<String>, startMs: Long) {
+    sealed interface Outcome {
+        data object Waiting : Outcome
+        data class Bind(val input: String) : Outcome
+        data class Cancel(val timedOut: Boolean) : Outcome
+    }
+
+    private var ignored: Set<String> = alreadyHeld
+    private var backSince: Long? = null
+    private var lastInput = startMs
+
+    /** [held]: the device's inputs held now; [guide]: home/guide was pressed. Call often. */
+    fun update(held: Set<String>, nowMs: Long, guide: Boolean = false): Outcome {
+        if (guide) return Outcome.Cancel(timedOut = false)
+        ignored = ignored intersect held
+        val fresh = held - ignored
+        (fresh - back).firstOrNull()?.let { return Outcome.Bind(it) }
+        val since = backSince
+        when {
+            back in fresh && since == null -> {
+                backSince = nowMs
+                lastInput = nowMs
+            }
+            back in fresh && since != null && nowMs - since >= HOLD_MS -> return Outcome.Bind(back)
+            back !in fresh && since != null -> return Outcome.Cancel(timedOut = false)
+        }
+        if (backSince == null && nowMs - lastInput >= TIMEOUT_MS) return Outcome.Cancel(timedOut = true)
+        return Outcome.Waiting
+    }
+
+    companion object {
+        const val HOLD_MS = 1000L
+        const val TIMEOUT_MS = 8000L
+
+        /** The input that is the menu's Back on this kind of device. */
+        fun backInput(controllerId: String) = if (controllerId == Controllers.KEYBOARD) "Escape" else "east"
+    }
+}

@@ -353,4 +353,58 @@ class ControllersTest {
         assertEquals(Mapping.of(mine.bindings), mixer.mapping("xbox"))
         assertEquals(MappingSource.USER, mixer.source("xbox"))
     }
+
+    // --- Rebinding --------------------------------------------------------------------------
+
+    private val bind = RebindCapture.Outcome::Bind
+    private val waiting = RebindCapture.Outcome.Waiting
+
+    @Test
+    fun aQuickTapOfBackCancels() {
+        val c = RebindCapture("east", emptySet(), 0)
+        assertEquals(waiting, c.update(setOf("east"), 100))
+        assertEquals(waiting, c.update(setOf("east"), 900))
+        assertEquals(RebindCapture.Outcome.Cancel(timedOut = false), c.update(emptySet(), 950))
+    }
+
+    @Test
+    fun holdingBackForASecondBindsItWithoutWaitingForRelease() {
+        val c = RebindCapture("Escape", emptySet(), 0)
+        assertEquals(waiting, c.update(setOf("Escape"), 500))
+        assertEquals(waiting, c.update(setOf("Escape"), 1499))
+        assertEquals(bind("Escape"), c.update(setOf("Escape"), 1500))
+    }
+
+    @Test
+    fun anyOtherNewInputBindsAtOnce() {
+        assertEquals(bind("south"), RebindCapture("east", emptySet(), 0).update(setOf("south"), 10))
+        // Even while Back is being held.
+        val c = RebindCapture("east", emptySet(), 0)
+        c.update(setOf("east"), 10)
+        assertEquals(bind("l2"), c.update(setOf("east", "l2"), 200))
+    }
+
+    @Test
+    fun inputsHeldAtTheStartAreIgnoredUntilReleased() {
+        val c = RebindCapture("east", setOf("south", "east"), 0)
+        assertEquals(waiting, c.update(setOf("south", "east"), 2000)) // a held Back neither binds nor cancels
+        assertEquals(waiting, c.update(emptySet(), 2100))
+        assertEquals(bind("south"), c.update(setOf("south"), 2200))
+    }
+
+    @Test
+    fun guideCancels() {
+        val c = RebindCapture("east", emptySet(), 0)
+        c.update(setOf("east"), 10)
+        assertEquals(RebindCapture.Outcome.Cancel(timedOut = false), c.update(setOf("east"), 20, guide = true))
+    }
+
+    @Test
+    fun eightSecondsWithoutANewInputCancels() {
+        val c = RebindCapture("east", setOf("north"), 1000)
+        assertEquals(waiting, c.update(setOf("north"), 8999))
+        assertEquals(RebindCapture.Outcome.Cancel(timedOut = true), c.update(setOf("north"), 9000))
+        assertEquals("Escape", RebindCapture.backInput(Controllers.KEYBOARD))
+        assertEquals("east", RebindCapture.backInput("xbox"))
+    }
 }

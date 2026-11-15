@@ -33,7 +33,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import media.sovereign.sovemu.Controller
 import media.sovereign.sovemu.SovEmuApi
@@ -43,13 +42,11 @@ import media.sovereign.sovemu.core.InputDeviceInfo
 import media.sovereign.sovemu.core.Mapping
 import media.sovereign.sovemu.core.MappingSource
 import media.sovereign.sovemu.core.Protocol
+import media.sovereign.sovemu.core.RebindCapture
 
 private val Panel = Color(0xFF151922)
 private val Muted = Color(0xFF8B93A7)
 private val Focus = Color(0xFF4169E1)
-
-/** How long a rebind waits for an input before giving up (a pad may have no Back button). */
-private const val CAPTURE_MS = 6000L
 
 /**
  * The in-game controller settings: every connected device with its player, and per device its
@@ -122,14 +119,6 @@ private fun ColumnScope.Bindings(api: SovEmuApi, controller: Controller, device:
     val first = remember { FocusRequester() }
 
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
-    LaunchedEffect(capturing) {
-        if (capturing != null) {
-            delay(CAPTURE_MS)
-            controller.cancelCapture()
-            capturing = null
-            message = "No input: nothing changed"
-        }
-    }
 
     fun save(m: Mapping) {
         scope.launch {
@@ -159,7 +148,10 @@ private fun ColumnScope.Bindings(api: SovEmuApi, controller: Controller, device:
                 controller.mixer.setMapping(model.id, m)
                 save(m)
             },
-            onCancel = { capturing = null },
+            onCancel = { timedOut ->
+                capturing = null
+                message = if (timedOut) "No input: nothing changed" else null
+            },
             onRejected = { message = it },
         )
     }
@@ -173,7 +165,8 @@ private fun ColumnScope.Bindings(api: SovEmuApi, controller: Controller, device:
         },
         color = Muted, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 8.dp),
     )
-    val prompt = capturing?.let { "Press an input on ${if (device.isKeyboard) "the keyboard" else device.name} for ${Controllers.buttonLabel(it)}. Back or Escape cancels." }
+    val back = Controllers.inputLabel(model.id, model.family, RebindCapture.backInput(model.id))
+    val prompt = capturing?.let { "Press a button for ${Controllers.buttonLabel(it)} · tap $back to cancel, hold it to bind $back" }
     Text(
         prompt ?: message ?: "Pick a button, then press what should drive it.",
         color = if (prompt != null) Color.White else Muted, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 8.dp),

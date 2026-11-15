@@ -37,7 +37,8 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 - **Keyboard:** arrows, Z/X (B/A), A/S (Y/X), Q/W (L/R), Enter (Start), Shift (Select); Tab
   fast-forwards and Backspace rewinds. The keyboard and the touch controls are player 1.
 - **Controllers** (in-game menu): move any device to another player for the session, and
-  rebind a device's buttons by pressing an input on it (Back or Escape cancels). Mappings are
+  rebind a device's buttons by pressing an input on it: a tap of B (Escape on a keyboard)
+  cancels and holding it for a second binds it; home/guide or 8 s without input also cancel. Mappings are
   saved on the server per user and controller model, so they follow you to the web and iOS
   clients (`docs/CONTROLLERS.md` in SovEmu). Without one of your own, a controller uses the
   server's default for its model (set by an admin) or the built-in one; "Reset to defaults"
