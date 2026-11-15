@@ -47,6 +47,7 @@ import media.sovereign.sovemu.Stream
 import media.sovereign.sovemu.WebRtc
 import media.sovereign.sovemu.core.Button
 import media.sovereign.sovemu.core.Game
+import media.sovereign.sovemu.core.MappingBook
 import media.sovereign.sovemu.core.SessionInfo
 import media.sovereign.sovemu.core.SystemSummary
 import org.webrtc.PeerConnection
@@ -69,6 +70,8 @@ fun PlayerScreen(api: SovEmuApi, system: SystemSummary, game: Game, controller: 
     var toast by remember { mutableStateOf<String?>(null) }
     var showTouch by remember { mutableStateOf(true) }
     var controllersOpen by remember { mutableStateOf(false) }
+    val book = remember(system.id) { MappingBook(system.id) }
+    var controls by remember { mutableStateOf(Controls()) }
 
     val renderer = remember {
         SurfaceViewRenderer(context).apply {
@@ -87,10 +90,13 @@ fun PlayerScreen(api: SovEmuApi, system: SystemSummary, game: Game, controller: 
     }
 
     LaunchedEffect(game.id) {
-        // A controller without a saved mapping (or every one, if this fails) uses the defaults.
-        runCatching { api.controllerMappings() }
-            .onSuccess { controller.mixer.setMappings(it) }
+        // The mappings in force on this system; a controller without one (or every one, if this
+        // fails) uses the built-in defaults.
+        runCatching { book.refresh(api::controllerMappings) }
+            .onSuccess { controller.mixer.setMappings(book.forSystem) }
             .onFailure { e -> toast = "Default controls: ${e.message}" }
+        // The system's labels and the diagrams, for the controllers screen; it lists RetroPad names without them.
+        runCatching { api.controls(system.id) }.onSuccess { (sys, layouts) -> controls = Controls(sys, layouts) }
         try {
             val config = runCatching { api.config() }.getOrNull()
             val session = api.startSession(game.id)
@@ -150,7 +156,7 @@ fun PlayerScreen(api: SovEmuApi, system: SystemSummary, game: Game, controller: 
         }
         if (controllersOpen) {
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.7f)).safeDrawingPadding(), contentAlignment = Alignment.Center) {
-                ControllersScreen(api, controller) {
+                ControllersScreen(api, controller, book, controls, system.short) {
                     controllersOpen = false
                     menuOpen = true
                 }

@@ -310,48 +310,112 @@ class ControllersTest {
         return result!!.getOrThrow()
     }
 
-    @Test
-    fun resettingUsesWhatTheServerHasInForceNotTheBuiltInDefaults() {
-        val admin = ControllerMapping("xbox", "Xbox", listOf(Binding("south", Button.A), Binding("east", Button.B)), MappingSource.ADMIN)
-        val mine = ControllerMapping("xbox", "Xbox", listOf(Binding("south", Button.START)), MappingSource.USER)
-        val keyboard = ControllerMapping("keyboard", "", listOf(Binding("KeyJ", Button.B)), MappingSource.USER)
-        var server = listOf(mine, keyboard)
-        val calls = mutableListOf<String>()
-        val mixer = InputMixer()
-        mixer.setMappings(server)
-        assertEquals(MappingSource.USER, mixer.source("xbox"))
+    private fun mine(system: String?, vararg b: Binding) = ControllerMapping("xbox", "Xbox", b.toList(), MappingSource.USER, system)
 
-        // The server falls back to an admin's default for xbox: the client uses it.
-        val inForce = run {
-            mixer.resetMapping(
-                "xbox",
-                reset = { id -> calls += "reset $id"; server = listOf(admin, keyboard); true },
-                fetch = { calls += "fetch"; server },
+    @Test
+    fun theBookSavesAndResetsEachScopeWithItsSystemArgument() {
+        val book = MappingBook("megadrive")
+        assertEquals("megadrive", book.systemArg(MappingScope.SYSTEM))
+        assertNull(book.systemArg(MappingScope.ALL))
+    }
+
+    @Test
+    fun resettingRefetchesBothScopesSoTheNextLayerApplies() {
+        val admin = ControllerMapping("xbox", "Xbox", listOf(Binding("south", Button.A)), MappingSource.ADMIN, "megadrive")
+        val forMd = mine("megadrive", Binding("south", Button.Y))
+        val forAll = mine(null, Binding("south", Button.START))
+        // What the server has in force, per `system` argument.
+        var server = mapOf<String?, List<ControllerMapping>>("megadrive" to listOf(forMd), null to listOf(forAll))
+        val calls = mutableListOf<String>()
+        val book = MappingBook("megadrive")
+        run { book.refresh { calls += "fetch $it"; server.getValue(it) } }
+        assertEquals(Button.Y, book.mapping("xbox", MappingScope.SYSTEM).button("south"))
+        assertEquals(Button.START, book.mapping("xbox", MappingScope.ALL).button("south"))
+        assertTrue(book.canReset("xbox", MappingScope.SYSTEM))
+        assertTrue(book.canReset("xbox", MappingScope.ALL))
+
+        // Resetting this system's: the every-system mapping of the user's own is now in force.
+        calls.clear()
+        run {
+            book.reset(
+                "xbox", MappingScope.SYSTEM,
+                reset = { c, sys -> calls += "reset $c $sys"; server = server + ("megadrive" to listOf(forAll)); true },
+                fetch = { calls += "fetch $it"; server.getValue(it) },
             )
         }
-        assertEquals(listOf("reset xbox", "fetch"), calls)
-        assertEquals(Mapping.of(admin.bindings), inForce)
-        assertEquals(Mapping.of(admin.bindings), mixer.mapping("xbox"))
-        assertEquals(MappingSource.ADMIN, mixer.source("xbox"))
-        assertEquals(Button.B, mixer.mapping("keyboard").button("KeyJ")) // others refreshed, kept
+        assertEquals(listOf("reset xbox megadrive", "fetch megadrive", "fetch null"), calls)
+        assertEquals(Button.START, book.mapping("xbox", MappingScope.SYSTEM).button("south"))
+        assertFalse(book.canReset("xbox", MappingScope.SYSTEM)) // nothing of their own for this system
+        assertEquals("Yours for all systems", MappingBook.sourceText(book.entry("xbox", MappingScope.SYSTEM)))
 
-        // No server default either: the built-in defaults.
-        val builtIn = run { mixer.resetMapping("keyboard", reset = { true }, fetch = { listOf(admin) }) }
-        assertEquals(Mapping.KEYBOARD_DEFAULT, builtIn)
-        assertNull(mixer.source("keyboard"))
+        // Resetting every system's: the admin's default for the system, not the built-in one.
+        run {
+            book.reset(
+                "xbox", MappingScope.ALL,
+                reset = { _, sys -> assertNull(sys); server = mapOf("megadrive" to listOf(admin), null to emptyList()); true },
+                fetch = { server.getValue(it) },
+            )
+        }
+        assertEquals(Button.A, book.mapping("xbox", MappingScope.SYSTEM).button("south"))
+        assertEquals("Default", MappingBook.sourceText(book.entry("xbox", MappingScope.SYSTEM)))
+        assertEquals(Mapping.PAD_DEFAULT, book.mapping("xbox", MappingScope.ALL))
+        assertFalse(book.canReset("xbox", MappingScope.ALL))
     }
 
     @Test
     fun aFailedResetChangesNothing() {
-        val mine = ControllerMapping("xbox", "", listOf(Binding("south", Button.START)))
-        val mixer = InputMixer()
-        mixer.setMappings(listOf(mine))
+        val book = MappingBook("snes")
+        run { book.refresh { listOf(mine(it, Binding("south", Button.START))) } }
         val e = runCatching {
-            run { mixer.resetMapping("xbox", reset = { throw ApiException("BAD_REQUEST", "no") }, fetch = { emptyList() }) }
+            run { book.reset("xbox", MappingScope.SYSTEM, reset = { _, _ -> throw ApiException("BAD_REQUEST", "no") }, fetch = { emptyList() }) }
         }.exceptionOrNull()
         assertEquals("BAD_REQUEST", (e as ApiException).code)
-        assertEquals(Mapping.of(mine.bindings), mixer.mapping("xbox"))
-        assertEquals(MappingSource.USER, mixer.source("xbox"))
+        assertEquals(Button.START, book.mapping("xbox", MappingScope.SYSTEM).button("south"))
+    }
+
+    @Test
+    fun sourceTextSaysWhereTheMappingComesFrom() {
+        assertEquals("Yours for this system", MappingBook.sourceText(mine("snes")))
+        assertEquals("Yours for all systems", MappingBook.sourceText(mine(null)))
+        assertEquals("Default", MappingBook.sourceText(mine("snes").copy(source = MappingSource.ENVIRONMENT)))
+        assertEquals("Default", MappingBook.sourceText(mine(null).copy(source = MappingSource.ADMIN)))
+        assertEquals("Default", MappingBook.sourceText(null))
+    }
+
+    // --- Diagrams ---------------------------------------------------------------------------
+
+    @Test
+    fun aButtonLightsItsSystemKeyAndEveryInputMappedToIt() {
+        // l3 also drives B; Select drives Start; nothing drives Select.
+        val m = Mapping.of(Mapping.PAD_DEFAULT.rebind(Button.START, "select").bindings.filter { it.input != "l3" } + Binding("l3", Button.B))
+        assertEquals(Highlight("B", setOf("south", "l3")), highlight(Button.B, m))
+        assertEquals(Highlight("START", setOf("select")), highlight(Button.START, m))
+        assertEquals(Highlight("SELECT", emptySet()), highlight(Button.SELECT, m))
+        // A keyboard: key names, which a client lists instead of drawing.
+        assertEquals(setOf("ShiftLeft", "ShiftRight"), highlight(Button.SELECT, Mapping.KEYBOARD_DEFAULT).controllerKeys)
+    }
+
+    @Test
+    fun diagramsAreCroppedToTheirShapesPlusThreeUnits() {
+        // A flat pad: a body 30..130 × 40..60 and a key poking out above it.
+        val flat = PadLayout(
+            "nes", "NES", 160.0, 100.0,
+            body = listOf(Shape(30.0, 40.0, 100.0, 20.0, 4.0)),
+            keys = listOf(PadKey("START", "Start", 70.0, 35.0, 12.0, 6.0, 3.0)),
+        )
+        assertEquals(Bounds(27.0, 32.0, 106.0, 31.0), flat.bounds())
+        assertEquals(Bounds(30.0, 35.0, 100.0, 25.0), flat.bounds(padding = 0.0))
+        // Nothing to draw: the whole canvas.
+        assertEquals(Bounds(0.0, 0.0, 160.0, 100.0), PadLayout("x", "X", 160.0, 100.0).bounds())
+    }
+
+    @Test
+    fun layoutsFitTheirBoxCentred() {
+        assertEquals(Fit(2f, 0f, 50f), Fit.of(160.0, 100.0, 320f, 300f))
+        assertEquals(Fit(1f, 20f, 0f), Fit.of(160.0, 100.0, 200f, 100f))
+        assertEquals(Fit(1f, 0f, 0f), Fit.of(0.0, 0.0, 10f, 10f))
+        assertEquals("playstation", Family.PLAYSTATION.layoutId)
+        assertEquals("generic", Family.GENERIC.layoutId)
     }
 
     // --- Rebinding --------------------------------------------------------------------------
