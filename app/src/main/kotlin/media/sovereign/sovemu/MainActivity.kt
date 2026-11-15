@@ -42,6 +42,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         settings = Settings(this)
         api = SovEmuApi(settings)
+        controller.start(this)
         setContent {
             MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFF4169E1), background = Color(0xFF0B0D12))) {
                 App(settings.serverUrl.isNotEmpty() && settings.sessionCookie != null)
@@ -69,15 +70,23 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // While playing, every controller event goes to the game. Otherwise the system handles
-    // them (D-pad focus, A to click, B to go back).
+    override fun onDestroy() {
+        controller.stop()
+        super.onDestroy()
+    }
+
+    // A remap screen waiting for an input gets it first. While playing (and no menu is open),
+    // every controller event goes to the game. Otherwise the system handles them (D-pad focus,
+    // A to click, B to go back).
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (playing && event.keyCode != KeyEvent.KEYCODE_BACK && controller.onKey(event)) return true
+        if (controller.captureKey(event)) return true
+        if (playing && controller.toGame && event.keyCode != KeyEvent.KEYCODE_BACK && controller.onKey(event)) return true
         return super.dispatchKeyEvent(event)
     }
 
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
-        if (playing && controller.onMotion(event)) return true
+        if (controller.captureMotion(event)) return true
+        if (playing && controller.toGame && controller.onMotion(event)) return true
         return super.dispatchGenericMotionEvent(event)
     }
 }

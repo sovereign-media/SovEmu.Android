@@ -135,4 +135,41 @@ class GraphQLTest {
         assertEquals("HTTP_404", e.code)
         assertFalse(e.unauthenticated)
     }
+
+    @Test
+    fun decodesControllerMappings() {
+        val mappings = GraphQL.decode<List<ControllerMapping>>(
+            """{"data":{"controllerMappings":[{"controller":"xbox","name":"Xbox Wireless Controller",
+               "bindings":[{"input":"south","button":"A"},{"input":"east","button":"B"}],"source":"ADMIN"},
+               {"controller":"keyboard","name":"","bindings":[{"input":"KeyZ","button":"SELECT"}],"source":"USER"}]}}""",
+            "controllerMappings",
+        )
+        assertEquals(listOf(Binding("south", Button.A), Binding("east", Button.B)), mappings[0].bindings)
+        assertEquals(Button.SELECT, mappings[1].bindings.single().button)
+        assertEquals(MappingSource.ADMIN, mappings[0].source)
+        assertEquals(MappingSource.USER, mappings[1].source)
+        assertTrue(GraphQL.decode<Boolean>("""{"data":{"resetControllerMapping":false}}""", "resetControllerMapping").not())
+    }
+
+    @Test
+    fun encodesASavedMapping() {
+        val vars = Queries.saveMappingVariables("pad:2dc8:6101", "x".repeat(200), listOf(Binding("l2", Button.L3)))
+        assertEquals(
+            ApiJson.parseToJsonElement("""{"controller":"pad:2dc8:6101","name":"${"x".repeat(128)}","bindings":[{"input":"l2","button":"L3"}]}"""),
+            vars,
+        )
+        assertTrue(Queries.SAVE_CONTROLLER_MAPPING.contains("\$bindings: [BindingInput!]!"))
+        assertTrue(Queries.CONTROLLER_MAPPINGS.contains("controllerMappings { controller name source bindings { input button } }"))
+    }
+
+    @Test
+    fun aBadMappingIsABadRequest() {
+        val e = assertThrows(ApiException::class.java) {
+            GraphQL.decode<ControllerMapping>(
+                """{"data":null,"errors":[{"message":"'Tab' is not an input a keyboard can bind","extensions":{"code":"BAD_REQUEST"}}]}""",
+                "saveControllerMapping",
+            )
+        }
+        assertEquals("BAD_REQUEST", e.code)
+    }
 }

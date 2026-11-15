@@ -18,7 +18,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -30,6 +29,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -54,7 +55,8 @@ import org.webrtc.SurfaceViewRenderer
 
 /**
  * The player: starts the session, streams it, and overlays a touch controller. Back (or
- * Select+Start on a gamepad) opens the in-game menu: resume, save/load slot 1, quit.
+ * Select+Start on a gamepad) opens the in-game menu: resume, save/load slot 1, controllers
+ * (players and button mappings), quit. The user's controller mappings load as the game starts.
  */
 @Composable
 fun PlayerScreen(api: SovEmuApi, system: SystemSummary, game: Game, controller: Controller, onExit: () -> Unit) {
@@ -66,6 +68,7 @@ fun PlayerScreen(api: SovEmuApi, system: SystemSummary, game: Game, controller: 
     var stream by remember { mutableStateOf<Stream?>(null) }
     var toast by remember { mutableStateOf<String?>(null) }
     var showTouch by remember { mutableStateOf(true) }
+    var controllersOpen by remember { mutableStateOf(false) }
 
     val renderer = remember {
         SurfaceViewRenderer(context).apply {
@@ -84,6 +87,10 @@ fun PlayerScreen(api: SovEmuApi, system: SystemSummary, game: Game, controller: 
     }
 
     LaunchedEffect(game.id) {
+        // A controller without a saved mapping (or every one, if this fails) uses the defaults.
+        runCatching { api.controllerMappings() }
+            .onSuccess { controller.mixer.setMappings(it) }
+            .onFailure { e -> toast = "Default controls: ${e.message}" }
         try {
             val config = runCatching { api.config() }.getOrNull()
             val session = api.startSession(game.id)
@@ -102,11 +109,16 @@ fun PlayerScreen(api: SovEmuApi, system: SystemSummary, game: Game, controller: 
     // Select+Start opens the menu; hide the touch controller once a gamepad is used.
     LaunchedEffect(Unit) {
         while (true) {
-            if (controller.menuCombo && !menuOpen) menuOpen = true
+            if (!menuOpen && !controllersOpen && controller.menuCombo) menuOpen = true
             delay(50)
         }
     }
-    LaunchedEffect(menuOpen) { stream?.suspended = menuOpen }
+    // With the menu open the game gets nothing, and controllers navigate the menu instead.
+    LaunchedEffect(menuOpen, controllersOpen, stream) {
+        val paused = menuOpen || controllersOpen
+        stream?.suspended = paused
+        controller.toGame = !paused
+    }
     LaunchedEffect(toast) {
         if (toast != null) {
             delay(2000)
@@ -131,16 +143,25 @@ fun PlayerScreen(api: SovEmuApi, system: SystemSummary, game: Game, controller: 
                 Text(status, color = Color.White, modifier = Modifier.padding(16.dp))
             }
         }
-        if (showTouch && !menuOpen) TouchController(controller, Modifier.fillMaxSize().safeDrawingPadding())
+        if (showTouch && !menuOpen && !controllersOpen) TouchController(controller, Modifier.fillMaxSize().safeDrawingPadding())
         toast?.let {
             Text(it, color = Color.White, modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp)
                 .clip(RoundedCornerShape(20.dp)).background(Color.Black.copy(alpha = 0.8f)).padding(horizontal = 16.dp, vertical = 8.dp))
         }
-        if (menuOpen) {
+        if (controllersOpen) {
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.7f)).safeDrawingPadding(), contentAlignment = Alignment.Center) {
+                ControllersScreen(api, controller) {
+                    controllersOpen = false
+                    menuOpen = true
+                }
+            }
+        } else if (menuOpen) {
+            val first = remember { FocusRequester() }
+            LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.7f)), contentAlignment = Alignment.Center) {
                 Column(Modifier.width(320.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xFF151922)).padding(12.dp)) {
                     Text(game.title, color = Color(0xFF8B93A7), modifier = Modifier.padding(8.dp))
-                    MenuItem("Resume") { menuOpen = false }
+                    MenuItem("Resume", Modifier.focusRequester(first)) { menuOpen = false }
                     MenuItem("Save state (slot 1)") {
                         scope.launch {
                             toast = info?.let { runCatching { api.saveState(it.id, 1) }.fold({ "Saved" }, { e -> "Save failed: ${e.message}" }) }
@@ -159,6 +180,10 @@ fun PlayerScreen(api: SovEmuApi, system: SystemSummary, game: Game, controller: 
                             menuOpen = false
                         }
                     }
+                    MenuItem("Controllers") {
+                        menuOpen = false
+                        controllersOpen = true
+                    }
                     MenuItem(if (showTouch) "Hide touch controls" else "Show touch controls") {
                         showTouch = !showTouch
                         menuOpen = false
@@ -171,11 +196,8 @@ fun PlayerScreen(api: SovEmuApi, system: SystemSummary, game: Game, controller: 
 }
 
 @Composable
-private fun MenuItem(label: String, onClick: () -> Unit) {
-    TextButton(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
-        Text(label, fontSize = 18.sp, color = Color.White, modifier = Modifier.fillMaxWidth())
-    }
-}
+private fun MenuItem(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) =
+    FocusButton(label, modifier.fillMaxWidth(), onClick = onClick)
 
 /** An on-screen pad: D-pad bottom left, face buttons bottom right, Select/Start centre. */
 @Composable

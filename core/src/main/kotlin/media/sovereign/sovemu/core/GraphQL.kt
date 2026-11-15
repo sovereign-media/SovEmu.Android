@@ -1,6 +1,7 @@
 package media.sovereign.sovemu.core
 
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -62,6 +63,7 @@ object Queries {
     private const val SESSION = "id gameId system title core width height fps connected"
     private const val USER = "id username isAdmin"
     private const val SAVE = "slot savedAt screenshotUrl"
+    private const val MAPPING = "controller name source bindings { input button }"
 
     const val VIEWER = "query { viewer { setupRequired user { $USER } } }"
     const val LOGIN = "mutation(\$username: String!, \$password: String!) { login(username: \$username, password: \$password) { $USER } }"
@@ -75,4 +77,16 @@ object Queries {
     const val STOP_SESSION = "mutation(\$id: ID!) { stopSession(id: \$id) }"
     const val SAVE_STATE = "mutation(\$sessionId: ID!, \$slot: Int!) { saveState(sessionId: \$sessionId, slot: \$slot) }"
     const val LOAD_STATE = "mutation(\$sessionId: ID!, \$slot: Int!) { loadState(sessionId: \$sessionId, slot: \$slot) }"
+    const val CONTROLLER_MAPPINGS = "query { controllerMappings { $MAPPING } }"
+    const val SAVE_CONTROLLER_MAPPING =
+        "mutation(\$controller: String!, \$name: String!, \$bindings: [BindingInput!]!) " +
+            "{ saveControllerMapping(controller: \$controller, name: \$name, bindings: \$bindings) { $MAPPING } }"
+    const val RESET_CONTROLLER_MAPPING = "mutation(\$controller: String!) { resetControllerMapping(controller: \$controller) }"
+
+    /** `saveControllerMapping`'s variables. The server allows names up to 128 characters. */
+    fun saveMappingVariables(controller: String, name: String, bindings: List<Binding>): JsonObject = buildJsonObject {
+        put("controller", JsonPrimitive(controller))
+        put("name", JsonPrimitive(name.take(128)))
+        put("bindings", ApiJson.encodeToJsonElement(ListSerializer(Binding.serializer()), bindings))
+    }
 }

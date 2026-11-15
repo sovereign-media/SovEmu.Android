@@ -1,5 +1,6 @@
 package media.sovereign.sovemu.core
 
+import kotlinx.serialization.Serializable
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -66,7 +67,11 @@ object Protocol {
     }
 }
 
-/** RetroPad buttons (libretro `RETRO_DEVICE_ID_JOYPAD_*`): bit `id` of a port's state. */
+/**
+ * RetroPad buttons (libretro `RETRO_DEVICE_ID_JOYPAD_*`): bit `id` of a port's state. The names
+ * are GraphQL's `PadButton`.
+ */
+@Serializable
 enum class Button(val id: Int) {
     B(0), Y(1), SELECT(2), START(3), UP(4), DOWN(5), LEFT(6), RIGHT(7),
     A(8), X(9), L(10), R(11), L2(12), R2(13), L3(14), R3(15);
