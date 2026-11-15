@@ -7,7 +7,9 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import media.sovereign.sovemu.core.ApiException
+import media.sovereign.sovemu.core.Binding
 import media.sovereign.sovemu.core.ClientConfig
+import media.sovereign.sovemu.core.ControllerMapping
 import media.sovereign.sovemu.core.Game
 import media.sovereign.sovemu.core.GameSaves
 import media.sovereign.sovemu.core.GraphQL
@@ -114,6 +116,14 @@ class SovEmuApi(private val settings: Settings) {
     suspend fun loadState(sessionId: String, slot: Int) {
         request<Boolean>(Queries.LOAD_STATE, "loadState", slotVariables(sessionId, slot))
     }
+
+    /** This user's saved mappings, one per controller model; a model without one uses the defaults. */
+    suspend fun controllerMappings(): List<ControllerMapping> = request(Queries.CONTROLLER_MAPPINGS, "controllerMappings")
+    suspend fun saveControllerMapping(controller: String, name: String, bindings: List<Binding>): ControllerMapping =
+        request(Queries.SAVE_CONTROLLER_MAPPING, "saveControllerMapping", Queries.saveMappingVariables(controller, name, bindings))
+    /** Puts a controller model back on the defaults; returns whether it had a mapping. */
+    suspend fun resetControllerMapping(controller: String): Boolean =
+        request(Queries.RESET_CONTROLLER_MAPPING, "resetControllerMapping", buildJsonObject { put("controller", controller) })
 
     private fun slotVariables(sessionId: String, slot: Int) = buildJsonObject {
         put("sessionId", sessionId)

@@ -45,4 +45,5 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.okhttp)
     implementation(libs.webrtc)
+    testImplementation(libs.junit)
 }

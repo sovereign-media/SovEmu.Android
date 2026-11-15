@@ -12,6 +12,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import media.sovereign.sovemu.core.IceServer
+import media.sovereign.sovemu.core.InputMixer
 import media.sovereign.sovemu.core.Protocol
 import org.webrtc.DataChannel
 import org.webrtc.DefaultVideoDecoderFactory
@@ -164,33 +165,41 @@ class Stream(
         }, sdp)
     }
 
-    /** Sends the controller state on every change and at least every 100 ms; hotkeys likewise. */
+    /**
+     * Sends every player's buttons on any change and at least every 100 ms; hotkeys likewise.
+     * Ports in use only grow during a session, so a player who disconnects is sent released
+     * rather than left holding whatever they last pressed.
+     */
     private suspend fun pumpInput() {
         var seq = 0
-        var sent = -1
+        var count = 1
+        var sent = emptyList<Int>()
         var sentHotkeys = 0
         var lastSend = 0L
         var analogSeq = 0
-        var sentAnalog = Protocol.Analog.CENTRED
+        var sentAnalog = listOf(Protocol.Analog.CENTRED)
         var lastAnalogSend = 0L
         while (scope.isActive) {
             if (channel.state() == DataChannel.State.OPEN) {
-                val r = if (suspended) Controller.Reading(0, false, false) else controller.read()
+                val r = if (suspended) IDLE else controller.read()
+                count = maxOf(count, r.count)
+                val buttons = r.ports.take(count)
+                val analog = r.analog.take(count)
                 val hotkeys = (if (r.fastForward) 1 else 0) or (if (r.rewind) 2 else 0)
                 val now = System.currentTimeMillis()
-                if (r.buttons != sent || hotkeys != sentHotkeys || now - lastSend > 100) {
+                if (buttons != sent || hotkeys != sentHotkeys || now - lastSend > 100) {
                     seq++
-                    send(Protocol.encodeInput(seq, now32().toInt(), intArrayOf(r.buttons)))
+                    send(Protocol.encodeInput(seq, now32().toInt(), buttons.toIntArray()))
                     if (hotkeys != sentHotkeys || hotkeys != 0) send(Protocol.encodeHotkeys(r.fastForward, r.rewind))
-                    sent = r.buttons
+                    sent = buttons
                     sentHotkeys = hotkeys
                     lastSend = now
                 }
-                // Sticks: on change, and as a heartbeat while off-centre.
-                if (r.analog != sentAnalog || (!r.analog.centred && now - lastAnalogSend > 100)) {
+                // Sticks: on change, and as a heartbeat while any is off-centre.
+                if (analog != sentAnalog || (analog.any { !it.centred } && now - lastAnalogSend > 100)) {
                     analogSeq++
-                    send(Protocol.encodeAnalog(analogSeq, listOf(r.analog)))
-                    sentAnalog = r.analog
+                    send(Protocol.encodeAnalog(analogSeq, analog))
+                    sentAnalog = analog
                     lastAnalogSend = now
                 }
             }
@@ -210,6 +219,18 @@ class Stream(
     }
 
     private fun now32(): Long = System.nanoTime() / 1_000_000 and 0xffff_ffffL
+
+    private companion object {
+        /** Nothing held: what the game gets while the menu is open. */
+        val IDLE = InputMixer.Reading(
+            ports = List(Protocol.MAX_PORTS) { 0 },
+            analog = List(Protocol.MAX_PORTS) { Protocol.Analog.CENTRED },
+            count = 1,
+            fastForward = false,
+            rewind = false,
+            menu = false,
+        )
+    }
 }
 
 private open class SdpAdapter : SdpObserver {

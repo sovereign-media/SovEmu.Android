@@ -80,6 +80,14 @@ data class SystemGames(val games: List<Game> = emptyList())
 @Serializable
 data class GameSaves(val saves: List<SaveSlot> = emptyList())
 
+/** `Binding`: one input (`south`, `l1` … or a keyboard's `KeyboardEvent.code`) driving one button. */
+@Serializable
+data class Binding(val input: String, val button: Button)
+
+/** `ControllerMapping`: this user's bindings for one controller model (docs/CONTROLLERS.md). */
+@Serializable
+data class ControllerMapping(val controller: String, val name: String = "", val bindings: List<Binding> = emptyList())
+
 /** Parses an API colour (`#rrggbb`) to ARGB. */
 fun parseColor(hex: String): Long {
     val rgb = hex.removePrefix("#").toLongOrNull(16) ?: 0x4169e1
