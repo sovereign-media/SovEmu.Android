@@ -456,6 +456,7 @@ class InputMixer {
     private val pads = LinkedHashMap<Int, Pad>()
     private val players = Players()
     private val mappings = HashMap<String, Mapping>()
+    private val sources = HashMap<String, String>()
     private val keys = HashSet<String>()
     private var touch = 0
     private var keyboardPresent = false
@@ -490,21 +491,51 @@ class InputMixer {
         if (device == KEYBOARD_DEVICE) keyboardPort = port else players.assign(device, port)
     }
 
-    /** The user's saved mappings, replacing whatever was loaded before. */
-    fun setMappings(saved: List<ControllerMapping>) = synchronized(lock) {
+    /**
+     * The mappings in force for this user (`controllerMappings`: theirs, else the server's
+     * default), replacing whatever was loaded before. A model not listed uses the built-in defaults.
+     */
+    fun setMappings(inForce: List<ControllerMapping>) = synchronized(lock) {
         mappings.clear()
-        for (m in saved) mappings[m.controller] = Mapping.of(m.bindings)
+        sources.clear()
+        for (m in inForce) {
+            mappings[m.controller] = Mapping.of(m.bindings)
+            sources[m.controller] = m.source
+        }
     }
 
-    fun setMapping(controllerId: String, mapping: Mapping?) = synchronized(lock) {
-        if (mapping == null) mappings.remove(controllerId) else mappings[controllerId] = mapping
+    /** One model's mapping and where it comes from; null puts it on the built-in defaults. */
+    fun setMapping(controllerId: String, mapping: Mapping?, source: String = MappingSource.USER) = synchronized(lock) {
+        if (mapping == null) {
+            mappings.remove(controllerId)
+            sources.remove(controllerId)
+        } else {
+            mappings[controllerId] = mapping
+            sources[controllerId] = source
+        }
+    }
+
+    /** Where a model's mapping comes from (a [MappingSource]); null for the built-in defaults. */
+    fun source(controllerId: String): String? = synchronized(lock) { sources[controllerId] }
+
+    /**
+     * Puts a model back on the defaults: [reset] (`resetControllerMapping`), then [fetch]
+     * (`controllerMappings`) and use whatever the server now has in force for it (an admin's
+     * default), or the built-in defaults if nothing. Returns the mapping now in force.
+     */
+    suspend fun resetMapping(
+        controllerId: String,
+        reset: suspend (String) -> Boolean,
+        fetch: suspend () -> List<ControllerMapping>,
+    ): Mapping {
+        reset(controllerId)
+        setMappings(fetch())
+        return mapping(controllerId)
     }
 
     fun mapping(controllerId: String): Mapping = synchronized(lock) {
         mappings[controllerId] ?: Mapping.defaults(controllerId)
     }
-
-    fun hasSavedMapping(controllerId: String): Boolean = synchronized(lock) { controllerId in mappings }
 
     /** A controller input (`south`, `up` …) pressed or released. */
     fun pad(device: Int, input: String, down: Boolean) = synchronized(lock) {

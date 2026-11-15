@@ -140,12 +140,14 @@ class GraphQLTest {
     fun decodesControllerMappings() {
         val mappings = GraphQL.decode<List<ControllerMapping>>(
             """{"data":{"controllerMappings":[{"controller":"xbox","name":"Xbox Wireless Controller",
-               "bindings":[{"input":"south","button":"A"},{"input":"east","button":"B"}]},
-               {"controller":"keyboard","name":"","bindings":[{"input":"KeyZ","button":"SELECT"}]}]}}""",
+               "bindings":[{"input":"south","button":"A"},{"input":"east","button":"B"}],"source":"ADMIN"},
+               {"controller":"keyboard","name":"","bindings":[{"input":"KeyZ","button":"SELECT"}],"source":"USER"}]}}""",
             "controllerMappings",
         )
         assertEquals(listOf(Binding("south", Button.A), Binding("east", Button.B)), mappings[0].bindings)
         assertEquals(Button.SELECT, mappings[1].bindings.single().button)
+        assertEquals(MappingSource.ADMIN, mappings[0].source)
+        assertEquals(MappingSource.USER, mappings[1].source)
         assertTrue(GraphQL.decode<Boolean>("""{"data":{"resetControllerMapping":false}}""", "resetControllerMapping").not())
     }
 
@@ -157,7 +159,7 @@ class GraphQLTest {
             vars,
         )
         assertTrue(Queries.SAVE_CONTROLLER_MAPPING.contains("\$bindings: [BindingInput!]!"))
-        assertTrue(Queries.CONTROLLER_MAPPINGS.contains("controllerMappings { controller name bindings { input button } }"))
+        assertTrue(Queries.CONTROLLER_MAPPINGS.contains("controllerMappings { controller name source bindings { input button } }"))
     }
 
     @Test

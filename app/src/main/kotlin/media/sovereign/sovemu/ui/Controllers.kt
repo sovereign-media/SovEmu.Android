@@ -41,6 +41,7 @@ import media.sovereign.sovemu.core.Button
 import media.sovereign.sovemu.core.Controllers
 import media.sovereign.sovemu.core.InputDeviceInfo
 import media.sovereign.sovemu.core.Mapping
+import media.sovereign.sovemu.core.MappingSource
 import media.sovereign.sovemu.core.Protocol
 
 private val Panel = Color(0xFF151922)
@@ -115,6 +116,7 @@ private fun ColumnScope.Bindings(api: SovEmuApi, controller: Controller, device:
     val scope = rememberCoroutineScope()
     val model = device.model
     var mapping by remember(model.id) { mutableStateOf(controller.mixer.mapping(model.id)) }
+    var source by remember(model.id) { mutableStateOf(controller.mixer.source(model.id)) }
     var capturing by remember { mutableStateOf<Button?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     val first = remember { FocusRequester() }
@@ -134,8 +136,9 @@ private fun ColumnScope.Bindings(api: SovEmuApi, controller: Controller, device:
             message = runCatching { api.saveControllerMapping(model.id, device.name, m.bindings) }.fold(
                 { saved ->
                     val stored = Mapping.of(saved.bindings)
-                    controller.mixer.setMapping(model.id, stored)
+                    controller.mixer.setMapping(model.id, stored, saved.source)
                     mapping = stored
+                    source = saved.source
                     "Saved"
                 },
                 { e -> "Not saved: ${e.message}" },
@@ -152,6 +155,7 @@ private fun ColumnScope.Bindings(api: SovEmuApi, controller: Controller, device:
                 capturing = null
                 val m = mapping.rebind(button, input)
                 mapping = m
+                source = MappingSource.USER
                 controller.mixer.setMapping(model.id, m)
                 save(m)
             },
@@ -160,7 +164,15 @@ private fun ColumnScope.Bindings(api: SovEmuApi, controller: Controller, device:
         )
     }
 
-    Text(device.name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(8.dp))
+    Text(device.name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp, top = 8.dp, end = 8.dp))
+    Text(
+        when (source) {
+            MappingSource.USER -> "Yours: saved for every ${if (device.isKeyboard) "keyboard" else "controller like this one"}"
+            MappingSource.ADMIN, MappingSource.ENVIRONMENT -> "Default: set on this server"
+            else -> "Default"
+        },
+        color = Muted, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 8.dp),
+    )
     val prompt = capturing?.let { "Press an input on ${if (device.isKeyboard) "the keyboard" else device.name} for ${Controllers.buttonLabel(it)}. Back or Escape cancels." }
     Text(
         prompt ?: message ?: "Pick a button, then press what should drive it.",
@@ -178,14 +190,18 @@ private fun ColumnScope.Bindings(api: SovEmuApi, controller: Controller, device:
         }
     }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FocusButton("Reset to defaults", Modifier.weight(1f)) {
+        // Only the user's own mapping can be reset; the defaults may be the server's (an admin's).
+        if (source == MappingSource.USER) FocusButton("Reset to defaults", Modifier.weight(1f)) {
             controller.cancelCapture()
             capturing = null
             scope.launch {
-                message = runCatching { api.resetControllerMapping(model.id) }.fold(
-                    {
-                        controller.mixer.setMapping(model.id, null)
-                        mapping = Mapping.defaults(model.id)
+                message = runCatching {
+                    controller.mixer.resetMapping(model.id, api::resetControllerMapping, api::controllerMappings)
+                }.fold(
+                    { inForce ->
+                        mapping = inForce
+                        source = controller.mixer.source(model.id)
+                        runCatching { first.requestFocus() }
                         "Back to the defaults"
                     },
                     { e -> "Not reset: ${e.message}" },

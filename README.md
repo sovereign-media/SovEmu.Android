@@ -39,7 +39,9 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 - **Controllers** (in-game menu): move any device to another player for the session, and
   rebind a device's buttons by pressing an input on it (Back or Escape cancels). Mappings are
   saved on the server per user and controller model, so they follow you to the web and iOS
-  clients (`docs/CONTROLLERS.md` in SovEmu); "Reset to defaults" removes one.
+  clients (`docs/CONTROLLERS.md` in SovEmu). Without one of your own, a controller uses the
+  server's default for its model (set by an admin) or the built-in one; "Reset to defaults"
+  removes yours and goes back to whichever the server has in force.
 - **In-game menu:** Back, or Select+Start.
 - **Fast-forward:** hold Select+R.
 - **Rewind:** hold Select+L.

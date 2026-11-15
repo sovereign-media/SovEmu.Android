@@ -5,6 +5,9 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.coroutines.Continuation
+import kotlin.coroutines.EmptyCoroutineContext
+import kotlin.coroutines.startCoroutine
 
 /** Controller IDs, families, input names, mappings, hotkeys and players (docs/CONTROLLERS.md). */
 class ControllersTest {
@@ -296,5 +299,58 @@ class ControllersTest {
         // A disconnected controller frees its player for the next one.
         mixer.disconnect(1)
         assertEquals(0, mixer.connect(3, "Three", ControllerModel("pad:2dc8:6101", Family.GENERIC)))
+    }
+
+    // --- Reset ------------------------------------------------------------------------------
+
+    /** Runs a suspend function that never really suspends (core has no coroutines library). */
+    private fun <T> run(block: suspend () -> T): T {
+        var result: Result<T>? = null
+        block.startCoroutine(Continuation(EmptyCoroutineContext) { result = it })
+        return result!!.getOrThrow()
+    }
+
+    @Test
+    fun resettingUsesWhatTheServerHasInForceNotTheBuiltInDefaults() {
+        val admin = ControllerMapping("xbox", "Xbox", listOf(Binding("south", Button.A), Binding("east", Button.B)), MappingSource.ADMIN)
+        val mine = ControllerMapping("xbox", "Xbox", listOf(Binding("south", Button.START)), MappingSource.USER)
+        val keyboard = ControllerMapping("keyboard", "", listOf(Binding("KeyJ", Button.B)), MappingSource.USER)
+        var server = listOf(mine, keyboard)
+        val calls = mutableListOf<String>()
+        val mixer = InputMixer()
+        mixer.setMappings(server)
+        assertEquals(MappingSource.USER, mixer.source("xbox"))
+
+        // The server falls back to an admin's default for xbox: the client uses it.
+        val inForce = run {
+            mixer.resetMapping(
+                "xbox",
+                reset = { id -> calls += "reset $id"; server = listOf(admin, keyboard); true },
+                fetch = { calls += "fetch"; server },
+            )
+        }
+        assertEquals(listOf("reset xbox", "fetch"), calls)
+        assertEquals(Mapping.of(admin.bindings), inForce)
+        assertEquals(Mapping.of(admin.bindings), mixer.mapping("xbox"))
+        assertEquals(MappingSource.ADMIN, mixer.source("xbox"))
+        assertEquals(Button.B, mixer.mapping("keyboard").button("KeyJ")) // others refreshed, kept
+
+        // No server default either: the built-in defaults.
+        val builtIn = run { mixer.resetMapping("keyboard", reset = { true }, fetch = { listOf(admin) }) }
+        assertEquals(Mapping.KEYBOARD_DEFAULT, builtIn)
+        assertNull(mixer.source("keyboard"))
+    }
+
+    @Test
+    fun aFailedResetChangesNothing() {
+        val mine = ControllerMapping("xbox", "", listOf(Binding("south", Button.START)))
+        val mixer = InputMixer()
+        mixer.setMappings(listOf(mine))
+        val e = runCatching {
+            run { mixer.resetMapping("xbox", reset = { throw ApiException("BAD_REQUEST", "no") }, fetch = { emptyList() }) }
+        }.exceptionOrNull()
+        assertEquals("BAD_REQUEST", (e as ApiException).code)
+        assertEquals(Mapping.of(mine.bindings), mixer.mapping("xbox"))
+        assertEquals(MappingSource.USER, mixer.source("xbox"))
     }
 }

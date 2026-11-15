@@ -63,7 +63,7 @@ object Queries {
     private const val SESSION = "id gameId system title core width height fps connected"
     private const val USER = "id username isAdmin"
     private const val SAVE = "slot savedAt screenshotUrl"
-    private const val MAPPING = "controller name bindings { input button }"
+    private const val MAPPING = "controller name source bindings { input button }"
 
     const val VIEWER = "query { viewer { setupRequired user { $USER } } }"
     const val LOGIN = "mutation(\$username: String!, \$password: String!) { login(username: \$username, password: \$password) { $USER } }"

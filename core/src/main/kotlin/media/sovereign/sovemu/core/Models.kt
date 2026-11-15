@@ -84,9 +84,25 @@ data class GameSaves(val saves: List<SaveSlot> = emptyList())
 @Serializable
 data class Binding(val input: String, val button: Button)
 
-/** `ControllerMapping`: this user's bindings for one controller model (docs/CONTROLLERS.md). */
+/**
+ * `ControllerMapping`: the bindings in force for one controller model (docs/CONTROLLERS.md):
+ * the user's own, else the server's default for that model.
+ */
 @Serializable
-data class ControllerMapping(val controller: String, val name: String = "", val bindings: List<Binding> = emptyList())
+data class ControllerMapping(
+    val controller: String,
+    val name: String = "",
+    val bindings: List<Binding> = emptyList(),
+    /** `MappingSource`: `USER` (theirs), `ADMIN` or `ENVIRONMENT` (the server's default). */
+    val source: String = MappingSource.USER,
+)
+
+/** GraphQL's `MappingSource`. A model the server has no mapping for uses the built-in defaults. */
+object MappingSource {
+    const val USER = "USER"
+    const val ADMIN = "ADMIN"
+    const val ENVIRONMENT = "ENVIRONMENT"
+}
 
 /** Parses an API colour (`#rrggbb`) to ARGB. */
 fun parseColor(hex: String): Long {
