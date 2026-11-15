@@ -63,7 +63,8 @@ object Queries {
     private const val SESSION = "id gameId system title core width height fps connected"
     private const val USER = "id username isAdmin"
     private const val SAVE = "slot savedAt screenshotUrl"
-    private const val MAPPING = "controller name source bindings { input button }"
+    private const val MAPPING = "controller system name source bindings { input button }"
+    private const val LAYOUT = "id name width height body { x y w h r tone } keys { key label x y w h r }"
 
     const val VIEWER = "query { viewer { setupRequired user { $USER } } }"
     const val LOGIN = "mutation(\$username: String!, \$password: String!) { login(username: \$username, password: \$password) { $USER } }"
@@ -77,16 +78,34 @@ object Queries {
     const val STOP_SESSION = "mutation(\$id: ID!) { stopSession(id: \$id) }"
     const val SAVE_STATE = "mutation(\$sessionId: ID!, \$slot: Int!) { saveState(sessionId: \$sessionId, slot: \$slot) }"
     const val LOAD_STATE = "mutation(\$sessionId: ID!, \$slot: Int!) { loadState(sessionId: \$sessionId, slot: \$slot) }"
-    const val CONTROLLER_MAPPINGS = "query { controllerMappings { $MAPPING } }"
+    /** The mappings in force on a system (`$system`), or every-system ones when it is null. */
+    const val CONTROLLER_MAPPINGS = "query(\$system: ID) { controllerMappings(system: \$system) { $MAPPING } }"
     const val SAVE_CONTROLLER_MAPPING =
-        "mutation(\$controller: String!, \$name: String!, \$bindings: [BindingInput!]!) " +
-            "{ saveControllerMapping(controller: \$controller, name: \$name, bindings: \$bindings) { $MAPPING } }"
-    const val RESET_CONTROLLER_MAPPING = "mutation(\$controller: String!) { resetControllerMapping(controller: \$controller) }"
+        "mutation(\$controller: String!, \$system: ID, \$name: String!, \$bindings: [BindingInput!]!) " +
+            "{ saveControllerMapping(controller: \$controller, system: \$system, name: \$name, bindings: \$bindings) { $MAPPING } }"
+    const val RESET_CONTROLLER_MAPPING =
+        "mutation(\$controller: String!, \$system: ID) { resetControllerMapping(controller: \$controller, system: \$system) }"
+    /** A system's labels and pad, and the controllers' pads: two fields, `system` and `controllerLayouts`. */
+    const val CONTROLS =
+        "query(\$id: ID!) { system(id: \$id) { controls { buttons { button label } layout { $LAYOUT } } } controllerLayouts { $LAYOUT } }"
 
-    /** `saveControllerMapping`'s variables. The server allows names up to 128 characters. */
-    fun saveMappingVariables(controller: String, name: String, bindings: List<Binding>): JsonObject = buildJsonObject {
+    private fun system(system: String?) = system?.let(::JsonPrimitive) ?: JsonNull
+
+    fun mappingsVariables(system: String?): JsonObject = buildJsonObject { put("system", system(system)) }
+
+    /**
+     * `saveControllerMapping`'s variables: [system] null saves the every-system mapping. The
+     * server allows names up to 128 characters.
+     */
+    fun saveMappingVariables(controller: String, system: String?, name: String, bindings: List<Binding>): JsonObject = buildJsonObject {
         put("controller", JsonPrimitive(controller))
+        put("system", system(system))
         put("name", JsonPrimitive(name.take(128)))
         put("bindings", ApiJson.encodeToJsonElement(ListSerializer(Binding.serializer()), bindings))
+    }
+
+    fun resetMappingVariables(controller: String, system: String?): JsonObject = buildJsonObject {
+        put("controller", JsonPrimitive(controller))
+        put("system", system(system))
     }
 }

@@ -95,7 +95,44 @@ data class ControllerMapping(
     val bindings: List<Binding> = emptyList(),
     /** `MappingSource`: `USER` (theirs), `ADMIN` or `ENVIRONMENT` (the server's default). */
     val source: String = MappingSource.USER,
+    /** The system it is for, or null for every system. */
+    val system: String? = null,
 )
+
+/** `Shape`: a rounded rectangle of a diagram's body; `tone` 1 is a darker recess. */
+@Serializable
+data class Shape(val x: Double, val y: Double, val w: Double, val h: Double, val r: Double, val tone: Int = 0)
+
+/**
+ * `PadKey`: one button on a diagram, labelled. [key] is a RetroPad button (`B`, `START` …) on a
+ * system's pad, an input name (`south`, `l1` …) on a controller's.
+ */
+@Serializable
+data class PadKey(val key: String, val label: String, val x: Double, val y: Double, val w: Double, val h: Double, val r: Double)
+
+/** `PadLayout`: a pad drawn on a [width]×[height] canvas (docs/CONTROLLERS.md, "Systems and diagrams"). */
+@Serializable
+data class PadLayout(
+    /** A system id, or a controller family (`xbox`, `playstation`, `nintendo`, `generic`). */
+    val id: String,
+    val name: String,
+    val width: Double,
+    val height: Double,
+    val body: List<Shape> = emptyList(),
+    val keys: List<PadKey> = emptyList(),
+)
+
+/** `SystemButton`: one of a system's buttons, the RetroPad button driving it and the console's label. */
+@Serializable
+data class SystemButton(val button: Button, val label: String)
+
+/** `System.controls`: the system's buttons in listing order, and its pad. */
+@Serializable
+data class SystemControls(val buttons: List<SystemButton> = emptyList(), val layout: PadLayout)
+
+/** `Query.system`, asked only for its controls. */
+@Serializable
+data class SystemWithControls(val controls: SystemControls)
 
 /** GraphQL's `MappingSource`. A model the server has no mapping for uses the built-in defaults. */
 object MappingSource {

@@ -38,11 +38,14 @@ adb install app/build/outputs/apk/debug/app-debug.apk
   fast-forwards and Backspace rewinds. The keyboard and the touch controls are player 1.
 - **Controllers** (in-game menu): move any device to another player for the session, and
   rebind a device's buttons by pressing an input on it: a tap of B (Escape on a keyboard)
-  cancels and holding it for a second binds it; home/guide or 8 s without input also cancel. Mappings are
-  saved on the server per user and controller model, so they follow you to the web and iOS
-  clients (`docs/CONTROLLERS.md` in SovEmu). Without one of your own, a controller uses the
-  server's default for its model (set by an admin) or the built-in one; "Reset to defaults"
-  removes yours and goes back to whichever the server has in force.
+  cancels and holding it for a second binds it; home/guide or 8 s without input also cancel.
+  A mapping is for the game's system ("This system", the default, listing the console's own
+  button names) or for all systems, and the page draws the console's pad next to your
+  controller, lighting the button being remapped on both. Mappings are saved on the server per
+  user, controller model and system, so they follow you to the web and iOS clients
+  (`docs/CONTROLLERS.md` in SovEmu). In force is yours for the system, else yours for all
+  systems, else the server's default (set by an admin), else the built-in one; "Reset to
+  defaults" removes yours in that scope and goes back to the next.
 - **In-game menu:** Back, or Select+Start.
 - **Fast-forward:** hold Select+R.
 - **Rewind:** hold Select+L.

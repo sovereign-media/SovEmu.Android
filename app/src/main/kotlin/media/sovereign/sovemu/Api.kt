@@ -13,6 +13,9 @@ import media.sovereign.sovemu.core.ControllerMapping
 import media.sovereign.sovemu.core.Game
 import media.sovereign.sovemu.core.GameSaves
 import media.sovereign.sovemu.core.GraphQL
+import media.sovereign.sovemu.core.PadLayout
+import media.sovereign.sovemu.core.SystemControls
+import media.sovereign.sovemu.core.SystemWithControls
 import media.sovereign.sovemu.core.Queries
 import media.sovereign.sovemu.core.SaveSlot
 import media.sovereign.sovemu.core.SessionInfo
@@ -117,13 +120,24 @@ class SovEmuApi(private val settings: Settings) {
         request<Boolean>(Queries.LOAD_STATE, "loadState", slotVariables(sessionId, slot))
     }
 
-    /** This user's saved mappings, one per controller model; a model without one uses the defaults. */
-    suspend fun controllerMappings(): List<ControllerMapping> = request(Queries.CONTROLLER_MAPPINGS, "controllerMappings")
-    suspend fun saveControllerMapping(controller: String, name: String, bindings: List<Binding>): ControllerMapping =
-        request(Queries.SAVE_CONTROLLER_MAPPING, "saveControllerMapping", Queries.saveMappingVariables(controller, name, bindings))
-    /** Puts a controller model back on the defaults; returns whether it had a mapping. */
-    suspend fun resetControllerMapping(controller: String): Boolean =
-        request(Queries.RESET_CONTROLLER_MAPPING, "resetControllerMapping", buildJsonObject { put("controller", controller) })
+    /**
+     * The mappings in force for this user on [system] (null: the every-system ones), one per
+     * controller model; a model missing from the list uses the built-in defaults.
+     */
+    suspend fun controllerMappings(system: String?): List<ControllerMapping> =
+        request(Queries.CONTROLLER_MAPPINGS, "controllerMappings", Queries.mappingsVariables(system))
+    /** Saves this user's mapping for a model on [system], or on every system when it is null. */
+    suspend fun saveControllerMapping(controller: String, system: String?, name: String, bindings: List<Binding>): ControllerMapping =
+        request(Queries.SAVE_CONTROLLER_MAPPING, "saveControllerMapping", Queries.saveMappingVariables(controller, system, name, bindings))
+    /** Removes this user's mapping for a model on [system] (or every system); returns whether there was one. */
+    suspend fun resetControllerMapping(controller: String, system: String?): Boolean =
+        request(Queries.RESET_CONTROLLER_MAPPING, "resetControllerMapping", Queries.resetMappingVariables(controller, system))
+    /** A system's button labels and pad (null for an unknown system), and the controllers' pads. */
+    suspend fun controls(system: String): Pair<SystemControls?, List<PadLayout>> {
+        val (text, status) = post(Queries.CONTROLS, buildJsonObject { put("id", system) })
+        return GraphQL.decode<SystemWithControls?>(text, "system", status)?.controls to
+            GraphQL.decode<List<PadLayout>>(text, "controllerLayouts", status)
+    }
 
     private fun slotVariables(sessionId: String, slot: Int) = buildJsonObject {
         put("sessionId", sessionId)

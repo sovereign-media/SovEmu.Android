@@ -1,5 +1,6 @@
 package media.sovereign.sovemu.core
 
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -152,14 +153,54 @@ class GraphQLTest {
     }
 
     @Test
-    fun encodesASavedMapping() {
-        val vars = Queries.saveMappingVariables("pad:2dc8:6101", "x".repeat(200), listOf(Binding("l2", Button.L3)))
+    fun encodesPerSystemSaveAndResetArguments() {
+        val vars = Queries.saveMappingVariables("pad:2dc8:6101", "megadrive", "x".repeat(200), listOf(Binding("l2", Button.L3)))
         assertEquals(
-            ApiJson.parseToJsonElement("""{"controller":"pad:2dc8:6101","name":"${"x".repeat(128)}","bindings":[{"input":"l2","button":"L3"}]}"""),
+            ApiJson.parseToJsonElement(
+                """{"controller":"pad:2dc8:6101","system":"megadrive","name":"${"x".repeat(128)}","bindings":[{"input":"l2","button":"L3"}]}""",
+            ),
             vars,
         )
-        assertTrue(Queries.SAVE_CONTROLLER_MAPPING.contains("\$bindings: [BindingInput!]!"))
-        assertTrue(Queries.CONTROLLER_MAPPINGS.contains("controllerMappings { controller name source bindings { input button } }"))
+        // Every system: an explicit null.
+        assertEquals(JsonNull, Queries.saveMappingVariables("xbox", null, "", emptyList())["system"])
+        assertEquals(ApiJson.parseToJsonElement("""{"controller":"xbox","system":"snes"}"""), Queries.resetMappingVariables("xbox", "snes"))
+        assertEquals(ApiJson.parseToJsonElement("""{"controller":"xbox","system":null}"""), Queries.resetMappingVariables("xbox", null))
+        assertEquals(ApiJson.parseToJsonElement("""{"system":"snes"}"""), Queries.mappingsVariables("snes"))
+        assertTrue(Queries.SAVE_CONTROLLER_MAPPING.contains("saveControllerMapping(controller: \$controller, system: \$system,"))
+        assertTrue(Queries.RESET_CONTROLLER_MAPPING.contains("resetControllerMapping(controller: \$controller, system: \$system)"))
+        assertTrue(Queries.CONTROLLER_MAPPINGS.contains("controllerMappings(system: \$system) { controller system name source bindings { input button } }"))
+    }
+
+    @Test
+    fun decodesASystemsControlsAndTheControllerLayouts() {
+        // Trimmed from what SovEmu.Server (controls.rs) answers for the Mega Drive.
+        val text = """{"data":{"system":{"controls":{"buttons":[{"button":"UP","label":"↑"},{"button":"Y","label":"A"},
+            {"button":"B","label":"B"},{"button":"A","label":"C"},{"button":"SELECT","label":"Mode"}],
+            "layout":{"id":"megadrive","name":"Mega Drive","width":160.0,"height":100.0,
+            "body":[{"x":12.0,"y":30.0,"w":136.0,"h":42.0,"r":20.0,"tone":0},{"x":60.0,"y":40.0,"w":10.0,"h":10.0,"r":5.0,"tone":1}],
+            "keys":[{"key":"Y","label":"A","x":100.0,"y":50.0,"w":10.0,"h":10.0,"r":5.0}]}}},
+            "controllerLayouts":[{"id":"xbox","name":"Xbox","width":160.0,"height":100.0,"body":[],
+            "keys":[{"key":"l2","label":"LT","x":20.0,"y":14.0,"w":30.0,"h":6.0,"r":3.0}]}]}}"""
+        val controls = GraphQL.decode<SystemWithControls?>(text, "system")!!.controls
+        assertEquals(listOf("↑", "A", "B", "C", "Mode"), controls.buttons.map { it.label })
+        assertEquals(Button.Y, controls.buttons[1].button)
+        assertEquals(1, controls.layout.body[1].tone)
+        assertEquals(PadKey("Y", "A", 100.0, 50.0, 10.0, 10.0, 5.0), controls.layout.keys.single())
+        val layouts = GraphQL.decode<List<PadLayout>>(text, "controllerLayouts")
+        assertEquals("xbox", layouts.single().id)
+        assertEquals("l2", layouts.single().keys.single().key)
+        assertTrue(Queries.CONTROLS.contains("controllerLayouts { id name width height body { x y w h r tone } keys { key label x y w h r } }"))
+    }
+
+    @Test
+    fun mappingsSayWhichSystemTheyAreFor() {
+        val list = GraphQL.decode<List<ControllerMapping>>(
+            """{"data":{"controllerMappings":[{"controller":"xbox","system":"snes","name":"","source":"USER","bindings":[]},
+               {"controller":"keyboard","system":null,"name":"","source":"ADMIN","bindings":[]}]}}""",
+            "controllerMappings",
+        )
+        assertEquals("snes", list[0].system)
+        assertNull(list[1].system)
     }
 
     @Test

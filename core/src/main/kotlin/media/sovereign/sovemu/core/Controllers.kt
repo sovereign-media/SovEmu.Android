@@ -9,11 +9,11 @@ import java.util.Locale
  */
 
 /** Which button labels a controller shows. `GENERIC` uses the Xbox labels. */
-enum class Family(val title: String) {
-    XBOX("Xbox"),
-    PLAYSTATION("PlayStation"),
-    NINTENDO("Nintendo"),
-    GENERIC("Controller");
+enum class Family(val title: String, val layoutId: String) {
+    XBOX("Xbox", "xbox"),
+    PLAYSTATION("PlayStation", "playstation"),
+    NINTENDO("Nintendo", "nintendo"),
+    GENERIC("Controller", "generic");
 
     /** What this family prints on [input] (a positional name: `south`, `l1`, `up` …). */
     fun label(input: String): String {
@@ -518,21 +518,6 @@ class InputMixer {
     /** Where a model's mapping comes from (a [MappingSource]); null for the built-in defaults. */
     fun source(controllerId: String): String? = synchronized(lock) { sources[controllerId] }
 
-    /**
-     * Puts a model back on the defaults: [reset] (`resetControllerMapping`), then [fetch]
-     * (`controllerMappings`) and use whatever the server now has in force for it (an admin's
-     * default), or the built-in defaults if nothing. Returns the mapping now in force.
-     */
-    suspend fun resetMapping(
-        controllerId: String,
-        reset: suspend (String) -> Boolean,
-        fetch: suspend () -> List<ControllerMapping>,
-    ): Mapping {
-        reset(controllerId)
-        setMappings(fetch())
-        return mapping(controllerId)
-    }
-
     fun mapping(controllerId: String): Mapping = synchronized(lock) {
         mappings[controllerId] ?: Mapping.defaults(controllerId)
     }
@@ -663,5 +648,101 @@ class RebindCapture(private val back: String, alreadyHeld: Set<String>, startMs:
 
         /** The input that is the menu's Back on this kind of device. */
         fun backInput(controllerId: String) = if (controllerId == Controllers.KEYBOARD) "Escape" else "east"
+    }
+}
+
+/** Which mapping a remap screen edits: the one for the game's system, or the every-system one. */
+enum class MappingScope { SYSTEM, ALL }
+
+/**
+ * A user's mappings while playing one [system] (docs/CONTROLLERS.md, "Mappings"): those in force
+ * on it (`controllerMappings(system:)`, which the game uses) and the every-system ones
+ * (`controllerMappings` without a system), which the "All systems" scope edits.
+ */
+class MappingBook(val system: String) {
+    @Volatile var forSystem: List<ControllerMapping> = emptyList()
+        private set
+    @Volatile var forAll: List<ControllerMapping> = emptyList()
+        private set
+
+    /** The `system` argument a scope saves and resets with. */
+    fun systemArg(scope: MappingScope): String? = if (scope == MappingScope.SYSTEM) system else null
+
+    /** The mapping in force for a model in a scope, as the server sent it; null: built-in defaults. */
+    fun entry(controllerId: String, scope: MappingScope): ControllerMapping? =
+        (if (scope == MappingScope.SYSTEM) forSystem else forAll).firstOrNull { it.controller == controllerId }
+
+    fun mapping(controllerId: String, scope: MappingScope): Mapping =
+        entry(controllerId, scope)?.let { Mapping.of(it.bindings) } ?: Mapping.defaults(controllerId)
+
+    /** The user has a mapping of their own in exactly this scope, which a reset removes. */
+    fun canReset(controllerId: String, scope: MappingScope): Boolean {
+        val e = entry(controllerId, scope) ?: return false
+        return e.source == MappingSource.USER && (e.system != null) == (scope == MappingScope.SYSTEM)
+    }
+
+    /** Fetches both lists again (after a save or a reset, so the next layer applies). */
+    suspend fun refresh(fetch: suspend (system: String?) -> List<ControllerMapping>) {
+        forSystem = fetch(system)
+        forAll = fetch(null)
+    }
+
+    /** Resets a model's mapping in a scope, then refetches. */
+    suspend fun reset(
+        controllerId: String,
+        scope: MappingScope,
+        reset: suspend (controller: String, system: String?) -> Boolean,
+        fetch: suspend (system: String?) -> List<ControllerMapping>,
+    ) {
+        reset(controllerId, systemArg(scope))
+        refresh(fetch)
+    }
+
+    companion object {
+        /** Where a mapping in force comes from, for people. */
+        fun sourceText(entry: ControllerMapping?): String = when {
+            entry == null || entry.source != MappingSource.USER -> "Default"
+            entry.system != null -> "Yours for this system"
+            else -> "Yours for all systems"
+        }
+    }
+}
+
+/** The keys to light on both diagrams for one RetroPad button (docs/CONTROLLERS.md). */
+data class Highlight(
+    /** The system pad's key: the RetroPad button's name. */
+    val systemKey: String,
+    /** The controller pad's keys: every input mapped to the button. */
+    val controllerKeys: Set<String>,
+)
+
+fun highlight(button: Button, mapping: Mapping): Highlight = Highlight(button.name, mapping.inputs(button).toSet())
+
+/** The part of a layout's canvas a diagram draws. */
+data class Bounds(val x: Double, val y: Double, val w: Double, val h: Double)
+
+/**
+ * The bounding box of a layout's shapes plus [padding] canvas units, as the web client crops
+ * it, so a flat pad (NES, Master System) does not float in empty space. The whole canvas when
+ * the layout has no shapes.
+ */
+fun PadLayout.bounds(padding: Double = 3.0): Bounds {
+    val rects = body.map { listOf(it.x, it.y, it.w, it.h) } + keys.map { listOf(it.x, it.y, it.w, it.h) }
+    if (rects.isEmpty()) return Bounds(0.0, 0.0, width, height)
+    val left = rects.minOf { it[0] } - padding
+    val top = rects.minOf { it[1] } - padding
+    val right = rects.maxOf { it[0] + it[2] } + padding
+    val bottom = rects.maxOf { it[1] + it[3] } + padding
+    return Bounds(left, top, right - left, bottom - top)
+}
+
+/** Fits a [width]×[height] layout into a box, centred: the scale and the offsets to draw at. */
+data class Fit(val scale: Float, val dx: Float, val dy: Float) {
+    companion object {
+        fun of(width: Double, height: Double, boxWidth: Float, boxHeight: Float): Fit {
+            if (width <= 0 || height <= 0) return Fit(1f, 0f, 0f)
+            val scale = minOf(boxWidth / width.toFloat(), boxHeight / height.toFloat())
+            return Fit(scale, (boxWidth - width.toFloat() * scale) / 2, (boxHeight - height.toFloat() * scale) / 2)
+        }
     }
 }
