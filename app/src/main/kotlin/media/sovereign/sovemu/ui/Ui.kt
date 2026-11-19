@@ -207,6 +207,7 @@ fun SovButton(
     filledIcon: Boolean = false,
     enabled: Boolean = true,
     large: Boolean = true,
+    iconTint: Color? = null,
 ) {
     val source = remember { MutableInteractionSource() }
     val focused by source.collectIsFocusedAsState()
@@ -234,7 +235,7 @@ fun SovButton(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
     ) {
-        if (icon != null) LucideIcon(if (filledIcon) PlayFilled else icon, tint = fg, size = 18.dp)
+        if (icon != null) LucideIcon(if (filledIcon) PlayFilled else icon, tint = iconTint ?: fg, size = 18.dp)
         Text(label, color = fg, fontWeight = FontWeight.SemiBold, fontSize = if (large) 16.sp else 14.sp, maxLines = 1)
     }
 }

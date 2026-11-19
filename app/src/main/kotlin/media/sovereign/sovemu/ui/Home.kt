@@ -34,6 +34,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -114,6 +115,15 @@ private fun HomeContent(feed: HomeFeed, all: List<SystemSummary>, onPlay: (Game,
                         }
                     }
                 }
+                if (feed.favourites.isNotEmpty()) {
+                    HomeRow("Favourites", Lucide.Heart) {
+                        itemsIndexed(feed.favourites, key = { _, g -> g.id }) { _, g ->
+                            GameCard(g, byId[g.system], wide = false, memory = memory, key = "favourite:${g.id}") {
+                                byId[g.system]?.let { onSystem(it, g.id) }
+                            }
+                        }
+                    }
+                }
                 if (systems.isNotEmpty()) {
                     HomeRow("Systems", Lucide.Gamepad2) {
                         itemsIndexed(systems, key = { _, s -> s.id }) { _, s -> SystemCard(s, memory) { onSystem(s, null) } }
@@ -124,6 +134,18 @@ private fun HomeContent(feed: HomeFeed, all: List<SystemSummary>, onPlay: (Game,
                         itemsIndexed(feed.added, key = { _, g -> g.id }) { _, g ->
                             GameCard(g, byId[g.system], wide = false, memory = memory, key = "added:${g.id}") {
                                 byId[g.system]?.let { onSystem(it, g.id) }
+                            }
+                        }
+                    }
+                }
+                for (c in feed.collections) {
+                    if (c.games.isEmpty()) continue
+                    key(c.id) {
+                        HomeRow(c.name, Lucide.FolderHeart) {
+                            itemsIndexed(c.games, key = { _, g -> g.id }) { _, g ->
+                                GameCard(g, byId[g.system], wide = false, memory = memory, key = "collection:${c.id}:${g.id}") {
+                                    byId[g.system]?.let { onSystem(it, g.id) }
+                                }
                             }
                         }
                     }
@@ -286,7 +308,8 @@ private fun GameCard(game: Game, system: SystemSummary?, wide: Boolean, memory: 
     val short = system?.short ?: game.system.uppercase()
     Column(Modifier.width(if (wide) 288.dp else 160.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         FocusCard(onOpen, Modifier.fillMaxWidth().aspectRatio(if (wide) 16 / 9f else 3 / 4f).remembersFocus(memory, key)) {
-            val shot = game.autoSave?.screenshotUrl
+            // Only the Continue row shows where the player left off; the others show the box art.
+            val shot = if (wide) game.autoSave?.screenshotUrl else null
             // A fitted box art leaves the tile showing round it; a cropped picture hides it.
             var covered by remember(game.id) { mutableStateOf(false) }
             if (shot != null) {

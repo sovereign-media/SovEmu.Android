@@ -15,11 +15,12 @@ fun game(
     system: String = "nes",
     fileTitle: String? = null,
     tags: List<String> = emptyList(),
+    favourite: Boolean = false,
 ): Game = Game(
     id = id, system = system, title = title, fileTitle = fileTitle, tags = tags, path = "$system/$title", size = 0.0,
     lastPlayedAt = lastPlayedAt, playCount = playCount, image = null, thumb = null, video = null, description = null,
     releaseDate = releaseDate, developer = developer, publisher = null, genre = genre, players = players, rating = null,
-    discs = 1, autoSave = null,
+    discs = 1, favourite = favourite, autoSave = null,
 )
 
 fun system(

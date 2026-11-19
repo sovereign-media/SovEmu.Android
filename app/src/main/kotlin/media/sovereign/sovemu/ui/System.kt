@@ -54,6 +54,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -110,8 +111,10 @@ import media.sovereign.sovemu.core.maxPlayers
 private const val FOLLOW_DELAY_MS = 300L
 
 private val FiltersSaver: Saver<GameFilters, Any> = listSaver(
-    save = { listOf(it.played?.name ?: "", it.multiplayer.toString()) + it.genres },
-    restore = { l -> GameFilters(l[0].ifEmpty { null }?.let(PlayedFilter::valueOf), l[1].toBoolean(), l.drop(2).toSet()) },
+    save = { listOf(it.played?.name ?: "", it.multiplayer.toString(), it.favourites.toString()) + it.genres },
+    restore = { l ->
+        GameFilters(l[0].ifEmpty { null }?.let(PlayedFilter::valueOf), l[1].toBoolean(), l.drop(3).toSet(), favourites = l[2].toBoolean())
+    },
 )
 
 /**
@@ -129,6 +132,8 @@ fun SystemScreen(
     sort: GameSort,
     onSort: (GameSort) -> Unit,
     onPlay: (Game, Start) -> Unit,
+    onFavourite: suspend (Game, Boolean) -> String?,
+    onCollectionsChanged: () -> Unit,
 ) {
     val colour = system.colour()
     // The page's tint: the system's colour from the top-left corner, as on the web. It is the
@@ -141,7 +146,7 @@ fun SystemScreen(
         when (index) {
             Load.Loading -> Header(system, null, null, sort, onSort, 0, {}, null, Modifier.padding(32.dp).statusBarsPadding())
             is Load.Failed -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(index.message, color = Sov.Red300) }
-            is Load.Ready -> Games(api, system, index.value, openFirst, sort, onSort, onPlay)
+            is Load.Ready -> Games(api, system, index.value, openFirst, sort, onSort, onPlay, onFavourite, onCollectionsChanged)
         }
     }
 }
@@ -156,12 +161,18 @@ private fun Games(
     sort: GameSort,
     onSort: (GameSort) -> Unit,
     onPlay: (Game, Start) -> Unit,
+    onFavourite: suspend (Game, Boolean) -> String?,
+    onCollectionsChanged: () -> Unit,
 ) {
     val form = LocalForm.current
     val scope = rememberCoroutineScope()
     var query by rememberSaveable { mutableStateOf("") }
     var filters by rememberSaveable(stateSaver = FiltersSaver) { mutableStateOf(GameFilters()) }
     var filtersOpen by rememberSaveable { mutableStateOf(false) }
+    var collectionsOpen by remember { mutableStateOf(false) }
+    var notice by remember { mutableStateOf<String?>(null) }
+    // Counts the collections drawer's closings: each sends the focus back to the panel's button.
+    var backToCollections by remember { mutableIntStateOf(0) }
     var openId by rememberSaveable { mutableStateOf(openFirst) }
     var jump by remember { mutableStateOf<Int?>(null) }
     var slots by remember { mutableStateOf<List<SaveSlot>>(emptyList()) }
@@ -191,6 +202,7 @@ private fun Games(
     // The panel's saves, after a pause: moving quickly through games does not ask for each.
     LaunchedEffect(openId) {
         slots = emptyList()
+        notice = null
         val id = openId ?: return@LaunchedEffect
         delay(150)
         slots = attempt { api.states(id) }.getOrDefault(emptyList())
@@ -267,7 +279,16 @@ private fun Games(
             }
         }
 
-        GamePanel(open, system, slots, auto, onClose = ::closePanel, onPlay = { start -> open?.let { play(it, start) } })
+        GamePanel(
+            open, system, slots, auto, onClose = ::closePanel, onPlay = { start -> open?.let { play(it, start) } },
+            onFavourite = {
+                open?.let { g -> scope.launch { notice = onFavourite(g, !g.favourite)?.let { "Could not change favourites: $it" } } }
+            },
+            onCollections = { collectionsOpen = true },
+            notice = notice,
+            backToCollections = backToCollections,
+            trapFocus = !collectionsOpen,
+        )
 
         HintBar(
             if (open != null) listOf(Hint.Dpad to "Choose", Hint.A to "Select", Hint.B to "Close")
@@ -275,6 +296,12 @@ private fun Games(
             Modifier.align(Alignment.BottomCenter),
         )
 
+    if (collectionsOpen && open != null) {
+        CollectionsDrawer(api, open, onCollectionsChanged, onClose = {
+            collectionsOpen = false
+            backToCollections++
+        })
+    }
     if (filtersOpen) {
         FilterDrawer(index, query, { query = it }, filters, { filters = it }) {
             filtersOpen = false
@@ -441,13 +468,24 @@ private fun GamePanel(
     auto: Boolean,
     onClose: () -> Unit,
     onPlay: (Start) -> Unit,
+    onFavourite: () -> Unit,
+    onCollections: () -> Unit,
     modifier: Modifier = Modifier,
+    notice: String? = null,
+    backToCollections: Int = 0,
+    trapFocus: Boolean = true,
 ) {
     // The last game stays drawn while the panel slides out: a plain holder, not state (writing
     // state read in this same composition would recompose it again).
     val last = remember { arrayOfNulls<Game>(1) }
     if (game != null) last[0] = game
     val first = remember { FocusRequester() }
+    val collections = remember { FocusRequester() }
+    LaunchedEffect(backToCollections) {
+        if (backToCollections == 0) return@LaunchedEffect
+        withFrameNanos { }
+        runCatching { collections.requestFocus() }
+    }
     LaunchedEffect(game?.id) {
         if (game == null) return@LaunchedEffect
         // Its buttons attach a frame or two after it opens (or after coming back to the page).
@@ -472,8 +510,8 @@ private fun GamePanel(
                     .border(1.dp, Color.White.copy(alpha = 0.1f))
                     .clickable(remember { MutableInteractionSource() }, null) {}
                     // Traps the focus only while open: sliding out, it must let the focus go
-                    // back to the card.
-                    .focusProperties { onExit = { if (game != null) cancelFocusChange() } }
+                    // back to the card, and a drawer over it ([trapFocus] off) must be able to take it.
+                    .focusProperties { onExit = { if (game != null && trapFocus) cancelFocusChange() } }
                     .focusGroup(),
             ) {
                 Box {
@@ -507,6 +545,15 @@ private fun GamePanel(
                             SovButton("Play", { onPlay(Start.New) }, Modifier.focusRequester(first), icon = Lucide.Play, filledIcon = true)
                         }
                     }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SovButton(
+                            if (g.favourite) "Favourite" else "Add to favourites", onFavourite,
+                            variant = Variant.Outline, icon = Lucide.Heart, large = false,
+                            iconTint = if (g.favourite) Sov.Red300 else null,
+                        )
+                        SovButton("Collections", onCollections, Modifier.focusRequester(collections), variant = Variant.Outline, icon = Lucide.ListPlus, large = false)
+                    }
+                    notice?.let { Text(it, color = Sov.Red300, fontSize = 14.sp) }
                     g.description?.let { Text(it, color = Sov.Slate300, fontSize = 14.sp, lineHeight = 22.sp) }
                     if (slots.isNotEmpty()) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -581,7 +628,7 @@ private fun SaveThumb(s: SaveSlot, onClick: () -> Unit) {
     }
 }
 
-/** Search and filters, in a drawer from the right: search, played or not, players and genres. */
+/** Search and filters, in a drawer from the right: search, favourites, played or not, players and genres. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun FilterDrawer(
@@ -633,10 +680,16 @@ private fun FilterDrawer(
                     verticalArrangement = Arrangement.spacedBy(24.dp),
                 ) {
                     SearchField(query, onQuery, onClose, if (tv) Modifier else Modifier.focusRequester(first))
+                    FilterSection("Lists") {
+                        Toggle(filters.favourites, { onFilters(filters.copy(favourites = !filters.favourites)) }, if (tv) Modifier.focusRequester(first) else Modifier) {
+                            LucideIcon(Lucide.Heart, tint = if (filters.favourites) Color.White else Sov.Red300, size = 16.dp)
+                            ToggleText("Favourites")
+                        }
+                    }
                     FilterSection("Played") {
                         Toggle(filters.played == PlayedFilter.PLAYED, {
                             onFilters(filters.copy(played = if (filters.played == PlayedFilter.PLAYED) null else PlayedFilter.PLAYED))
-                        }, if (tv) Modifier.focusRequester(first) else Modifier) { ToggleText("Played before") }
+                        }) { ToggleText("Played before") }
                         Toggle(filters.played == PlayedFilter.UNPLAYED, {
                             onFilters(filters.copy(played = if (filters.played == PlayedFilter.UNPLAYED) null else PlayedFilter.UNPLAYED))
                         }) { ToggleText("Not played yet") }

@@ -24,9 +24,12 @@ data class GameFilters(
     val multiplayer: Boolean = false,
     /** Only games in any of these genres. */
     val genres: Set<String> = emptySet(),
+    /** Only this user's favourites. */
+    val favourites: Boolean = false,
 ) {
     /** How many filters are on, for the Filters chip. */
-    val count: Int get() = (if (played != null) 1 else 0) + (if (multiplayer) 1 else 0) + genres.size
+    val count: Int get() =
+        (if (played != null) 1 else 0) + (if (multiplayer) 1 else 0) + (if (favourites) 1 else 0) + genres.size
 }
 
 /** A game's genres: the metadata lists them comma-separated ("Platform, Action"). */
@@ -88,6 +91,7 @@ class GameIndex(val games: List<Game>) {
                 filters.played == PlayedFilter.PLAYED && e.game.playCount == 0 -> false
                 filters.played == PlayedFilter.UNPLAYED && e.game.playCount > 0 -> false
                 filters.multiplayer && (e.players ?: 1) < 2 -> false
+                filters.favourites && !e.game.favourite -> false
                 filters.genres.isNotEmpty() && filters.genres.none { it in e.genres } -> false
                 else -> words.all { it in e.text }
             }

@@ -37,8 +37,23 @@ class ApiException(val code: String, message: String) : Exception(message) {
 /** `Query.viewer`: who is signed in, and whether first-run setup is needed. */
 data class Viewer(val setupRequired: Boolean, val user: User?)
 
-/** `Query.home`: the hero's games, recently played (with their auto saves) and recently added. */
-data class HomeFeed(val featured: List<Game>, val recent: List<Game>, val added: List<Game>)
+/**
+ * `Query.home` and this user's collections: the hero's games, recently played (with their auto
+ * saves), recently added, favourites, and a row per collection.
+ */
+data class HomeFeed(
+    val featured: List<Game>,
+    val recent: List<Game>,
+    val added: List<Game>,
+    val favourites: List<Game> = emptyList(),
+    val collections: List<HomeCollection> = emptyList(),
+)
+
+/** One of this user's collections, with its games (most recently added first). */
+data class HomeCollection(val id: Int, val name: String, val games: List<Game>)
+
+/** A collection a game can go in, and whether it is in it. */
+data class CollectionChoice(val id: Int, val name: String, val member: Boolean)
 
 /** "1996", from the release date. */
 val Game.year: String? get() = releaseDate?.take(4)?.takeIf { it.length == 4 }
