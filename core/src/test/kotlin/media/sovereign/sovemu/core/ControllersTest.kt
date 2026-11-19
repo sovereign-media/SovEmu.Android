@@ -471,4 +471,57 @@ class ControllersTest {
         assertEquals("Escape", RebindCapture.backInput(Controllers.KEYBOARD))
         assertEquals("east", RebindCapture.backInput("xbox"))
     }
+
+    @Test
+    fun touchControlsOnlyWithNothingElseToPlayWith() {
+        val pad = InputDeviceInfo(7, "Pad", Controllers.identify(0x045e, 0x0b13, "Xbox Wireless Controller"), 0)
+        val keyboard = InputDeviceInfo(InputMixer.KEYBOARD_DEVICE, "Keyboard", Controllers.identify(0, 0, "Keyboard"), 0)
+        assertTrue(touchControlsWanted(touchscreen = true, devices = emptyList()))
+        assertFalse(touchControlsWanted(touchscreen = true, devices = listOf(pad)))
+        assertFalse(touchControlsWanted(touchscreen = true, devices = listOf(keyboard)))
+        assertFalse(touchControlsWanted(touchscreen = false, devices = emptyList()))
+    }
+
+    @Test
+    fun aPlayerIsNeverTwoDevices() {
+        val players = Players()
+        assertEquals(0, players.connect(10))
+        assertEquals(1, players.connect(11))
+        assertEquals(2, players.connect(12))
+        // 12 takes player 1: 10 (who had it) takes 12's old player 3.
+        assertEquals(10, players.assign(12, 0))
+        assertEquals(listOf(2, 1, 0), listOf(10, 11, 12).map { players.port(it) })
+        // To a free player: nobody moves.
+        assertEquals(null, players.assign(11, 3))
+        assertEquals(setOf(0, 2, 3), listOf(10, 11, 12).mapNotNull { players.port(it) }.toSet())
+    }
+
+    @Test
+    fun movingTheKeyboardSwapsWithTheControllerThere() {
+        val mixer = InputMixer()
+        mixer.setKeyboardPresent(true)
+        mixer.connect(7, "Pad", Controllers.identify(0x045e, 0x0b13, "Xbox Wireless Controller"))
+        mixer.connect(8, "Pad 2", Controllers.identify(0x045e, 0x0b13, "Xbox Wireless Controller"))
+        mixer.assign(InputMixer.KEYBOARD_DEVICE, 1)
+        val ports = mixer.devices().associate { it.device to it.port }
+        // Pad 8 had player 2; the keyboard's old player 1 is pad 7's, so it takes the lowest free.
+        assertEquals(1, ports[InputMixer.KEYBOARD_DEVICE])
+        assertEquals(0, ports[7])
+        assertEquals(2, ports[8])
+        // The controller on player 2 moving to the keyboard's player sends the keyboard to its old one.
+        mixer.assign(7, 1)
+        val after = mixer.devices().associate { it.device to it.port }
+        assertEquals(1, after[7])
+        assertEquals(0, after[InputMixer.KEYBOARD_DEVICE])
+    }
+
+    @Test
+    fun tvRemotesAreNotControllers() {
+        assertTrue(Controllers.isRemote("virtual-remote", 0x18d1, 0x0100, faceButtons = true))
+        assertTrue(Controllers.isRemote("Xiaomi RC Consumer Control", 0x2717, 0x32b9, faceButtons = true))
+        assertTrue(Controllers.isRemote("ir_keypad0_0", 0, 0, faceButtons = true))
+        assertTrue(Controllers.isRemote("Some Pad", 0x1234, 0x5678, faceButtons = false))
+        assertFalse(Controllers.isRemote("Xbox Wireless Controller", 0x045e, 0x0b13, faceButtons = true))
+        assertFalse(Controllers.isRemote("8BitDo Pro 2", 0x2dc8, 0x6006, faceButtons = true))
+    }
 }

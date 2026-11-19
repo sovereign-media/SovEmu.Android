@@ -21,4 +21,12 @@ paths:
   open (`Controller.toGame`), which must stay usable with a D-pad. Back always opens the
   in-game menu.
 - Signalling is one POST of the complete offer (wait for ICE gathering), as on the web.
+- **GraphQL through Apollo.** Every operation is written once in
+  `core/src/main/graphql/operations.graphql` and generated into typed Kotlin against
+  `schema.graphqls`, a copy of SovEmu's `SovEmu.Server/schema.graphql`: refresh it with
+  `./gradlew :core:syncSchema` when the server's schema changes. Browsing models are the generated
+  fragments (`Game` = `GameFields` …); the controller models stay hand-written and convert in
+  `Models.kt`. Never write a query string or decode API JSON by hand.
+- **Navigation 3.** The back stack is a list of `Route`s in `MainActivity`, shown by `NavDisplay`
+  (which keeps each entry's saved state); system Back pops it. Screens get callbacks, not the stack.
 - Versions live in `gradle/libs.versions.toml`. Before a PR: `./gradlew :core:test :app:assembleDebug`.

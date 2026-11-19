@@ -1,41 +1,56 @@
 package media.sovereign.sovemu
 
 import android.content.Context
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
+import com.apollographql.apollo.ApolloClient
+import com.apollographql.apollo.api.Mutation
+import com.apollographql.apollo.api.Optional
+import com.apollographql.apollo.api.Query
+import com.apollographql.apollo.network.okHttpClient
+import java.util.concurrent.TimeUnit
 import media.sovereign.sovemu.core.ApiException
 import media.sovereign.sovemu.core.Binding
-import media.sovereign.sovemu.core.ClientConfig
 import media.sovereign.sovemu.core.ControllerMapping
 import media.sovereign.sovemu.core.Game
-import media.sovereign.sovemu.core.GameSaves
-import media.sovereign.sovemu.core.GraphQL
+import media.sovereign.sovemu.core.HomeFeed
+import media.sovereign.sovemu.core.IceServer
 import media.sovereign.sovemu.core.PadLayout
-import media.sovereign.sovemu.core.SystemControls
-import media.sovereign.sovemu.core.SystemWithControls
-import media.sovereign.sovemu.core.Queries
 import media.sovereign.sovemu.core.SaveSlot
 import media.sovereign.sovemu.core.SessionInfo
-import media.sovereign.sovemu.core.SystemGames
+import media.sovereign.sovemu.core.SystemControls
 import media.sovereign.sovemu.core.SystemSummary
 import media.sovereign.sovemu.core.User
 import media.sovereign.sovemu.core.Viewer
+import media.sovereign.sovemu.core.graphql.ClientConfigQuery
+import media.sovereign.sovemu.core.graphql.ControllerMappingsQuery
+import media.sovereign.sovemu.core.graphql.ControlsQuery
+import media.sovereign.sovemu.core.graphql.HomeQuery
+import media.sovereign.sovemu.core.graphql.LoadStateMutation
+import media.sovereign.sovemu.core.graphql.LoginMutation
+import media.sovereign.sovemu.core.graphql.LogoutMutation
+import media.sovereign.sovemu.core.graphql.ResetControllerMappingMutation
+import media.sovereign.sovemu.core.graphql.SaveControllerMappingMutation
+import media.sovereign.sovemu.core.graphql.SaveStateMutation
+import media.sovereign.sovemu.core.graphql.SavesQuery
+import media.sovereign.sovemu.core.graphql.SessionOfferMutation
+import media.sovereign.sovemu.core.graphql.StartSessionMutation
+import media.sovereign.sovemu.core.graphql.StopSessionMutation
+import media.sovereign.sovemu.core.graphql.SystemGamesQuery
+import media.sovereign.sovemu.core.graphql.SystemsQuery
+import media.sovereign.sovemu.core.graphql.ViewerQuery
+import media.sovereign.sovemu.core.iceServers
+import media.sovereign.sovemu.core.orThrow
+import media.sovereign.sovemu.core.toControls
+import media.sovereign.sovemu.core.toInput
+import media.sovereign.sovemu.core.toMapping
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
-import java.util.concurrent.TimeUnit
 
 /** The server address and the sign-in cookie, kept across launches. */
 class Settings(context: Context) {
-    private val prefs = context.getSharedPreferences("sovemu", Context.MODE_PRIVATE)
+    internal val prefs = context.getSharedPreferences("sovemu", Context.MODE_PRIVATE)
 
     var serverUrl: String
         get() = prefs.getString("server", "") ?: ""
@@ -60,64 +75,60 @@ private class SessionCookieJar(private val settings: Settings) : CookieJar {
     }
 }
 
-/** Calls to the SovEmu GraphQL API (`POST /graphql` on `SovEmu.Server`). */
+/**
+ * Calls to the SovEmu GraphQL API (`POST /graphql` on `SovEmu.Server`), through Apollo: the
+ * operations and their models are generated in `core` from the server's schema. Requests run
+ * and parse off the main thread (Apollo's own dispatcher).
+ */
 class SovEmuApi(private val settings: Settings) {
-    private val client = OkHttpClient.Builder()
+    /** Shared with Apollo and the image loader, so every request carries the sign-in cookie. */
+    val client: OkHttpClient = OkHttpClient.Builder()
         .cookieJar(SessionCookieJar(settings))
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
-    private val jsonType = "application/json".toMediaType()
 
-    private fun url(): HttpUrl =
-        "${settings.serverUrl}/graphql".toHttpUrlOrNull() ?: throw ApiException("BAD_REQUEST", "Invalid server address")
+    /** One Apollo client per server address (the address changes at sign-in). */
+    private var apollo: Pair<String, ApolloClient>? = null
 
-    /** Sends one operation; returns the raw response body and its HTTP status. */
-    private suspend fun post(query: String, variables: JsonObject): Pair<String, Int> = withContext(Dispatchers.IO) {
-        val request = Request.Builder()
-            .url(url())
-            .post(GraphQL.body(query, variables).toRequestBody(jsonType))
-            .build()
-        client.newCall(request).execute().use { response -> response.body.string() to response.code }
+    private fun apollo(): ApolloClient {
+        val url = "${settings.serverUrl}/graphql"
+        if (url.toHttpUrlOrNull() == null) throw ApiException("BAD_REQUEST", "Invalid server address")
+        apollo?.let { (u, c) -> if (u == url) return c }
+        return ApolloClient.Builder().serverUrl(url).okHttpClient(client).build().also { apollo = url to it }
     }
 
-    /** Runs [query] and decodes `data.<field>`; GraphQL errors become [ApiException]s. */
-    private suspend inline fun <reified T> request(
-        query: String,
-        field: String,
-        variables: JsonObject = JsonObject(emptyMap()),
-    ): T {
-        val (text, status) = post(query, variables)
-        return GraphQL.decode(text, field, status)
-    }
+    private suspend fun <D : Query.Data> query(q: Query<D>): D = apollo().query(q).execute().orThrow()
+    private suspend fun <D : Mutation.Data> mutate(m: Mutation<D>): D = apollo().mutation(m).execute().orThrow()
 
-    suspend fun status(): Viewer = request(Queries.VIEWER, "viewer")
-    suspend fun login(username: String, password: String): User =
-        request(Queries.LOGIN, "login", buildJsonObject { put("username", username); put("password", password) })
+    /** An absolute URL for a path the API hands out (`/media/games/7/thumb`). */
+    fun media(path: String?): String? = path?.let { if (it.startsWith("http")) it else settings.serverUrl + it }
+
+    suspend fun status(): Viewer = query(ViewerQuery()).viewer.let { Viewer(it.setupRequired, it.user?.userFields) }
+    suspend fun login(username: String, password: String): User = mutate(LoginMutation(username, password)).login.userFields
     suspend fun logout() {
-        request<Boolean>(Queries.LOGOUT, "logout")
+        mutate(LogoutMutation())
         settings.sessionCookie = null
     }
-    suspend fun config(): ClientConfig = request(Queries.CLIENT_CONFIG, "clientConfig")
-    suspend fun systems(): List<SystemSummary> = request(Queries.SYSTEMS, "systems")
-    suspend fun games(system: String): List<Game> =
-        request<SystemGames?>(Queries.SYSTEM_GAMES, "system", buildJsonObject { put("id", system) })?.games
-            ?: throw ApiException("NOT_FOUND", "No such system")
-    suspend fun startSession(gameId: Long): SessionInfo =
-        request(Queries.START_SESSION, "startSession", buildJsonObject { put("gameId", gameId) })
-    /** Sends the complete offer SDP; returns the answer SDP. */
-    suspend fun offer(sessionId: String, sdp: String): String =
-        request(Queries.SESSION_OFFER, "sessionOffer", buildJsonObject { put("id", sessionId); put("sdp", sdp) })
-    suspend fun stopSession(sessionId: String) {
-        request<Boolean>(Queries.STOP_SESSION, "stopSession", buildJsonObject { put("id", sessionId) })
+    suspend fun iceServers(): List<IceServer> = iceServers(query(ClientConfigQuery()).clientConfig.iceServers)
+    suspend fun systems(): List<SystemSummary> = query(SystemsQuery()).systems.map { it.systemFields }
+    suspend fun home(): HomeFeed = query(HomeQuery()).home.let { h ->
+        HomeFeed(h.featured.map { it.gameFields }, h.recent.map { it.gameFields }, h.added.map { it.gameFields })
     }
-    suspend fun states(gameId: Long): List<SaveSlot> =
-        request<GameSaves>(Queries.SAVES, "game", buildJsonObject { put("id", gameId) }).saves
+    suspend fun games(system: String): List<Game> =
+        query(SystemGamesQuery(system)).system?.games?.map { it.gameFields } ?: throw ApiException("NOT_FOUND", "No such system")
+    suspend fun startSession(gameId: Int): SessionInfo = mutate(StartSessionMutation(gameId)).startSession.sessionFields
+    /** Sends the complete offer SDP; returns the answer SDP. */
+    suspend fun offer(sessionId: String, sdp: String): String = mutate(SessionOfferMutation(sessionId, sdp)).sessionOffer
+    suspend fun stopSession(sessionId: String) {
+        mutate(StopSessionMutation(sessionId))
+    }
+    suspend fun states(gameId: Int): List<SaveSlot> = query(SavesQuery(gameId)).game.saves.map { it.saveFields }
     suspend fun saveState(sessionId: String, slot: Int) {
-        request<Boolean>(Queries.SAVE_STATE, "saveState", slotVariables(sessionId, slot))
+        mutate(SaveStateMutation(sessionId, slot))
     }
     suspend fun loadState(sessionId: String, slot: Int) {
-        request<Boolean>(Queries.LOAD_STATE, "loadState", slotVariables(sessionId, slot))
+        mutate(LoadStateMutation(sessionId, slot))
     }
 
     /**
@@ -125,22 +136,14 @@ class SovEmuApi(private val settings: Settings) {
      * controller model; a model missing from the list uses the built-in defaults.
      */
     suspend fun controllerMappings(system: String?): List<ControllerMapping> =
-        request(Queries.CONTROLLER_MAPPINGS, "controllerMappings", Queries.mappingsVariables(system))
-    /** Saves this user's mapping for a model on [system], or on every system when it is null. */
+        query(ControllerMappingsQuery(Optional.present(system))).controllerMappings.map { it.mappingFields.toMapping() }
+    /** Saves this user's mapping for a model on [system], or on every system when it is null. The server allows names up to 128 characters. */
     suspend fun saveControllerMapping(controller: String, system: String?, name: String, bindings: List<Binding>): ControllerMapping =
-        request(Queries.SAVE_CONTROLLER_MAPPING, "saveControllerMapping", Queries.saveMappingVariables(controller, system, name, bindings))
+        mutate(SaveControllerMappingMutation(controller, Optional.present(system), name.take(128), bindings.map { it.toInput() }))
+            .saveControllerMapping.mappingFields.toMapping()
     /** Removes this user's mapping for a model on [system] (or every system); returns whether there was one. */
     suspend fun resetControllerMapping(controller: String, system: String?): Boolean =
-        request(Queries.RESET_CONTROLLER_MAPPING, "resetControllerMapping", Queries.resetMappingVariables(controller, system))
+        mutate(ResetControllerMappingMutation(controller, Optional.present(system))).resetControllerMapping
     /** A system's button labels and pad (null for an unknown system), and the controllers' pads. */
-    suspend fun controls(system: String): Pair<SystemControls?, List<PadLayout>> {
-        val (text, status) = post(Queries.CONTROLS, buildJsonObject { put("id", system) })
-        return GraphQL.decode<SystemWithControls?>(text, "system", status)?.controls to
-            GraphQL.decode<List<PadLayout>>(text, "controllerLayouts", status)
-    }
-
-    private fun slotVariables(sessionId: String, slot: Int) = buildJsonObject {
-        put("sessionId", sessionId)
-        put("slot", slot)
-    }
+    suspend fun controls(system: String): Pair<SystemControls?, List<PadLayout>> = query(ControlsQuery(system)).toControls()
 }

@@ -51,6 +51,21 @@ enum class Family(val title: String, val layoutId: String) {
 data class ControllerModel(val id: String, val family: Family)
 
 object Controllers {
+    /**
+     * Whether an input device is a TV remote rather than a controller. TV remotes often declare
+     * gamepad sources (for their D-pad), but a remote is never a player of its own: its D-pad
+     * goes through the keyboard path, so a real controller is player 1 without being moved.
+     * Remotes are told by Android TV's virtual remote's IDs, a remote-like name, or having no
+     * A/B face buttons ([faceButtons]).
+     */
+    fun isRemote(name: String, vendor: Int, product: Int, faceButtons: Boolean): Boolean {
+        if (vendor == 0x18d1 && product == 0x0100) return true
+        val n = " ${name.lowercase()} "
+        return !faceButtons || REMOTE_NAMES.any { it in n }
+    }
+
+    private val REMOTE_NAMES = listOf("remote", " rc ", "consumer control", "keypad", "virtual", "cec", "rcu")
+
     /** Every keyboard shares this mapping. */
     const val KEYBOARD = "keyboard"
 
@@ -378,11 +393,23 @@ class Players(private val count: Int = Protocol.MAX_PORTS) {
         byDevice.remove(device)
     }
 
-    /** Moves a connected device to [port], for this session only. */
-    fun assign(device: Int, port: Int) {
+    /**
+     * Moves a connected device to [port], for this session only. A player is never two devices:
+     * whoever had [port] takes the moved device's old player (or none, if it had none). Returns
+     * the device that was swapped, if any.
+     */
+    fun assign(device: Int, port: Int): Int? {
         require(port in 0 until count) { "no player ${port + 1}" }
-        if (device in byDevice) byDevice[device] = port
+        if (device !in byDevice) return null
+        val old = byDevice[device]
+        val holder = byDevice.entries.firstOrNull { it.key != device && it.value == port }?.key
+        if (holder != null) byDevice[holder] = old
+        byDevice[device] = port
+        return holder
     }
+
+    /** The device on [port], if any. */
+    fun holder(port: Int): Int? = byDevice.entries.firstOrNull { it.value == port }?.key
 
     fun port(device: Int): Int? = byDevice[device]
 
@@ -416,6 +443,12 @@ fun mixAnalog(a: Protocol.Analog, b: Protocol.Analog): Protocol.Analog {
 }
 
 /** A connected device as a remap screen lists it. */
+/**
+ * Whether the player needs on-screen controls: a touch screen and nothing else to play with.
+ * Any controller or keyboard in [devices] (the connected ones) takes over from them.
+ */
+fun touchControlsWanted(touchscreen: Boolean, devices: List<InputDeviceInfo>): Boolean = touchscreen && devices.isEmpty()
+
 data class InputDeviceInfo(
     /** Android's device ID; [InputMixer.KEYBOARD_DEVICE] for the keyboard(s). */
     val device: Int,
@@ -485,10 +518,29 @@ class InputMixer {
 
     fun setKeyboardPresent(present: Boolean) = synchronized(lock) { keyboardPresent = present }
 
-    /** Moves a device (or the keyboard) to another player for this session. */
+    /**
+     * Moves a device (or the keyboard) to another player for this session, swapping with the
+     * device that had it, so no player is ever two devices.
+     */
     fun assign(device: Int, port: Int) = synchronized(lock) {
         require(port in 0 until Protocol.MAX_PORTS)
-        if (device == KEYBOARD_DEVICE) keyboardPort = port else players.assign(device, port)
+        if (device == KEYBOARD_DEVICE) {
+            val old = keyboardPort
+            keyboardPort = port
+            // A controller on that player moves to the keyboard's old one, or the lowest free.
+            players.holder(port)?.let { pad -> free(old, port)?.let { players.assign(pad, it) } }
+        } else {
+            val old = players.port(device)
+            players.assign(device, port)
+            // The keyboard on that player moves to the controller's old one, or the lowest free.
+            if (keyboardPresent && keyboardPort == port) free(old, port)?.let { keyboardPort = it }
+        }
+    }
+
+    /** [preferred] if no controller holds it (and it is not [except]), else the lowest such player. */
+    private fun free(preferred: Int?, except: Int): Int? {
+        val ok = { p: Int -> p != except && players.holder(p) == null }
+        return preferred?.takeIf(ok) ?: (0 until Protocol.MAX_PORTS).firstOrNull(ok)
     }
 
     /**

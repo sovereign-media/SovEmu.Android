@@ -7,7 +7,10 @@ import android.os.Looper
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import media.sovereign.sovemu.core.Button
@@ -81,8 +84,17 @@ class Controller {
         inputManager = null
     }
 
-    private fun isPad(d: InputDevice): Boolean =
-        !d.isVirtual && (d.supportsSource(InputDevice.SOURCE_GAMEPAD) || d.supportsSource(InputDevice.SOURCE_JOYSTICK))
+    /**
+     * A controller: a gamepad or joystick with A/B face buttons, and not a TV remote (remotes
+     * often claim gamepad sources for their D-pad; theirs goes through the keyboard path, so a
+     * real controller is player 1 without being moved).
+     */
+    private fun isPad(d: InputDevice): Boolean {
+        if (d.isVirtual) return false
+        if (!d.supportsSource(InputDevice.SOURCE_GAMEPAD) && !d.supportsSource(InputDevice.SOURCE_JOYSTICK)) return false
+        val faceButtons = d.hasKeys(KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_BUTTON_B).all { it }
+        return !Controllers.isRemote(d.name, d.vendorId, d.productId, faceButtons)
+    }
 
     private fun isKeyboard(d: InputDevice): Boolean =
         !d.isVirtual && !isPad(d) && d.keyboardType == InputDevice.KEYBOARD_TYPE_ALPHABETIC
@@ -115,7 +127,9 @@ class Controller {
     private fun padDevice(id: Int, keyCode: Int): Boolean {
         if (mixer.isPad(id)) return true
         if (!KeyEvent.isGamepadButton(keyCode)) return false
-        connectPad(id, InputDevice.getDevice(id))
+        val d = InputDevice.getDevice(id)
+        if (d != null && !isPad(d)) return false
+        connectPad(id, d)
         publish()
         return true
     }
@@ -158,7 +172,9 @@ class Controller {
         if (!event.isFromSource(InputDevice.SOURCE_JOYSTICK)) return false
         val id = event.deviceId
         if (!mixer.isPad(id)) {
-            connectPad(id, InputDevice.getDevice(id))
+            val d = InputDevice.getDevice(id)
+            if (d != null && !isPad(d)) return false
+            connectPad(id, d)
             publish()
         }
         val sx = event.getAxisValue(MotionEvent.AXIS_X)
@@ -193,6 +209,18 @@ class Controller {
 
     /** Select+Start (after mapping) opens the in-game menu. */
     val menuCombo: Boolean get() = mixer.read().menu
+
+    private val _menuRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    /**
+     * Asks for the in-game menu: the guide/home button, or the touch controller's menu button.
+     * With Back and Select+Start, the ways out of a game.
+     */
+    val menuRequests: SharedFlow<Unit> = _menuRequests.asSharedFlow()
+
+    fun requestMenu() {
+        _menuRequests.tryEmit(Unit)
+    }
 
     // --- Capturing an input for the remap screen ---------------------------------------------
 

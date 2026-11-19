@@ -8,9 +8,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.cancel
+import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonPrimitive
 import media.sovereign.sovemu.core.IceServer
 import media.sovereign.sovemu.core.InputMixer
 import media.sovereign.sovemu.core.Protocol
@@ -124,17 +126,11 @@ class Stream(
         })
     }
 
-    private fun toIceServer(s: IceServer): PeerConnection.IceServer {
-        val urls = when (val u = s.urls) {
-            is JsonArray -> u.map { (it as JsonPrimitive).content }
-            is JsonPrimitive -> listOf(u.content)
-            else -> emptyList()
-        }
-        return PeerConnection.IceServer.builder(urls).apply {
+    private fun toIceServer(s: IceServer): PeerConnection.IceServer =
+        PeerConnection.IceServer.builder(s.urls).apply {
             s.username?.let { setUsername(it) }
             s.credential?.let { setPassword(it) }
         }.createIceServer()
-    }
 
     suspend fun connect() {
         val offer = suspendCoroutine<SessionDescription?> { cont ->
@@ -154,19 +150,20 @@ class Stream(
     private suspend fun setLocal(sdp: SessionDescription) = suspendCoroutine { cont ->
         pc.setLocalDescription(object : SdpAdapter() {
             override fun onSetSuccess() = cont.resume(Unit)
-            override fun onSetFailure(error: String?) = cont.resume(Unit)
+            override fun onSetFailure(error: String?) = cont.resumeWithException(IllegalStateException("Local description: $error"))
         }, sdp)
     }
 
     private suspend fun setRemote(sdp: SessionDescription) = suspendCoroutine { cont ->
         pc.setRemoteDescription(object : SdpAdapter() {
             override fun onSetSuccess() = cont.resume(Unit)
-            override fun onSetFailure(error: String?) = cont.resume(Unit)
+            override fun onSetFailure(error: String?) = cont.resumeWithException(IllegalStateException("Remote description: $error"))
         }, sdp)
     }
 
     /**
-     * Sends every player's buttons on any change and at least every 100 ms; hotkeys likewise.
+     * Sends every player's buttons on any change and at least every 100 ms; hotkeys likewise
+     * (pause among them, held while the menu is open).
      * Ports in use only grow during a session, so a player who disconnects is sent released
      * rather than left holding whatever they last pressed.
      */
@@ -181,16 +178,18 @@ class Stream(
         var lastAnalogSend = 0L
         while (scope.isActive) {
             if (channel.state() == DataChannel.State.OPEN) {
-                val r = if (suspended) IDLE else controller.read()
+                // Suspended (the in-game menu is open): no input, and the game is paused.
+                val paused = suspended
+                val r = if (paused) IDLE else controller.read()
                 count = maxOf(count, r.count)
                 val buttons = r.ports.take(count)
                 val analog = r.analog.take(count)
-                val hotkeys = (if (r.fastForward) 1 else 0) or (if (r.rewind) 2 else 0)
+                val hotkeys = (if (r.fastForward) 1 else 0) or (if (r.rewind) 2 else 0) or (if (paused) 4 else 0)
                 val now = System.currentTimeMillis()
                 if (buttons != sent || hotkeys != sentHotkeys || now - lastSend > 100) {
                     seq++
                     send(Protocol.encodeInput(seq, now32().toInt(), buttons.toIntArray()))
-                    if (hotkeys != sentHotkeys || hotkeys != 0) send(Protocol.encodeHotkeys(r.fastForward, r.rewind))
+                    if (hotkeys != sentHotkeys || hotkeys != 0) send(Protocol.encodeHotkeys(r.fastForward, r.rewind, paused))
                     sent = buttons
                     sentHotkeys = hotkeys
                     lastSend = now
@@ -211,9 +210,21 @@ class Stream(
         channel.send(DataChannel.Buffer(ByteBuffer.wrap(bytes), true))
     }
 
+    private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    /**
+     * Ends the stream. Safe to call more than once (Quit closes it, then leaving the player
+     * does): closing or disposing a PeerConnection twice crashes in native code.
+     */
     fun close() {
-        pump?.cancel()
+        if (!closed.compareAndSet(false, true)) return
+        // The pump sends on the channel from another thread: it must have stopped before the
+        // channel goes (sending on a disposed one crashes in native code). One loop is ~4 ms.
+        runBlocking { pump?.cancelAndJoin() }
+        scope.cancel()
+        channel.unregisterObserver()
         channel.close()
+        channel.dispose()
         pc.close()
         pc.dispose()
     }
