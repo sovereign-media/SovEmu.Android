@@ -1,6 +1,7 @@
 package media.sovereign.sovemu.ui
 
 import androidx.activity.compose.BackHandler
+import media.sovereign.sovemu.core.AUTO_SLOT
 import media.sovereign.sovemu.core.year
 import media.sovereign.sovemu.attempt
 import androidx.compose.animation.AnimatedVisibility
@@ -104,7 +105,6 @@ import media.sovereign.sovemu.core.jumpTo
 import media.sovereign.sovemu.core.letterOf
 import media.sovereign.sovemu.core.maxPlayers
 
-private const val AUTO_SLOT = 0
 /** How long the jump strip rests on a letter before the grid follows it. */
 private const val FOLLOW_DELAY_MS = 300L
 

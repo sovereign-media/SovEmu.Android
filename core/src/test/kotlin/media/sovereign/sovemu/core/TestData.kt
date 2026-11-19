@@ -32,3 +32,5 @@ fun system(
     id = id, name = id.uppercase(), short = id.uppercase(), manufacturer = "Nintendo", year = 1985, color = "#c0392b",
     gameCount = 1, playable = playable, needsGpu = needsGpu, rendering = rendering, biosMissing = biosMissing,
 )
+
+fun save(slot: Int, savedAt: Double = 1_700_000_000.0): SaveSlot = SaveSlot(slot, savedAt, "/media/games/1/saves/$slot")

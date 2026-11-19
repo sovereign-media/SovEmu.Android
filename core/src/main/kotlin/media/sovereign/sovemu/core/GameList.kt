@@ -195,3 +195,24 @@ fun formatSize(bytes: Double): String {
     }
     return if (i == 0 || v >= 100) "${v.toLong()} ${units[i]}" else String.format(Locale.ROOT, "%.1f %s", v, units[i])
 }
+
+// --- Save slots -------------------------------------------------------------------------------
+
+/** The auto save's slot: written when a game ends, loaded by Continue. */
+const val AUTO_SLOT = 0
+
+/** The slots a player saves to by hand, as on the web client. */
+val SAVE_SLOTS = listOf(1, 2, 3, 4)
+
+/** One row of a save or load picker: the slot, its save if there is one, and whether it can be picked. */
+data class SlotRow(val slot: Int, val label: String, val save: SaveSlot?, val enabled: Boolean)
+
+/**
+ * The rows for [numbers] given the game's [saves]: a save picker offers every slot (an empty one
+ * is written to), a load picker only the ones with a save ([emptyEnabled] false).
+ */
+fun slotRows(saves: List<SaveSlot>, numbers: List<Int>, emptyEnabled: Boolean): List<SlotRow> =
+    numbers.map { n ->
+        val save = saves.firstOrNull { it.slot == n }
+        SlotRow(n, if (n == AUTO_SLOT) "Auto save" else "Slot $n", save, save != null || emptyEnabled)
+    }
