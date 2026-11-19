@@ -275,4 +275,12 @@ object Lucide {
             "M3 19a3 3 0 1 0 6 0a3 3 0 1 0 -6 0",
         )
     }
+
+    val Vibrate: ImageVector by lazy {
+        icon(
+            "m2 8 2 2-2 2 2 2-2 2",
+            "m22 8-2 2 2 2-2 2 2 2",
+            "M9 5h6a1 1 0 0 1 1 1v12a1 1 0 0 1 -1 1h-6a1 1 0 0 1 -1 -1v-12a1 1 0 0 1 1 -1z",
+        )
+    }
 }
