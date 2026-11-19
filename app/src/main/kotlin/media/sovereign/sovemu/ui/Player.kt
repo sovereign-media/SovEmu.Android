@@ -1,6 +1,12 @@
 package media.sovereign.sovemu.ui
 
 import androidx.activity.compose.BackHandler
+import media.sovereign.sovemu.core.formatAgo
+import media.sovereign.sovemu.core.slotRows
+import media.sovereign.sovemu.core.SlotRow
+import media.sovereign.sovemu.core.SaveSlot
+import media.sovereign.sovemu.core.SAVE_SLOTS
+import media.sovereign.sovemu.core.AUTO_SLOT
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
@@ -228,21 +234,17 @@ fun PlayerScreen(
             InGameMenu(
                 game, system,
                 onResume = { menuOpen = false },
-                onSave = {
+                saves = { attempt { api.states(game.id) }.getOrDefault(emptyList()) },
+                onSaveTo = { slot ->
                     scope.launch {
-                        toast = info?.let { s -> attempt { api.saveState(s.id, 1) }.fold({ "Saved to slot 1" }, { e -> "Save failed: ${e.message}" }) }
+                        toast = info?.let { s -> attempt { api.saveState(s.id, slot) }.fold({ "Saved to slot $slot" }, { e -> "Save failed: ${e.message}" }) }
                         menuOpen = false
                     }
                 },
-                onLoad = {
+                onLoadFrom = { slot ->
                     scope.launch {
-                        toast = info?.let { s -> attempt { api.loadState(s.id, 1) }.fold({ "Loaded slot 1" }, { e -> "Load failed: ${e.message}" }) }
-                        menuOpen = false
-                    }
-                },
-                onLoadAuto = {
-                    scope.launch {
-                        toast = info?.let { s -> attempt { api.loadState(s.id, 0) }.fold({ "Loaded the auto save" }, { e -> "No auto save: ${e.message}" }) }
+                        val name = if (slot == AUTO_SLOT) "the auto save" else "slot $slot"
+                        toast = info?.let { s -> attempt { api.loadState(s.id, slot) }.fold({ "Loaded $name" }, { e -> "Load failed: ${e.message}" }) }
                         menuOpen = false
                     }
                 },
@@ -256,30 +258,46 @@ fun PlayerScreen(
     }
 }
 
+private enum class MenuPage { Main, Save, Load }
+
 /**
  * The in-game menu, as the web client's: a panel over the paused game. The focus starts on
- * Resume and cannot leave the panel; Back (B on a controller) resumes.
+ * Resume and cannot leave the panel; Back (B on a controller) resumes. Save and Load open a
+ * picker of the game's slots in the same panel, each with its screenshot and age; Back there
+ * returns to the menu.
  */
 @Composable
 private fun InGameMenu(
     game: Game,
     system: SystemSummary,
     onResume: () -> Unit,
-    onSave: () -> Unit,
-    onLoad: () -> Unit,
-    onLoadAuto: () -> Unit,
+    saves: suspend () -> List<SaveSlot>,
+    onSaveTo: (Int) -> Unit,
+    onLoadFrom: (Int) -> Unit,
     onControllers: () -> Unit,
     onQuit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var page by remember { mutableStateOf(MenuPage.Main) }
+    var slots by remember { mutableStateOf<List<SaveSlot>?>(null) }
+    LaunchedEffect(page) {
+        if (page != MenuPage.Main) {
+            slots = null
+            slots = saves()
+        }
+    }
+    BackHandler(enabled = page != MenuPage.Main) { page = MenuPage.Main }
+
     val first = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
-        withFrameNanos { }
-        runCatching { first.requestFocus() }
+    LaunchedEffect(page, slots == null) {
+        repeat(10) {
+            withFrameNanos { }
+            if (first.requestFocus()) return@LaunchedEffect
+        }
     }
     Box(modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.7f)), contentAlignment = Alignment.Center) {
         Column(
-            Modifier.width(360.dp)
+            Modifier.width(if (page == MenuPage.Main) 360.dp else 440.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(Sov.Panel)
                 .border(1.dp, Sov.Edge, RoundedCornerShape(16.dp))
@@ -290,15 +308,76 @@ private fun InGameMenu(
         ) {
             Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SystemBadge(system.short, system.colour())
-                Text(game.title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    when (page) {
+                        MenuPage.Main -> game.title
+                        MenuPage.Save -> "Save to a slot"
+                        MenuPage.Load -> "Load a save"
+                    },
+                    color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
             }
-            MenuItem("Resume", Lucide.Play, Modifier.focusRequester(first), onResume)
-            MenuItem("Save to slot 1", Lucide.Check, onClick = onSave)
-            MenuItem("Load slot 1", Lucide.History, onClick = onLoad)
-            MenuItem("Load the auto save", Lucide.RotateCcw, onClick = onLoadAuto)
-            MenuItem("Controllers", Lucide.Gamepad2, onClick = onControllers)
-            Box(Modifier.padding(vertical = 4.dp).fillMaxWidth().height(1.dp).background(Sov.Edge))
-            MenuItem("Quit game", Lucide.LogOut, onClick = onQuit)
+            when (page) {
+                MenuPage.Main -> {
+                    MenuItem("Resume", Lucide.Play, Modifier.focusRequester(first), onResume)
+                    MenuItem("Save state", Lucide.Check, onClick = { page = MenuPage.Save })
+                    MenuItem("Load state", Lucide.History, onClick = { page = MenuPage.Load })
+                    MenuItem("Controllers", Lucide.Gamepad2, onClick = onControllers)
+                    Box(Modifier.padding(vertical = 4.dp).fillMaxWidth().height(1.dp).background(Sov.Edge))
+                    MenuItem("Quit game", Lucide.LogOut, onClick = onQuit)
+                }
+                else -> {
+                    val list = slots
+                    if (list == null) {
+                        Text("Loading saves…", color = Sov.Slate400, fontSize = 14.sp, modifier = Modifier.padding(12.dp))
+                    } else {
+                        val saving = page == MenuPage.Save
+                        val rows = slotRows(list, if (saving) SAVE_SLOTS else listOf(AUTO_SLOT) + SAVE_SLOTS, emptyEnabled = saving)
+                        val firstEnabled = rows.indexOfFirst { it.enabled }
+                        rows.forEachIndexed { i, row ->
+                            SlotItem(
+                                row,
+                                if (i == firstEnabled) Modifier.focusRequester(first) else Modifier,
+                            ) { if (saving) onSaveTo(row.slot) else onLoadFrom(row.slot) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** A save slot in a picker: its screenshot (or a blank), name and age; dimmed when it cannot be picked. */
+@Composable
+private fun SlotItem(row: SlotRow, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val source = remember { MutableInteractionSource() }
+    val focused by source.collectIsFocusedAsState()
+    val now = remember { System.currentTimeMillis() / 1000 }
+    Row(
+        modifier
+            .fillMaxWidth()
+            .height(72.dp)
+            .graphicsLayer { alpha = if (row.enabled) 1f else 0.4f }
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (focused) Sov.Accent.copy(alpha = 0.45f) else Color.Transparent)
+            .clickable(interactionSource = source, indication = null, enabled = row.enabled, onClick = onClick)
+            .padding(horizontal = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Box(
+            Modifier.height(56.dp).aspectRatio(4 / 3f).clip(RoundedCornerShape(6.dp)).background(Color.Black)
+                .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(6.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            row.save?.screenshotUrl?.let { Screenshot(it, Modifier.fillMaxSize()) }
+        }
+        Column(Modifier.weight(1f)) {
+            Text(row.label, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                row.save?.let { "Saved " + formatAgo(it.savedAt.toLong(), now) } ?: "Empty",
+                color = Sov.Slate400, fontSize = 13.sp,
+            )
         }
     }
 }

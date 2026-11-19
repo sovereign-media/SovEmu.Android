@@ -96,4 +96,15 @@ class GameListTest {
         assertEquals("Up to 4 players", formatPlayers("1 to 4"))
         assertNull(formatPlayers(null))
     }
+
+    @Test
+    fun slotPickersOfferWhatCanBePicked() {
+        val saves = listOf(save(AUTO_SLOT), save(2))
+        val load = slotRows(saves, listOf(AUTO_SLOT) + SAVE_SLOTS, emptyEnabled = false)
+        assertEquals(listOf("Auto save", "Slot 1", "Slot 2", "Slot 3", "Slot 4"), load.map { it.label })
+        assertEquals(listOf(true, false, true, false, false), load.map { it.enabled })
+        val saving = slotRows(saves, SAVE_SLOTS, emptyEnabled = true)
+        assertTrue(saving.all { it.enabled })
+        assertEquals(2, saving.single { it.save != null }.slot)
+    }
 }
