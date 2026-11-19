@@ -10,6 +10,8 @@ import java.util.concurrent.TimeUnit
 import media.sovereign.sovemu.core.ApiException
 import media.sovereign.sovemu.core.Binding
 import media.sovereign.sovemu.core.Cheat
+import media.sovereign.sovemu.core.CollectionChoice
+import media.sovereign.sovemu.core.HomeCollection
 import media.sovereign.sovemu.core.ControllerMapping
 import media.sovereign.sovemu.core.Game
 import media.sovereign.sovemu.core.HomeFeed
@@ -23,6 +25,8 @@ import media.sovereign.sovemu.core.User
 import media.sovereign.sovemu.core.Viewer
 import media.sovereign.sovemu.core.graphql.AddCheatMutation
 import media.sovereign.sovemu.core.graphql.CheatsQuery
+import media.sovereign.sovemu.core.graphql.CollectionChoicesQuery
+import media.sovereign.sovemu.core.graphql.CreateCollectionMutation
 import media.sovereign.sovemu.core.graphql.ClientConfigQuery
 import media.sovereign.sovemu.core.graphql.DeleteCheatMutation
 import media.sovereign.sovemu.core.graphql.SetCheatEnabledMutation
@@ -38,6 +42,8 @@ import media.sovereign.sovemu.core.graphql.SaveStateMutation
 import media.sovereign.sovemu.core.graphql.SavesQuery
 import media.sovereign.sovemu.core.graphql.SessionOfferMutation
 import media.sovereign.sovemu.core.graphql.SetDiscMutation
+import media.sovereign.sovemu.core.graphql.SetFavouriteMutation
+import media.sovereign.sovemu.core.graphql.SetInCollectionMutation
 import media.sovereign.sovemu.core.graphql.StartSessionMutation
 import media.sovereign.sovemu.core.graphql.StopSessionMutation
 import media.sovereign.sovemu.core.graphql.SystemGamesQuery
@@ -118,8 +124,28 @@ class SovEmuApi(private val settings: Settings) {
     }
     suspend fun iceServers(): List<IceServer> = iceServers(query(ClientConfigQuery()).clientConfig.iceServers)
     suspend fun systems(): List<SystemSummary> = query(SystemsQuery()).systems.map { it.systemFields }
-    suspend fun home(): HomeFeed = query(HomeQuery()).home.let { h ->
-        HomeFeed(h.featured.map { it.gameFields }, h.recent.map { it.gameFields }, h.added.map { it.gameFields })
+    suspend fun home(): HomeFeed = query(HomeQuery()).let { d ->
+        val h = d.home
+        HomeFeed(
+            h.featured.map { it.gameFields }, h.recent.map { it.gameFields }, h.added.map { it.gameFields },
+            h.favourites.map { it.gameFields },
+            d.collections.map { c -> HomeCollection(c.id, c.name, c.games.map { it.gameFields }) },
+        )
+    }
+    /** Adds a game to this user's favourites, or takes it out. */
+    suspend fun setFavourite(gameId: Int, favourite: Boolean) {
+        mutate(SetFavouriteMutation(gameId, favourite))
+    }
+    /** This user's collections, each marked with whether [gameId] is in it. */
+    suspend fun collectionChoices(gameId: Int): List<CollectionChoice> =
+        query(CollectionChoicesQuery(gameId)).let { d ->
+            val member = d.game.collectionIds.toSet()
+            d.collections.map { CollectionChoice(it.id, it.name, it.id in member) }
+        }
+    /** Makes a collection (names are 1 to 64 characters, unique per user); returns its id. */
+    suspend fun createCollection(name: String): Int = mutate(CreateCollectionMutation(name.trim().take(64))).createCollection.id
+    suspend fun setInCollection(collectionId: Int, gameId: Int, member: Boolean) {
+        mutate(SetInCollectionMutation(collectionId, gameId, member))
     }
     suspend fun games(system: String): List<Game> =
         query(SystemGamesQuery(system)).system?.games?.map { it.gameFields } ?: throw ApiException("NOT_FOUND", "No such system")

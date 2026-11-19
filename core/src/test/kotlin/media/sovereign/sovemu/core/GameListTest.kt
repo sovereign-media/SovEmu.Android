@@ -13,7 +13,7 @@ class GameListTest {
         game(3, "Mega Man 10", "Platform, Action", "1"),
         game(4, "Mega Man 2", "Platform, Action", "1", releaseDate = "1988"),
         game(5, "1942", "Shooter", "1 to 2"),
-        game(6, "the Legend of Zelda", "Adventure"),
+        game(6, "the Legend of Zelda", "Adventure", favourite = true),
     )
     private val index = GameIndex(games)
     private fun ids(list: List<Game>) = list.map { it.id }
@@ -45,7 +45,9 @@ class GameListTest {
         assertEquals(listOf(2, 1), ids(index.query("", GameFilters(played = PlayedFilter.PLAYED), GameSort.TITLE)))
         assertEquals(listOf(5, 1), ids(index.query("", GameFilters(multiplayer = true), GameSort.TITLE)))
         assertEquals(listOf(4, 3, 1), ids(index.query("", GameFilters(genres = setOf("Platform")), GameSort.TITLE)))
+        assertEquals(listOf(6), ids(index.query("", GameFilters(favourites = true), GameSort.TITLE)))
         assertEquals(2, GameFilters(played = PlayedFilter.UNPLAYED, genres = setOf("RPG")).count)
+        assertEquals(1, GameFilters(favourites = true).count)
     }
 
     @Test

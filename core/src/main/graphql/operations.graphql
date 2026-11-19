@@ -34,6 +34,7 @@ fragment GameFields on Game {
   players
   rating
   discs
+  favourite
   autoSave {
     slot
     savedAt
@@ -146,7 +147,42 @@ query Home {
     added {
       ...GameFields
     }
+    favourites {
+      ...GameFields
+    }
   }
+  collections {
+    id
+    name
+    games {
+      ...GameFields
+    }
+  }
+}
+
+query CollectionChoices($id: Int!) {
+  collections {
+    id
+    name
+  }
+  game(id: $id) {
+    collectionIds
+  }
+}
+
+mutation SetFavourite($gameId: Int!, $favourite: Boolean!) {
+  setFavourite(gameId: $gameId, favourite: $favourite)
+}
+
+mutation CreateCollection($name: String!) {
+  createCollection(name: $name) {
+    id
+    name
+  }
+}
+
+mutation SetInCollection($collectionId: Int!, $gameId: Int!, $member: Boolean!) {
+  setInCollection(collectionId: $collectionId, gameId: $gameId, member: $member)
 }
 
 query SystemGames($id: ID!) {

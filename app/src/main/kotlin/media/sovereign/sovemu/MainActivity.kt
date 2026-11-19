@@ -241,6 +241,8 @@ class MainActivity : ComponentActivity() {
                                 api, r.system, index, r.open, sort,
                                 onSort = { sort = it; settings.sort = it },
                                 onPlay = { game, start -> push(Route.Play(r.system, game, start)) },
+                                onFavourite = store::setFavourite,
+                                onCollectionsChanged = store::collectionsChanged,
                             )
                         }
                     }

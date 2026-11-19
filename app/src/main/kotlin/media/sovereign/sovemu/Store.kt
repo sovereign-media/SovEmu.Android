@@ -88,6 +88,31 @@ class Store(
         games[system]?.let { flow -> launch { loadGames(system, flow, quiet = true) } }
     }
 
+    /**
+     * Marks [game] as a favourite or not, at once in its system's list (so the panel's heart and
+     * the Favourites filter follow without waiting), then on the server; a failure puts it back.
+     * Home is fetched again either way, for its Favourites row. Returns the error message, if any.
+     */
+    suspend fun setFavourite(game: Game, favourite: Boolean): String? {
+        markFavourite(game.system, game.id, favourite)
+        val error = attempt { api.setFavourite(game.id, favourite) }.exceptionOrNull()
+        if (error != null) markFavourite(game.system, game.id, !favourite)
+        launch { load(_home) { api.home() } }
+        return error?.let(::note)
+    }
+
+    /** Collections changed (a game went in or out, or one was made): Home shows a row for each. */
+    fun collectionsChanged() {
+        launch { load(_home) { api.home() } }
+    }
+
+    private suspend fun markFavourite(system: String, id: Int, favourite: Boolean) {
+        val flow = games[system] ?: return
+        val index = (flow.value as? Load.Ready)?.value ?: return
+        val list = index.games.map { if (it.id == id) it.copy(favourite = favourite) else it }
+        flow.value = Load.Ready(withContext(compute) { GameIndex(list) })
+    }
+
     /** Signed out: forget everything, and cancel what the old sign-in still has in flight. */
     fun clear() {
         signIn.cancel()

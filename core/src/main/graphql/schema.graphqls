@@ -149,6 +149,16 @@ type ClientConfig {
 	iceServers: JSON!
 }
 
+type Collection {
+	id: Int!
+	name: String!
+	gameCount: Int!
+	"""
+	Its games, most recently added first.
+	"""
+	games: [Game!]!
+}
+
 """
 The default controller mappings (admins).
 """
@@ -259,6 +269,14 @@ type Game {
 	"""
 	lastPlayedAt: String
 	playCount: Int!
+	"""
+	One of this user's favourites.
+	"""
+	favourite: Boolean!
+	"""
+	The ids of this user's collections that hold it.
+	"""
+	collectionIds: [Int!]!
 	"""
 	How many discs (1 for most games): a multi-disc game is one entry, its discs changed in play.
 	"""
@@ -383,6 +401,10 @@ type Home {
 	The library's newest games.
 	"""
 	added: [Game!]!
+	"""
+	This user's favourites, by title.
+	"""
+	favourites: [Game!]!
 }
 
 """
@@ -564,6 +586,20 @@ type Mutation {
 	resetSession(id: ID!): Boolean!
 	"""
 	Saves the session's game to a slot (1–9), with a screenshot.
+	Adds a game to this user's favourites, or takes it out.
+	"""
+	setFavourite(gameId: Int!, favourite: Boolean!): Boolean!
+	"""
+	Creates a collection (CONFLICT if this user already has one by that name).
+	"""
+	createCollection(name: String!): Collection!
+	renameCollection(id: Int!, name: String!): Boolean!
+	deleteCollection(id: Int!): Boolean!
+	"""
+	Puts a game in one of this user's collections, or takes it out.
+	"""
+	setInCollection(collectionId: Int!, gameId: Int!, member: Boolean!): Boolean!
+	"""
 	Changes a multi-disc game's disc (from 1), as when the game asks for the next one.
 	"""
 	setDisc(sessionId: ID!, disc: Int!): Boolean!
@@ -678,6 +714,10 @@ type Query {
 	The home screen's feed.
 	"""
 	home: Home!
+	"""
+	This user's collections, by name.
+	"""
+	collections: [Collection!]!
 	"""
 	Every system SovEmu offers (hidden ones left out), in SovEmu's order.
 	"""
