@@ -52,6 +52,8 @@ dependencies {
     implementation(libs.apollo.runtime)
     implementation(libs.navigation3.runtime)
     implementation(libs.navigation3.ui)
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.datasource.okhttp)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
     testImplementation(libs.junit)
