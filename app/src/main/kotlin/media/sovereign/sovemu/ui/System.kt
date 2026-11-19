@@ -535,6 +535,8 @@ private fun PanelArt(g: Game, system: SystemSummary) {
     Box(Modifier.fillMaxWidth().aspectRatio(16 / 9f).background(brush), contentAlignment = Alignment.Center) {
         Text(system.short, color = Color.White.copy(alpha = 0.8f), fontSize = 60.sp, fontWeight = FontWeight.Black)
         Art(g.image ?: g.thumb, Modifier.fillMaxSize(), scale = if (g.image != null) ContentScale.Crop else ContentScale.Fit)
+        // Its video snap, after a moment, over the artwork (muted: the menus' music plays on).
+        if (g.video != null) VideoSnap(g.video, Modifier.fillMaxSize())
         Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.5f).background(Brush.verticalGradient(listOf(Color.Transparent, Sov.Surface.copy(alpha = 0.8f)))))
         if (g.image != null && g.thumb != null) {
             Art(g.thumb, Modifier.align(Alignment.BottomStart).padding(start = 20.dp, bottom = 12.dp).fillMaxHeight(0.5f).aspectRatio(3 / 4f).clip(RoundedCornerShape(6.dp)), scale = ContentScale.Fit)
