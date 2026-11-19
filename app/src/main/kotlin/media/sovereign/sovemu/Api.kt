@@ -37,6 +37,7 @@ import media.sovereign.sovemu.core.graphql.SaveControllerMappingMutation
 import media.sovereign.sovemu.core.graphql.SaveStateMutation
 import media.sovereign.sovemu.core.graphql.SavesQuery
 import media.sovereign.sovemu.core.graphql.SessionOfferMutation
+import media.sovereign.sovemu.core.graphql.SetDiscMutation
 import media.sovereign.sovemu.core.graphql.StartSessionMutation
 import media.sovereign.sovemu.core.graphql.StopSessionMutation
 import media.sovereign.sovemu.core.graphql.SystemGamesQuery
@@ -129,6 +130,10 @@ class SovEmuApi(private val settings: Settings) {
         mutate(StopSessionMutation(sessionId))
     }
     suspend fun states(gameId: Int): List<SaveSlot> = query(SavesQuery(gameId)).game.saves.map { it.saveFields }
+    /** Changes a multi-disc game's disc (from 1). */
+    suspend fun setDisc(sessionId: String, disc: Int) {
+        mutate(SetDiscMutation(sessionId, disc))
+    }
     suspend fun saveState(sessionId: String, slot: Int) {
         mutate(SaveStateMutation(sessionId, slot))
     }

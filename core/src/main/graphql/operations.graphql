@@ -33,6 +33,7 @@ fragment GameFields on Game {
   genre
   players
   rating
+  discs
   autoSave {
     slot
     savedAt
@@ -64,6 +65,8 @@ fragment SessionFields on GameSession {
   height
   fps
   connected
+  discs
+  disc
 }
 
 fragment MappingFields on ControllerMapping {
@@ -170,6 +173,10 @@ mutation StartSession($gameId: Int!) {
 
 mutation SessionOffer($id: ID!, $sdp: String!) {
   sessionOffer(id: $id, sdp: $sdp)
+}
+
+mutation SetDisc($sessionId: ID!, $disc: Int!) {
+  setDisc(sessionId: $sessionId, disc: $disc)
 }
 
 mutation StopSession($id: ID!) {
