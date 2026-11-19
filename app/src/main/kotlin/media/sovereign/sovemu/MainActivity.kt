@@ -212,8 +212,9 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // Scan lines over the menus; never over a game (the stream is the console's own picture).
-        Box(Modifier.fillMaxSize().scanlines(crt && route !is Route.Play)) {
+        // Scan lines over the menus and the screensaver (over a paused game too); never over a
+        // game being shown, whose stream is the console's own picture.
+        Box(Modifier.fillMaxSize().scanlines(crt && (route !is Route.Play || screensaverOn))) {
             NavDisplay(
                 backStack = stack,
                 onBack = ::pop,

@@ -289,14 +289,15 @@ private fun GameCard(game: Game, system: SystemSummary?, wide: Boolean, memory: 
             val shot = game.autoSave?.screenshotUrl
             // A fitted box art leaves the tile showing round it; a cropped picture hides it.
             var covered by remember(game.id) { mutableStateOf(false) }
-            Box(Modifier.fillMaxSize().then(if (covered) Modifier else Modifier.background(brush)), contentAlignment = Alignment.Center) {
-                if (!covered) Text(short, color = Color.White.copy(alpha = 0.8f), fontSize = 28.sp, fontWeight = FontWeight.Black)
-                if (shot != null) {
+            if (shot != null) {
+                // Where the player left off: the whole frame, never cropped, on black like a TV.
+                Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
                     Screenshot(shot, Modifier.fillMaxSize())
-                } else {
-                    Art(game.image ?: game.thumb, Modifier.fillMaxSize(), scale = if (wide) ContentScale.Crop else ContentScale.Fit,
-                        onLoaded = { if (wide) covered = it })
                 }
+            } else Box(Modifier.fillMaxSize().then(if (covered) Modifier else Modifier.background(brush)), contentAlignment = Alignment.Center) {
+                if (!covered) Text(short, color = Color.White.copy(alpha = 0.8f), fontSize = 28.sp, fontWeight = FontWeight.Black)
+                Art(game.image ?: game.thumb, Modifier.fillMaxSize(), scale = if (wide) ContentScale.Crop else ContentScale.Fit,
+                    onLoaded = { if (wide) covered = it })
             }
         }
         Column(Modifier.padding(horizontal = 2.dp)) {
@@ -316,7 +317,8 @@ fun Screenshot(path: String, modifier: Modifier) {
     val context = LocalContext.current
     val url = api.media(path) ?: return
     val request = remember(url) { ImageRequest.Builder(context).data(url).build() }
-    AsyncImage(request, null, modifier, contentScale = ContentScale.Crop, filterQuality = FilterQuality.None)
+    // Fitted, never cropped: a console frame's edges (a HUD, a score) are part of the picture.
+    AsyncImage(request, null, modifier, contentScale = ContentScale.Fit, filterQuality = FilterQuality.None)
 }
 
 @Composable
