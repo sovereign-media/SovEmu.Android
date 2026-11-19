@@ -6,6 +6,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -43,8 +46,10 @@ import androidx.compose.ui.unit.sp
  * A text field for a TV. At rest it is a box the D-pad passes over like any other (on a TV a
  * focused text field opens the keyboard at once, and the keyboard takes the D-pad, so a real field
  * could not be passed). A or a tap ([onTyping] true) swaps in the text field, focused, which opens
- * the keyboard; its action key, Back, or leaving it swaps the box back, focused.
+ * the keyboard; its action key, Back, or the keyboard closing swaps the box back, focused. (The
+ * system spends the first Back on hiding the keyboard, so the field never sees that one.)
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TvTextField(
     label: String,
@@ -65,6 +70,14 @@ fun TvTextField(
         if (typing) runCatching { field.requestFocus() }
         else if (wasTyping) runCatching { box.requestFocus() }
         wasTyping = typing
+    }
+    // The keyboard closed while typing (Back, or its own close key): back to the D-pad.
+    val keyboard = WindowInsets.isImeVisible
+    var keyboardShown by remember { mutableStateOf(false) }
+    LaunchedEffect(keyboard, typing) {
+        if (!typing) keyboardShown = false
+        else if (keyboard) keyboardShown = true
+        else if (keyboardShown) onTyping(false)
     }
     val style = TextStyle(color = Sov.Slate100, fontSize = 15.sp, fontFamily = if (mono) FontFamily.Monospace else FontFamily.Default)
     val shape = RoundedCornerShape(8.dp)

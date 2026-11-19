@@ -46,6 +46,7 @@ import media.sovereign.sovemu.ui.PlayerScreen
 import media.sovereign.sovemu.ui.Section
 import media.sovereign.sovemu.ui.SovTheme
 import media.sovereign.sovemu.ui.Start
+import media.sovereign.sovemu.ui.SearchScreen
 import media.sovereign.sovemu.ui.SystemScreen
 import media.sovereign.sovemu.ui.scanlines
 
@@ -55,6 +56,10 @@ sealed interface Route {
 
     data object Home : Route {
         override val key = "home"
+    }
+
+    data object Search : Route {
+        override val key = "search"
     }
 
     data class System(val system: SystemSummary, val open: Int? = null) : Route {
@@ -160,6 +165,7 @@ class MainActivity : ComponentActivity() {
         val nav = remember {
             Nav(
                 home = { stack.removeRange(1, stack.size) },
+                search = { push(Route.Search) },
                 system = { push(Route.System(it)) },
                 scanlines = { crt },
                 music = { musicOn },
@@ -230,7 +236,15 @@ class MainActivity : ComponentActivity() {
                                 feed, systems,
                                 onPlay = { game, start -> systems.firstOrNull { it.id == game.system }?.let { push(Route.Play(it, game, start)) } },
                                 onSystem = { s, open -> push(Route.System(s, open)) },
+                                onSearch = nav.search,
                             )
+                        }
+                    }
+                    entry<Route.Search>({ it.key }) {
+                        NavFrame(Section.Search, nav, user, systems) {
+                            SearchScreen(api, systems, onOpen = { game ->
+                                systems.firstOrNull { it.id == game.system }?.let { push(Route.System(it, game.id)) }
+                            })
                         }
                     }
                     entry<Route.System>({ it.key }) { r ->

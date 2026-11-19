@@ -715,6 +715,12 @@ type Query {
 	"""
 	home: Home!
 	"""
+	Games from every system matching every word of `text` (title, file title, developer,
+	publisher or genre; case and accents ignored), best first: titles starting with it,
+	then titles holding every word, then the rest. At most `limit` (default 48, up to 200).
+	"""
+	search(text: String!, limit: Int): [Game!]!
+	"""
 	This user's collections, by name.
 	"""
 	collections: [Collection!]!
