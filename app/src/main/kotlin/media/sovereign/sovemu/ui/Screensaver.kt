@@ -152,7 +152,9 @@ fun Screensaver(
     Column(modifier.fillMaxSize().background(Color.Black)) {
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
             AndroidView(
-                factory = { SurfaceView(it).also(player::setVideoSurfaceView) },
+                // In front of any other video surface (a paused game's stream), or it would play
+                // unseen behind it.
+                factory = { SurfaceView(it).apply { setZOrderMediaOverlay(true) }.also(player::setVideoSurfaceView) },
                 modifier = Modifier.aspectRatio(aspect),
             )
             Box(Modifier.fillMaxSize().graphicsLayer { alpha = veil }.background(Color.Black))

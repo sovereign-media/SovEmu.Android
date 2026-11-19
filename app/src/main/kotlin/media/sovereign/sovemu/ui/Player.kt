@@ -103,7 +103,10 @@ fun PlayerScreen(
     touchControls: Boolean,
     onEnded: () -> Unit,
     onExit: () -> Unit,
+    /** Paused (the in-game menu or the controllers screen is open): the screensaver may start. */
+    onPaused: (Boolean) -> Unit = {},
 ) {
+    val paused by rememberUpdatedState(onPaused)
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var info by remember { mutableStateOf<SessionInfo?>(null) }
@@ -181,9 +184,10 @@ fun PlayerScreen(
     }
     // With the menu open the game gets nothing, and controllers navigate the menu instead.
     LaunchedEffect(menuOpen, controllersOpen, stream) {
-        val paused = menuOpen || controllersOpen
-        stream?.suspended = paused
-        controller.toGame = !paused
+        val isPaused = menuOpen || controllersOpen
+        stream?.suspended = isPaused
+        controller.toGame = !isPaused
+        paused(isPaused)
     }
     LaunchedEffect(toast) {
         if (toast != null) {

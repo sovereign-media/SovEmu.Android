@@ -79,6 +79,8 @@ class MainActivity : ComponentActivity() {
     private var foreground = false
     /** Showing the screensaver (input ends it, and goes no further). */
     private var screensaverOn by mutableStateOf(false)
+    /** A game is paused (its menu is open): the screensaver may start over it. */
+    private var gamePaused by mutableStateOf(false)
     /** When a person last pressed, touched or moved something (uptime ms). */
     private var lastInput = SystemClock.uptimeMillis()
     /** The key whose press ended the screensaver: its release is swallowed too. */
@@ -197,10 +199,12 @@ class MainActivity : ComponentActivity() {
             updateMusic()
         }
 
-        // The screensaver, after idleMinutes without input; never over a game.
+        // The screensaver, after idleMinutes without input: in the menus, or over a paused game
+        // (never over one being played).
         val inGame = route is Route.Play
-        LaunchedEffect(idleMinutes, inGame) {
-            if (idleMinutes == 0 || inGame) return@LaunchedEffect
+        val canIdle = !inGame || gamePaused
+        LaunchedEffect(idleMinutes, canIdle) {
+            if (idleMinutes == 0 || !canIdle) return@LaunchedEffect
             lastInput = SystemClock.uptimeMillis()
             while (true) {
                 delay(5_000)
@@ -245,14 +249,16 @@ class MainActivity : ComponentActivity() {
                             api, sessions, r.system, r.game, r.start, controller, touchControls,
                             onEnded = { store.played(r.system.id) },
                             onExit = {
+                                gamePaused = false
                                 controller.clear()
                                 pop()
                             },
+                            onPaused = { gamePaused = it },
                         )
                     }
                 },
             )
-            if (screensaverOn && !inGame) {
+            if (screensaverOn && canIdle) {
                 Screensaver(api, remember(systems) { systems.associateBy { it.id } }, store::randomVideoGame)
             }
         }
