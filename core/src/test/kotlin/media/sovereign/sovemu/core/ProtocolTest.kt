@@ -20,6 +20,7 @@ class ProtocolTest {
         assertArrayEquals(bytes(0x02, 1, 0b11), Protocol.encodeHotkeys(fastForward = true, rewind = true))
         assertArrayEquals(bytes(0x02, 1, 0b01), Protocol.encodeHotkeys(fastForward = true, rewind = false))
         assertArrayEquals(bytes(0x02, 1, 0b10), Protocol.encodeHotkeys(fastForward = false, rewind = true))
+        assertArrayEquals(bytes(0x02, 1, 0b100), Protocol.encodeHotkeys(fastForward = false, rewind = false, pause = true))
     }
 
     @Test
@@ -57,15 +58,5 @@ class ProtocolTest {
         assertEquals(1, Button.B.bit)
         assertEquals(1 shl 3, Button.START.bit)
         assertEquals(1 shl 8, Button.A.bit)
-    }
-
-    @Test
-    fun parsesApiJson() {
-        val s = ApiJson.decodeFromString<SystemSummary>(
-            """{"id":"nes","name":"Nintendo Entertainment System","short":"NES","manufacturer":"Nintendo",
-               "year":1983,"color":"#c0392b","gameCount":2,"playable":true,"needsGpu":false,"extra":1}""",
-        )
-        assertEquals("NES", s.short)
-        assertEquals(0xffc0392bL, parseColor(s.color))
     }
 }

@@ -1,0 +1,219 @@
+# Every operation the Android app sends. Apollo generates typed Kotlin for each from
+# schema.graphqls (SovEmu.Server's schema), so a field the server does not have fails the build.
+
+fragment UserFields on User {
+  id
+  username
+  isAdmin
+}
+
+fragment SaveFields on SaveSlot {
+  slot
+  savedAt
+  screenshotUrl
+}
+
+fragment GameFields on Game {
+  id
+  system
+  title
+  fileTitle
+  tags
+  path
+  size
+  lastPlayedAt
+  playCount
+  image: mediaUrl(kind: IMAGE)
+  thumb: mediaUrl(kind: THUMB)
+  video: mediaUrl(kind: VIDEO)
+  description
+  releaseDate
+  developer
+  publisher
+  genre
+  players
+  rating
+  autoSave {
+    slot
+    savedAt
+    screenshotUrl
+  }
+}
+
+fragment SystemFields on System {
+  id
+  name
+  short
+  manufacturer
+  year
+  color
+  gameCount
+  playable
+  needsGpu
+  rendering
+  biosMissing
+}
+
+fragment SessionFields on GameSession {
+  id
+  gameId
+  system
+  title
+  core
+  width
+  height
+  fps
+  connected
+}
+
+fragment MappingFields on ControllerMapping {
+  controller
+  system
+  name
+  source
+  bindings {
+    input
+    button
+  }
+}
+
+fragment LayoutFields on PadLayout {
+  id
+  name
+  width
+  height
+  body {
+    x
+    y
+    w
+    h
+    r
+    tone
+  }
+  keys {
+    key
+    label
+    x
+    y
+    w
+    h
+    r
+  }
+}
+
+query Viewer {
+  viewer {
+    setupRequired
+    user {
+      ...UserFields
+    }
+  }
+}
+
+mutation Login($username: String!, $password: String!) {
+  login(username: $username, password: $password) {
+    ...UserFields
+  }
+}
+
+mutation Logout {
+  logout
+}
+
+query ClientConfig {
+  clientConfig {
+    iceServers
+  }
+}
+
+query Systems {
+  systems {
+    ...SystemFields
+  }
+}
+
+query Home {
+  home {
+    featured {
+      ...GameFields
+    }
+    recent {
+      ...GameFields
+    }
+    added {
+      ...GameFields
+    }
+  }
+}
+
+query SystemGames($id: ID!) {
+  system(id: $id) {
+    games {
+      ...GameFields
+    }
+  }
+}
+
+query Saves($id: Int!) {
+  game(id: $id) {
+    saves {
+      ...SaveFields
+    }
+  }
+}
+
+mutation StartSession($gameId: Int!) {
+  startSession(gameId: $gameId) {
+    ...SessionFields
+  }
+}
+
+mutation SessionOffer($id: ID!, $sdp: String!) {
+  sessionOffer(id: $id, sdp: $sdp)
+}
+
+mutation StopSession($id: ID!) {
+  stopSession(id: $id)
+}
+
+mutation SaveState($sessionId: ID!, $slot: Int!) {
+  saveState(sessionId: $sessionId, slot: $slot)
+}
+
+mutation LoadState($sessionId: ID!, $slot: Int!) {
+  loadState(sessionId: $sessionId, slot: $slot)
+}
+
+query ControllerMappings($system: ID) {
+  controllerMappings(system: $system) {
+    ...MappingFields
+  }
+}
+
+mutation SaveControllerMapping($controller: String!, $system: ID, $name: String!, $bindings: [BindingInput!]!) {
+  saveControllerMapping(controller: $controller, system: $system, name: $name, bindings: $bindings) {
+    ...MappingFields
+  }
+}
+
+mutation ResetControllerMapping($controller: String!, $system: ID) {
+  resetControllerMapping(controller: $controller, system: $system)
+}
+
+# A system's labels and pad, and the controllers' pads.
+query Controls($id: ID!) {
+  system(id: $id) {
+    controls {
+      buttons {
+        button
+        label
+      }
+      layout {
+        ...LayoutFields
+      }
+    }
+  }
+  controllerLayouts {
+    ...LayoutFields
+  }
+}

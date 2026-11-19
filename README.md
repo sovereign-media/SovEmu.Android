@@ -10,8 +10,8 @@ Checked out as a submodule of `SovEmu` (unpinned, `branch = main`); it builds on
 
 | Module | What |
 |---|---|
-| `core` | Plain Kotlin/JVM: the input wire protocol (`Protocol.kt`), controller IDs, input names, mappings, hotkeys and players (`Controllers.kt`, after SovEmu's `docs/CONTROLLERS.md`), the GraphQL query documents and response decoding (`GraphQL.kt`, against the server's `schema.graphql`) and the API models. Its tests use the same byte vectors as `SovEmu.Protocol` (Rust) and `SovEmu.Web` (TypeScript). |
-| `app` | Jetpack Compose UI (sign-in, system carousel, game list, player), OkHttp for the API (`POST /graphql`), and Stream's libwebrtc build for the stream. |
+| `core` | Plain Kotlin/JVM: the input wire protocol (`Protocol.kt`), controller IDs, input names, mappings, hotkeys and players (`Controllers.kt`, after SovEmu's `docs/CONTROLLERS.md`), the GraphQL operations (`src/main/graphql/operations.graphql`, generated into typed Kotlin by Apollo from a copy of the server's `schema.graphql`), and the game-list logic (`GameList.kt`). Its tests use the same byte vectors as `SovEmu.Protocol` (Rust) and `SovEmu.Web` (TypeScript). |
+| `app` | Navigation 3 over a back stack of routes, and Jetpack Compose UI after the web client's (sign-in; home with the featured hero and rows of games to continue, systems and new arrivals; a system's cover grid with sort, filters, A–Z jump and a game panel; the player), Apollo Kotlin over OkHttp for the API (`POST /graphql`), Coil for artwork, and Stream's libwebrtc build for the stream. |
 
 ## Building
 
@@ -19,8 +19,27 @@ Needs JDK 21 and the Android SDK (platform 37). Put the SDK path in `local.prope
 (`sdk.dir=…`), then:
 
 ```bash
-./gradlew :core:test :app:assembleDebug
-adb install app/build/outputs/apk/debug/app-debug.apk
+./gradlew :core:test :app:assembleDebug        # what CI runs
+```
+
+To use the app, install the release build: R8 makes Compose several times faster than a debug
+build, which matters on a TV. It is signed with the debug key so it sideloads over a debug
+install. A sideloaded app starts out interpreted; compile it with its bundled profiles once:
+
+```bash
+./gradlew :app:assembleRelease
+adb install -r app/build/outputs/apk/release/app-release.apk
+adb shell cmd package compile -f -m speed-profile media.sovereign.sovemu
+```
+
+### The API schema
+
+`core/src/main/graphql/schema.graphqls` is a copy of SovEmu's `SovEmu.Server/schema.graphql`
+(this repository builds on its own). When the server's schema changes, refresh it from the SovEmu
+checkout this is a submodule of, and the build tells you which operations no longer fit:
+
+```bash
+./gradlew :core:syncSchema :core:test
 ```
 
 ## Using it

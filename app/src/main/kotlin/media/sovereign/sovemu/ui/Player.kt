@@ -1,6 +1,24 @@
 package media.sovereign.sovemu.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.layout.height
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
+import kotlin.coroutines.cancellation.CancellationException
+import media.sovereign.sovemu.Sessions
+import media.sovereign.sovemu.attempt
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -35,10 +53,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import media.sovereign.sovemu.Controller
@@ -54,13 +78,32 @@ import org.webrtc.PeerConnection
 import org.webrtc.RendererCommon
 import org.webrtc.SurfaceViewRenderer
 
+/** Systems whose picture keeps its own shape rather than a TV's 4:3. */
+private val HANDHELDS = setOf("gb", "gbc", "gba", "gamegear")
+
+/** How a game starts: from its auto save, from scratch, or asking when there is an auto save. */
+enum class Start { Continue, New, Ask }
+
 /**
- * The player: starts the session, streams it, and overlays a touch controller. Back (or
- * Select+Start on a gamepad) opens the in-game menu: resume, save/load slot 1, controllers
- * (players and button mappings), quit. The user's controller mappings load as the game starts.
+ * The player: starts the session, streams it, and shows on-screen controls when the device has
+ * nothing else to play with ([touchControls], from [media.sovereign.sovemu.InputPresence]).
+ *
+ * Every way out goes through the in-game menu (resume, saves, controllers, quit): Back, the
+ * guide/home button, Select+Start, or the on-screen menu button. Leaving stops the session,
+ * even one still starting ([Sessions]); the worker writes its saves first.
  */
 @Composable
-fun PlayerScreen(api: SovEmuApi, system: SystemSummary, game: Game, controller: Controller, onExit: () -> Unit) {
+fun PlayerScreen(
+    api: SovEmuApi,
+    sessions: Sessions,
+    system: SystemSummary,
+    game: Game,
+    start: Start,
+    controller: Controller,
+    touchControls: Boolean,
+    onEnded: () -> Unit,
+    onExit: () -> Unit,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var info by remember { mutableStateOf<SessionInfo?>(null) }
@@ -68,10 +111,13 @@ fun PlayerScreen(api: SovEmuApi, system: SystemSummary, game: Game, controller: 
     var menuOpen by remember { mutableStateOf(false) }
     var stream by remember { mutableStateOf<Stream?>(null) }
     var toast by remember { mutableStateOf<String?>(null) }
-    var showTouch by remember { mutableStateOf(true) }
     var controllersOpen by remember { mutableStateOf(false) }
     val book = remember(system.id) { MappingBook(system.id) }
     var controls by remember { mutableStateOf(Controls()) }
+    /** Waiting for Continue or Start over (there is an auto save and the player was not asked yet). */
+    var choice by remember { mutableStateOf<CompletableDeferred<Start>?>(null) }
+    // Started at once, and owned by the app: leaving now still stops it once it exists.
+    val starting = remember(game.id) { sessions.start(game.id) }
 
     val renderer = remember {
         SurfaceViewRenderer(context).apply {
@@ -81,43 +127,57 @@ fun PlayerScreen(api: SovEmuApi, system: SystemSummary, game: Game, controller: 
         }
     }
 
-    fun quit() {
-        scope.launch {
-            stream?.close()
-            info?.let { runCatching { api.stopSession(it.id) } }
-            onExit()
-        }
-    }
-
     LaunchedEffect(game.id) {
-        // The mappings in force on this system; a controller without one (or every one, if this
-        // fails) uses the built-in defaults.
-        runCatching { book.refresh(api::controllerMappings) }
-            .onSuccess { controller.mixer.setMappings(book.forSystem) }
-            .onFailure { e -> toast = "Default controls: ${e.message}" }
-        // The system's labels and the diagrams, for the controllers screen; it lists RetroPad names without them.
-        runCatching { api.controls(system.id) }.onSuccess { (sys, layouts) -> controls = Controls(sys, layouts) }
+        // The mappings, labels and the question (if any) come while the session starts, rather
+        // than each adding a round trip before the game.
+        launch {
+            attempt { book.refresh(api::controllerMappings) }
+                .onSuccess { controller.mixer.setMappings(book.forSystem) }
+                .onFailure { e -> toast = "Default controls: ${e.message}" }
+        }
+        // The system's labels and the diagrams, for the controllers screen.
+        launch { attempt { api.controls(system.id) }.onSuccess { (sys, layouts) -> controls = Controls(sys, layouts) } }
+        val ice = async { attempt { api.iceServers() }.getOrDefault(emptyList()) }
         try {
-            val config = runCatching { api.config() }.getOrNull()
-            val session = api.startSession(game.id)
+            val how = if (start == Start.Ask) {
+                val saves = attempt { api.states(game.id) }.getOrDefault(emptyList())
+                if (saves.any { it.slot == 0 }) CompletableDeferred<Start>().also { choice = it }.await().also { choice = null } else Start.New
+            } else {
+                start
+            }
+            val session = starting.await()
+            if (how == Start.Continue) attempt { api.loadState(session.id, 0) }.onFailure { e -> toast = "Could not load: ${e.message}" }
             info = session
             status = ""
-            val s = Stream(context, api, session.id, config?.iceServers.orEmpty(), controller, renderer) { state ->
-                if (state == PeerConnection.PeerConnectionState.FAILED) status = "Connection failed"
+            // WebRTC's factory and peer connection are slow to build: not on the main thread.
+            // Built whatever happens, so it is closed whatever happens.
+            val s = withContext(NonCancellable + Dispatchers.Default) {
+                Stream(context, api, session.id, ice.await(), controller, renderer) { state ->
+                    if (state == PeerConnection.PeerConnectionState.FAILED) status = "Connection failed"
+                }
+            }
+            if (!isActive) {
+                s.close()
+                return@LaunchedEffect
             }
             stream = s
             s.connect()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             status = "Could not start: ${e.message}"
         }
     }
 
-    // Select+Start opens the menu; hide the touch controller once a gamepad is used.
+    // Select+Start (polled from the mixer), and the guide button or on-screen menu button.
     LaunchedEffect(Unit) {
         while (true) {
             if (!menuOpen && !controllersOpen && controller.menuCombo) menuOpen = true
             delay(50)
         }
+    }
+    LaunchedEffect(Unit) {
+        controller.menuRequests.collect { if (!controllersOpen) menuOpen = !menuOpen }
     }
     // With the menu open the game gets nothing, and controllers navigate the menu instead.
     LaunchedEffect(menuOpen, controllersOpen, stream) {
@@ -132,24 +192,29 @@ fun PlayerScreen(api: SovEmuApi, system: SystemSummary, game: Game, controller: 
         }
     }
 
+    val ended by rememberUpdatedState(onEnded)
     DisposableEffect(Unit) {
         onDispose {
             stream?.close()
             renderer.release()
+            sessions.stop(starting) { ended() }
         }
     }
 
-    BackHandler { menuOpen = !menuOpen }
+    // Before the game is up there is nothing to resume: Back leaves.
+    BackHandler { if (info == null) onExit() else menuOpen = !menuOpen }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        AndroidView({ renderer }, Modifier.fillMaxSize())
-        if (status.isNotEmpty()) {
-            Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                if (status.startsWith("Starting")) CircularProgressIndicator()
-                Text(status, color = Color.White, modifier = Modifier.padding(16.dp))
-            }
+        // The console's shape, centred, as on the web: 4:3 for a TV console, the screen's own for a
+        // handheld. (Given the whole screen, the renderer stretches the picture to fill it.)
+        val aspect = info?.let { if (system.id in HANDHELDS && it.height > 0) it.width.toFloat() / it.height else null } ?: (4f / 3f)
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            AndroidView({ renderer }, Modifier.aspectRatio(aspect))
         }
-        if (showTouch && !menuOpen && !controllersOpen) TouchController(controller, Modifier.fillMaxSize().safeDrawingPadding())
+        if (status.isNotEmpty()) Splash(game, system, status, choice)
+        if (touchControls && !menuOpen && !controllersOpen && status.isEmpty()) {
+            TouchController(controller, Modifier.fillMaxSize().safeDrawingPadding())
+        }
         toast?.let {
             Text(it, color = Color.White, modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp)
                 .clip(RoundedCornerShape(20.dp)).background(Color.Black.copy(alpha = 0.8f)).padding(horizontal = 16.dp, vertical = 8.dp))
@@ -162,48 +227,134 @@ fun PlayerScreen(api: SovEmuApi, system: SystemSummary, game: Game, controller: 
                 }
             }
         } else if (menuOpen) {
-            val first = remember { FocusRequester() }
-            LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.7f)), contentAlignment = Alignment.Center) {
-                Column(Modifier.width(320.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xFF151922)).padding(12.dp)) {
-                    Text(game.title, color = Color(0xFF8B93A7), modifier = Modifier.padding(8.dp))
-                    MenuItem("Resume", Modifier.focusRequester(first)) { menuOpen = false }
-                    MenuItem("Save state (slot 1)") {
-                        scope.launch {
-                            toast = info?.let { runCatching { api.saveState(it.id, 1) }.fold({ "Saved" }, { e -> "Save failed: ${e.message}" }) }
-                            menuOpen = false
-                        }
-                    }
-                    MenuItem("Load state (slot 1)") {
-                        scope.launch {
-                            toast = info?.let { runCatching { api.loadState(it.id, 1) }.fold({ "Loaded" }, { e -> "Load failed: ${e.message}" }) }
-                            menuOpen = false
-                        }
-                    }
-                    MenuItem("Continue from auto save") {
-                        scope.launch {
-                            toast = info?.let { runCatching { api.loadState(it.id, 0) }.fold({ "Continued" }, { e -> "No auto save: ${e.message}" }) }
-                            menuOpen = false
-                        }
-                    }
-                    MenuItem("Controllers") {
-                        menuOpen = false
-                        controllersOpen = true
-                    }
-                    MenuItem(if (showTouch) "Hide touch controls" else "Show touch controls") {
-                        showTouch = !showTouch
+            InGameMenu(
+                game, system,
+                onResume = { menuOpen = false },
+                onSave = {
+                    scope.launch {
+                        toast = info?.let { s -> attempt { api.saveState(s.id, 1) }.fold({ "Saved to slot 1" }, { e -> "Save failed: ${e.message}" }) }
                         menuOpen = false
                     }
-                    MenuItem("Quit game") { quit() }
+                },
+                onLoad = {
+                    scope.launch {
+                        toast = info?.let { s -> attempt { api.loadState(s.id, 1) }.fold({ "Loaded slot 1" }, { e -> "Load failed: ${e.message}" }) }
+                        menuOpen = false
+                    }
+                },
+                onLoadAuto = {
+                    scope.launch {
+                        toast = info?.let { s -> attempt { api.loadState(s.id, 0) }.fold({ "Loaded the auto save" }, { e -> "No auto save: ${e.message}" }) }
+                        menuOpen = false
+                    }
+                },
+                onControllers = {
+                    menuOpen = false
+                    controllersOpen = true
+                },
+                onQuit = onExit,
+            )
+        }
+    }
+}
+
+/**
+ * The in-game menu, as the web client's: a panel over the paused game. The focus starts on
+ * Resume and cannot leave the panel; Back (B on a controller) resumes.
+ */
+@Composable
+private fun InGameMenu(
+    game: Game,
+    system: SystemSummary,
+    onResume: () -> Unit,
+    onSave: () -> Unit,
+    onLoad: () -> Unit,
+    onLoadAuto: () -> Unit,
+    onControllers: () -> Unit,
+    onQuit: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val first = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        runCatching { first.requestFocus() }
+    }
+    Box(modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.7f)), contentAlignment = Alignment.Center) {
+        Column(
+            Modifier.width(360.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(Sov.Panel)
+                .border(1.dp, Sov.Edge, RoundedCornerShape(16.dp))
+                .focusProperties { onExit = { cancelFocusChange() } }
+                .focusGroup()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SystemBadge(system.short, system.colour())
+                Text(game.title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            MenuItem("Resume", Lucide.Play, Modifier.focusRequester(first), onResume)
+            MenuItem("Save to slot 1", Lucide.Check, onClick = onSave)
+            MenuItem("Load slot 1", Lucide.History, onClick = onLoad)
+            MenuItem("Load the auto save", Lucide.RotateCcw, onClick = onLoadAuto)
+            MenuItem("Controllers", Lucide.Gamepad2, onClick = onControllers)
+            Box(Modifier.padding(vertical = 4.dp).fillMaxWidth().height(1.dp).background(Sov.Edge))
+            MenuItem("Quit game", Lucide.LogOut, onClick = onQuit)
+        }
+    }
+}
+
+/** While the game loads: its artwork, title and what is happening, and Continue / Start over when asked. */
+@Composable
+private fun Splash(game: Game, system: SystemSummary, status: String, choice: CompletableDeferred<Start>?) {
+    val colour = system.colour()
+    val brush = remember(colour) { tile(colour, 0.25f) }
+    Box(Modifier.fillMaxSize().background(Sov.Surface)) {
+        Box(Modifier.fillMaxSize().background(brush).graphicsLayer { alpha = 0.35f })
+        Art(game.image ?: game.thumb, Modifier.fillMaxSize(), alpha = 0.25f, sizePx = if (game.image == null) 32 else null)
+        Column(
+            Modifier.align(Alignment.Center).padding(32.dp).widthIn(max = 560.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            SystemBadge(system.short, colour)
+            Text(game.title, color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Black, textAlign = TextAlign.Center)
+            if (choice != null) {
+                val first = remember { FocusRequester() }
+                LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SovButton("Continue", { choice.complete(Start.Continue) }, Modifier.focusRequester(first), icon = Lucide.Play, filledIcon = true)
+                    SovButton("Start over", { choice.complete(Start.New) }, variant = Variant.Outline, icon = Lucide.RotateCcw)
                 }
+            } else {
+                if (status.startsWith("Starting")) CircularProgressIndicator(color = Sov.Accent, strokeWidth = 3.dp, modifier = Modifier.size(32.dp))
+                Text(status, color = Sov.Slate300, fontSize = 14.sp, textAlign = TextAlign.Center)
             }
         }
     }
 }
 
+/** A row of the in-game menu: focusable, with a ring and fill when focused. */
 @Composable
-private fun MenuItem(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) =
-    FocusButton(label, modifier.fillMaxWidth(), onClick = onClick)
+private fun MenuItem(label: String, icon: ImageVector, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val source = remember { MutableInteractionSource() }
+    val focused by source.collectIsFocusedAsState()
+    Row(
+        modifier
+            .fillMaxWidth()
+            .height(44.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (focused) Sov.Accent.copy(alpha = 0.45f) else Color.Transparent)
+            .clickable(interactionSource = source, indication = null, onClick = onClick)
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        LucideIcon(icon, tint = if (focused) Color.White else Sov.Slate400, size = 18.dp)
+        Text(label, color = Color.White, fontSize = 16.sp)
+    }
+}
 
 /** An on-screen pad: D-pad bottom left, face buttons bottom right, Select/Start centre. */
 @Composable
@@ -222,6 +373,12 @@ private fun TouchController(controller: Controller, modifier: Modifier) {
             Pad("Select", Button.SELECT, controller, width = 72.dp, height = 32.dp)
             Pad("Start", Button.START, controller, width = 72.dp, height = 32.dp)
         }
+        // The way out on a phone: opens the in-game menu (as Back does).
+        Box(
+            Modifier.align(Alignment.TopCenter).size(44.dp).clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.18f)).clickable { controller.requestMenu() },
+            contentAlignment = Alignment.Center,
+        ) { LucideIcon(Lucide.Menu, tint = Color.White.copy(alpha = 0.9f)) }
         Column(Modifier.align(Alignment.BottomEnd), horizontalAlignment = Alignment.CenterHorizontally) {
             Pad("X", Button.X, controller, round = true)
             Row {

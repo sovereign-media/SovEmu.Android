@@ -1,0 +1,953 @@
+"""
+Box art being downloaded after a lookup, for the games that have no local thumb.
+"""
+type ArtworkStatus {
+	running: Boolean!
+	"""
+	Downloads queued since the job started.
+	"""
+	total: Int!
+	done: Int!
+	downloaded: Int!
+	failed: Int!
+}
+
+"""
+One input driving one button.
+"""
+type Binding {
+	"""
+	A controller input (`south`, `l1`, `up` …) or a keyboard's `KeyboardEvent.code`.
+	"""
+	input: String!
+	button: PadButton!
+}
+
+"""
+One input driving one button.
+"""
+input BindingInput {
+	"""
+	A controller input (`south`, `l1`, `up` …) or a keyboard's `KeyboardEvent.code`.
+	"""
+	input: String!
+	button: PadButton!
+}
+
+type BiosFile {
+	"""
+	Its name in the system's folder.
+	"""
+	name: String!
+	label: String!
+	state: BiosFileState!
+	"""
+	Where it was found, relative to the BIOS folder (`roms/<folder>/…` beside the games).
+	"""
+	foundAt: String
+	"""
+	Of the file found.
+	"""
+	md5: String
+	"""
+	Bytes expected.
+	"""
+	size: Float!
+}
+
+"""
+One BIOS file.
+"""
+enum BiosFileState {
+	"""
+	Where the core looks, and a known good dump.
+	"""
+	OK
+	"""
+	Where the core looks, but not a dump the list knows: a bad dump, or a revision it lacks.
+	"""
+	UNVERIFIED
+	"""
+	A known dump, or the right name in the wrong case, but not where the core looks.
+	"""
+	MISPLACED
+	MISSING
+}
+
+"""
+A BIOS the system uses: one file, or any one of several.
+"""
+type BiosGroup {
+	label: String!
+	importance: BiosImportance!
+	"""
+	What it does, and what happens without it.
+	"""
+	help: String!
+	"""
+	Any one of `files` is enough.
+	"""
+	anyOne: Boolean!
+	satisfied: Boolean!
+	files: [BiosFile!]!
+}
+
+"""
+How much a system depends on a BIOS file.
+"""
+enum BiosImportance {
+	"""
+	Games will not start without it.
+	"""
+	REQUIRED
+	"""
+	The core has a built-in replacement that plays most games.
+	"""
+	RECOMMENDED
+	"""
+	A boot logo, an add-on.
+	"""
+	OPTIONAL
+}
+
+"""
+A system's BIOS files as a whole.
+"""
+enum BiosState {
+	"""
+	Everything required and recommended is there and verified.
+	"""
+	READY
+	"""
+	Playable, but a file is unverified or misplaced.
+	"""
+	WARNING
+	"""
+	Playable, without a recommended file.
+	"""
+	INCOMPLETE
+	"""
+	A required file is missing: games will not start.
+	"""
+	MISSING
+}
+
+"""
+A cheat code for a game, this user's.
+"""
+type Cheat {
+	id: Int!
+	description: String!
+	code: String!
+	enabled: Boolean!
+}
+
+type ClientConfig {
+	"""
+	`RTCIceServer` objects (STUN/TURN) for WebRTC, from `SOVEMU_ICE_SERVERS`.
+	"""
+	iceServers: JSON!
+}
+
+"""
+The default controller mappings (admins).
+"""
+type ControllerDefaults {
+	"""
+	From the environment (locked) and from the admin page.
+	"""
+	mappings: [ControllerMapping!]!
+	"""
+	The admin page's defaults as `SOVEMU_CONTROLLERS__<n>__…` lines.
+	"""
+	environment: [String!]!
+}
+
+"""
+A mapping for one controller model, on one system or on every system.
+"""
+type ControllerMapping {
+	"""
+	`keyboard`, a known model (`xbox`, `dualsense` …) or `pad:<vendor>:<product>`.
+	"""
+	controller: String!
+	"""
+	The system it is for, or null for every system.
+	"""
+	system: String
+	"""
+	What the controller called itself when the mapping was saved, for lists.
+	"""
+	name: String!
+	bindings: [Binding!]!
+	source: MappingSource!
+}
+
+"""
+An emulator setting (a libretro core option).
+"""
+type EmulatorSetting {
+	key: String!
+	description: String!
+	"""
+	What it does, in the emulator's words (empty where it does not say).
+	"""
+	info: String!
+	"""
+	The key of the emulator's category for it.
+	"""
+	category: String
+	choices: [String!]!
+	"""
+	A display label per choice.
+	"""
+	labels: [String!]!
+	"""
+	The emulator's default.
+	"""
+	default: String!
+	value: String!
+	source: SettingSource!
+}
+
+"""
+A system's emulator settings.
+"""
+type EmulatorSettings {
+	system: String!
+	"""
+	The emulator's name and version.
+	"""
+	core: String!
+	settings: [EmulatorSetting!]!
+	categories: [SettingCategory!]!
+	"""
+	The emulator lists its settings only with a game loaded, and none has run yet.
+	"""
+	needsGame: Boolean!
+	"""
+	The admin's changes as `SOVEMU_SYSTEMS__…` lines, to move into configuration.
+	"""
+	environment: [String!]!
+}
+
+type Game {
+	id: Int!
+	"""
+	The system's id.
+	"""
+	system: String!
+	title: String!
+	"""
+	The title from the file name, when game information supplied a better `title`.
+	"""
+	fileTitle: String
+	"""
+	No-Intro tags from the file name: "USA", "Rev 1" …
+	"""
+	tags: [String!]!
+	"""
+	The file, relative to the library.
+	"""
+	path: String!
+	"""
+	Bytes.
+	"""
+	size: Float!
+	"""
+	When this user last played it (UTC, `YYYY-MM-DD HH:MM:SS`).
+	"""
+	lastPlayedAt: String
+	playCount: Int!
+	"""
+	The artwork and video it has.
+	"""
+	media: [MediaKind!]!
+	"""
+	Where to load a kind of artwork from, if the game has it.
+	"""
+	mediaUrl(kind: MediaKind!): String
+	description: String
+	"""
+	`YYYY-MM-DD`, `YYYY-MM` or `YYYY`.
+	"""
+	releaseDate: String
+	developer: String
+	publisher: String
+	genre: String
+	"""
+	As the game information says it: "1", "1-2", "1 to 4" …
+	"""
+	players: String
+	"""
+	0 to 1.
+	"""
+	rating: Float
+	"""
+	This user's save states (slot 0 is the auto save, written when a session ends).
+	"""
+	saves: [SaveSlot!]!
+	"""
+	The auto save, if there is one: where this user left off.
+	"""
+	autoSave: SaveSlot
+	"""
+	This user's cheats for it.
+	"""
+	cheats: [Cheat!]!
+}
+
+type GameSession {
+	id: ID!
+	gameId: Int!
+	system: String!
+	title: String!
+	"""
+	The core's name.
+	"""
+	core: String!
+	width: Int!
+	height: Int!
+	fps: Float!
+	"""
+	A client is streaming it.
+	"""
+	connected: Boolean!
+}
+
+"""
+A device the startup GPU probe tried.
+"""
+type GpuDevice {
+	"""
+	The render node; none for the software renderer.
+	"""
+	node: String
+	driver: String
+	"""
+	`hardware`, `virtual` (a hypervisor's adapter) or `software`.
+	"""
+	kind: String!
+	vendor: String
+	renderer: String
+	version: String
+	works: Boolean!
+	error: String
+}
+
+"""
+Where 3D systems render, decided at startup.
+"""
+type GpuStatus {
+	"""
+	`SOVEMU_GPU` as configured.
+	"""
+	setting: String!
+	mode: Rendering!
+	"""
+	What 3D games draw with.
+	"""
+	renderer: String
+	devices: [GpuDevice!]!
+	"""
+	Why the setting could not be honoured, or why nothing could be probed.
+	"""
+	note: String
+}
+
+"""
+The home screen's feed.
+"""
+type Home {
+	"""
+	The hero: games with artwork and a description first, a new pick each day.
+	"""
+	featured: [Game!]!
+	"""
+	This user's games, most recently played first.
+	"""
+	recent: [Game!]!
+	"""
+	The library's newest games.
+	"""
+	added: [Game!]!
+}
+
+"""
+A scalar that can represent any JSON value.
+"""
+scalar JSON
+
+"""
+How the library is read.
+"""
+enum LibraryMode {
+	"""
+	Straight from the library (local disk or a share on the LAN).
+	"""
+	DIRECT
+	"""
+	From the library, keeping local copies of what is used.
+	"""
+	CACHE
+	"""
+	From a full local copy kept in sync.
+	"""
+	MIRROR
+}
+
+type LibraryStatus {
+	mode: LibraryMode!
+	games: Int!
+	"""
+	`CACHE` mode: bytes on local disk.
+	"""
+	cacheBytes: Float
+	"""
+	`MIRROR` mode: the current or last sync.
+	"""
+	mirror: MirrorSync
+}
+
+"""
+Where a mapping comes from.
+"""
+enum MappingSource {
+	"""
+	The user's own.
+	"""
+	USER
+	"""
+	An admin's default, from the admin page.
+	"""
+	ADMIN
+	"""
+	A default from `SOVEMU_CONTROLLERS__<n>__…`, which an admin cannot change (locked).
+	"""
+	ENVIRONMENT
+}
+
+"""
+Artwork and video kinds a game can have.
+"""
+enum MediaKind {
+	"""
+	A screenshot or composite image.
+	"""
+	IMAGE
+	"""
+	Box art.
+	"""
+	THUMB
+	"""
+	The title's logo.
+	"""
+	MARQUEE
+	"""
+	A short video snap.
+	"""
+	VIDEO
+}
+
+"""
+A game-information lookup's progress.
+"""
+type MetadataStatus {
+	running: Boolean!
+	total: Int!
+	done: Int!
+	found: Int!
+	notFound: Int!
+	failed: Int!
+	"""
+	The configured sources.
+	"""
+	sources: [String!]!
+	"""
+	Why a source stopped early (bad credentials, quota), if one did.
+	"""
+	notes: [String!]!
+	"""
+	The box art downloads that follow a lookup, in the background.
+	"""
+	artwork: ArtworkStatus!
+}
+
+"""
+A mirror sync's progress.
+"""
+type MirrorSync {
+	running: Boolean!
+	filesTotal: Int!
+	filesDone: Int!
+	"""
+	Bytes.
+	"""
+	bytesTotal: Float!
+	"""
+	Bytes.
+	"""
+	bytesDone: Float!
+	removed: Int!
+	failed: Int!
+	"""
+	Unix seconds when the last sync finished.
+	"""
+	finishedAt: Float
+	error: String
+}
+
+type Mutation {
+	"""
+	First run: creates the admin account and signs it in (sets the cookie). Only while no
+	account exists.
+	"""
+	setup(username: String!, password: String!): User!
+	"""
+	Signs in (sets the cookie). Repeated failures for a username are slowed down.
+	"""
+	login(username: String!, password: String!): User!
+	"""
+	Signs out (clears the cookie).
+	"""
+	logout: Boolean!
+	"""
+	Admins: adds an account.
+	"""
+	addUser(input: NewUserInput!): User!
+	"""
+	Admins: rescans the library.
+	"""
+	scanLibrary: ScanReport!
+	"""
+	Admins: starts a mirror sync in the background (`MIRROR` mode only).
+	"""
+	syncLibrary: Boolean!
+	"""
+	Admins: starts looking up game information in the background: games without it, or
+	with `force` every game; one system, or all.
+	"""
+	fetchMetadata(system: ID, force: Boolean! = false): MetadataStatus!
+	"""
+	Admins: changes a system's emulator settings. Applies to the next game started.
+	"""
+	changeEmulatorSettings(system: ID!, changes: [SettingChange!]!): EmulatorSettings!
+	"""
+	Starts a game (ending this user's running one first) and returns once it is ready to
+	stream. Give a `startId` (8–64 letters, digits, `-` or `_`) to follow its progress with
+	`startProgress` meanwhile.
+	"""
+	startSession(gameId: Int!, startId: String): GameSession!
+	"""
+	Ends a session; the worker writes the battery save and the auto save first.
+	"""
+	stopSession(id: ID!): Boolean!
+	"""
+	Answers a client's WebRTC offer (SDP) for a session with the worker's answer (SDP).
+	"""
+	sessionOffer(id: ID!, sdp: String!): String!
+	"""
+	Presses the console's reset button.
+	"""
+	resetSession(id: ID!): Boolean!
+	"""
+	Saves the session's game to a slot (1–9), with a screenshot.
+	"""
+	saveState(sessionId: ID!, slot: Int!): Boolean!
+	"""
+	Loads a slot (0 is the auto save) into the session's game.
+	"""
+	loadState(sessionId: ID!, slot: Int!): Boolean!
+	"""
+	Deletes a save state (and its screenshot).
+	"""
+	deleteSave(gameId: Int!, slot: Int!): Boolean!
+	"""
+	Adds a cheat (on) for a game; returns the game's cheats. A running session gets it.
+	"""
+	addCheat(gameId: Int!, code: String!, description: String! = ""): [Cheat!]!
+	"""
+	Turns a cheat on or off; returns the game's cheats.
+	"""
+	setCheatEnabled(gameId: Int!, cheatId: Int!, enabled: Boolean!): [Cheat!]!
+	deleteCheat(gameId: Int!, cheatId: Int!): Boolean!
+	"""
+	Saves this user's mapping for a controller model on a system, or on every system without
+	one, replacing its defaults wherever they play.
+	"""
+	saveControllerMapping(controller: String!, system: ID, name: String! = "", bindings: [BindingInput!]!): ControllerMapping!
+	"""
+	Admins: sets the default mapping for a controller model on a system (or every system),
+	for every user without their own. A model whose default is in the environment cannot be changed here (CONFLICT).
+	"""
+	saveControllerDefault(controller: String!, system: ID, name: String! = "", bindings: [BindingInput!]!): ControllerMapping!
+	"""
+	Admins: forgets the admin's default for a controller model. Returns whether it had one.
+	"""
+	resetControllerDefault(controller: String!, system: ID): Boolean!
+	"""
+	Puts a controller model back on the defaults (an admin's, else the built-in ones).
+	Returns whether it had a mapping of the user's own.
+	"""
+	resetControllerMapping(controller: String!, system: ID): Boolean!
+}
+
+input NewUserInput {
+	username: String!
+	password: String!
+	isAdmin: Boolean! = false
+}
+
+"""
+A RetroPad button (libretro's RETRO_DEVICE_ID_JOYPAD_*).
+"""
+enum PadButton {
+	B
+	Y
+	SELECT
+	START
+	UP
+	DOWN
+	LEFT
+	RIGHT
+	A
+	X
+	L
+	R
+	L2
+	R2
+	L3
+	R3
+}
+
+"""
+A button on a diagram.
+"""
+type PadKey {
+	"""
+	A RetroPad button on a system's pad, an input name (`south` …) on a controller's.
+	"""
+	key: String!
+	"""
+	What the pad prints on it.
+	"""
+	label: String!
+	x: Float!
+	y: Float!
+	w: Float!
+	h: Float!
+	r: Float!
+}
+
+"""
+A pad, drawn from shapes on a `width`×`height` canvas.
+"""
+type PadLayout {
+	"""
+	A system id, or a controller family (`xbox`, `playstation`, `nintendo`, `generic`).
+	"""
+	id: String!
+	name: String!
+	width: Float!
+	height: Float!
+	body: [Shape!]!
+	keys: [PadKey!]!
+}
+
+type Query {
+	"""
+	Who is signed in, and whether first-run setup is needed. Works signed out.
+	"""
+	viewer: Viewer!
+	clientConfig: ClientConfig!
+	"""
+	The home screen's feed.
+	"""
+	home: Home!
+	"""
+	Every system SovEmu offers (hidden ones left out), in SovEmu's order.
+	"""
+	systems: [System!]!
+	system(id: ID!): System
+	game(id: Int!): Game!
+	"""
+	This user's running game, if any.
+	"""
+	currentSession: GameSession
+	"""
+	How far the start `startId` (given to `startSession`) has got. Poll it while
+	`startSession` waits.
+	"""
+	startProgress(startId: String!): StartStatus!
+	libraryStatus: LibraryStatus!
+	metadataStatus: MetadataStatus!
+	"""
+	Admins: the accounts.
+	"""
+	users: [User!]!
+	"""
+	Admins: where 3D systems render, and every device the startup probe tried.
+	"""
+	gpu: GpuStatus!
+	"""
+	Admins: a system's emulator settings.
+	"""
+	emulatorSettings(system: ID!): EmulatorSettings!
+	"""
+	Diagrams of the player's controllers, by family (`xbox`, `playstation`, `nintendo`,
+	`generic`), keyed by input (`south`, `l1` …).
+	"""
+	controllerLayouts: [PadLayout!]!
+	"""
+	Admins: the default controller mappings every user starts from, and the admin's as
+	environment lines.
+	"""
+	controllerDefaults: ControllerDefaults!
+	"""
+	The controller mappings in force for this user on a system (or, with none, on every
+	system), one per controller model (docs/CONTROLLERS.md): their own for the system, their
+	own for every system, the default for the system, the default for every system. A model
+	missing here uses the clients' built-in defaults.
+	"""
+	controllerMappings(system: ID): [ControllerMapping!]!
+}
+
+"""
+Where a 3D system renders on this server.
+"""
+enum Rendering {
+	GPU
+	SOFTWARE
+	OFF
+}
+
+type SaveSlot {
+	"""
+	0 is the auto save; 1–9 are the player's.
+	"""
+	slot: Int!
+	"""
+	Unix seconds.
+	"""
+	savedAt: Float!
+	"""
+	The screen when it was saved, if there is one (the URL changes with each save).
+	"""
+	screenshotUrl: String
+}
+
+type ScanReport {
+	found: Int!
+	added: Int!
+	removed: Int!
+}
+
+"""
+A group of settings the emulator declares ("Video", "Audio" …).
+"""
+type SettingCategory {
+	key: String!
+	description: String!
+	info: String!
+}
+
+"""
+A change to one emulator setting.
+"""
+input SettingChange {
+	key: String!
+	"""
+	The new value; null goes back to the default.
+	"""
+	value: String
+}
+
+"""
+Where an emulator setting's value comes from.
+"""
+enum SettingSource {
+	"""
+	The emulator's own default.
+	"""
+	CORE
+	"""
+	SovEmu's default for the system.
+	"""
+	SOVEMU
+	"""
+	Changed by an admin.
+	"""
+	ADMIN
+	"""
+	Set by `SOVEMU_SYSTEMS__<id>__OPTIONS__<name>`, which always wins (locked).
+	"""
+	ENVIRONMENT
+}
+
+"""
+A rounded rectangle; a circle when `r` is half its width and height.
+"""
+type Shape {
+	x: Float!
+	y: Float!
+	w: Float!
+	h: Float!
+	r: Float!
+	"""
+	0 the body, 1 a recess drawn darker (a screen, a stick's well).
+	"""
+	tone: Int!
+}
+
+"""
+What a game start is doing.
+"""
+enum StartPhase {
+	"""
+	Saving and stopping the player's previous session.
+	"""
+	STOPPING
+	"""
+	Starting the emulator's process.
+	"""
+	LAUNCHING
+	"""
+	Opening the emulator.
+	"""
+	CORE
+	"""
+	Reading the game.
+	"""
+	CONTENT
+	READY
+	FAILED
+}
+
+"""
+How far a game start has got, for a loading bar.
+"""
+type StartStatus {
+	phase: StartPhase!
+	"""
+	Bytes read so far in this phase, where known.
+	"""
+	read: Float
+	"""
+	Bytes this phase will read, when known.
+	"""
+	total: Float
+	"""
+	Since the start began.
+	"""
+	elapsedMs: Float!
+	"""
+	Since this phase began.
+	"""
+	phaseMs: Float!
+	error: String
+}
+
+type System {
+	id: ID!
+	"""
+	What the system calls its buttons, and a diagram of its pad (docs/CONTROLLERS.md).
+	"""
+	controls: SystemControls!
+	name: String!
+	"""
+	A short label for tight spaces ("SNES").
+	"""
+	short: String!
+	manufacturer: String!
+	year: Int!
+	"""
+	The UI accent colour (CSS).
+	"""
+	color: String!
+	gameCount: Int!
+	"""
+	A core that plays it is installed (and, for a 3D system, there is a renderer).
+	"""
+	playable: Boolean!
+	"""
+	A 3D system: its cores render with OpenGL and read analog sticks.
+	"""
+	needsGpu: Boolean!
+	"""
+	For a 3D system, where it renders here.
+	"""
+	rendering: Rendering
+	"""
+	A BIOS file it cannot start games without is missing. Cheap: no checksums (see `bios`).
+	"""
+	biosMissing: Boolean!
+	"""
+	Its BIOS files, checked by name and MD5; null for a system that uses none.
+	"""
+	bios: SystemBios
+	"""
+	Its games, by title.
+	"""
+	games: [Game!]!
+}
+
+type SystemBios {
+	state: BiosState!
+	"""
+	The system's folder, relative to the server's BIOS folder (`SOVEMU_BIOS_DIR`).
+	"""
+	folder: String!
+	groups: [BiosGroup!]!
+}
+
+"""
+One of a system's buttons: the RetroPad button that drives it and what the console calls it.
+"""
+type SystemButton {
+	button: PadButton!
+	label: String!
+}
+
+"""
+A system's buttons and its pad's diagram.
+"""
+type SystemControls {
+	"""
+	The buttons the system's pad has, in the order to list them.
+	"""
+	buttons: [SystemButton!]!
+	layout: PadLayout!
+}
+
+"""
+An account.
+"""
+type User {
+	id: Int!
+	username: String!
+	isAdmin: Boolean!
+}
+
+type Viewer {
+	"""
+	No account exists yet: the client should offer first-run setup.
+	"""
+	setupRequired: Boolean!
+	"""
+	The signed-in user, if any.
+	"""
+	user: User
+}
+
+"""
+Directs the executor to include this field or fragment only when the `if` argument is true.
+"""
+directive @include(if: Boolean!) on FIELD | FRAGMENT_SPREAD | INLINE_FRAGMENT
+"""
+Directs the executor to skip this field or fragment when the `if` argument is true.
+"""
+directive @skip(if: Boolean!) on FIELD | FRAGMENT_SPREAD | INLINE_FRAGMENT
+schema {
+	query: Query
+	mutation: Mutation
+}

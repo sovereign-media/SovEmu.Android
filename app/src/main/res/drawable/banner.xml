@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Android TV home screen's banner (320×180dp): the launcher icon's mark on the accent. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+    <path android:fillColor="#4169E1" android:pathData="M0,0h320v180h-320z" />
+    <!-- The favicon's mark (x 8–27, y 11–20 in its 32-unit grid) ×6, centred. -->
+    <group android:translateX="55" android:translateY="-3" android:scaleX="6" android:scaleY="6">
+        <path android:fillColor="#FFFFFF" android:pathData="M8,14h4v-3h3v3h4v3h-4v3h-3v-3H8z" />
+        <path android:fillColor="#FFFFFF" android:pathData="M20,14a2,2 0 1,0 4,0a2,2 0 1,0 -4,0z" />
+        <path android:fillColor="#FFFFFF" android:pathData="M23,18a2,2 0 1,0 4,0a2,2 0 1,0 -4,0z" />
+    </group>
+</vector>
