@@ -69,3 +69,12 @@ checkout this is a submodule of, and the build tells you which operations no lon
 - **Fast-forward:** hold Select+R.
 - **Rewind:** hold Select+L.
 - **Touch controller:** shown by default; hide it from the menu.
+
+
+**Menus:**
+- **Music:** every MP3 in `app/src/main/assets/music/` plays in the menus, shuffled; it stops in a
+  game and in the screensaver. Switch it off in the account menu.
+- **Screensaver:** after 5 minutes without input (3, 5, 10 or off, in the account menu), random
+  games' video snaps play with their name, system, release date and players along the bottom.
+  Any button ends it. The app keeps the screen on while it is open.
+- **Scan lines:** a CRT look over the menus (account menu).

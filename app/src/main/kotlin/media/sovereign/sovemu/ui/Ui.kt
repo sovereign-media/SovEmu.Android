@@ -165,12 +165,11 @@ fun FocusCard(
     val source = remember { MutableInteractionSource() }
     val focused by source.collectIsFocusedAsState()
     val scale = animateFloatAsState(if (focused) 1.05f else 1f, tween(150), label = "focus")
-    Box(
-        modifier
-            .focusRing(focused, { scale.value }, shape)
-            .clip(shape)
-            .clickable(interactionSource = source, indication = null, onClick = onClick),
-    ) { content(focused) }
+    // The focusable node keeps its real size; only what it draws is scaled. (Scaled, its bounds
+    // would grow as it takes the focus, and the list would scroll to fit them and back: a bounce.)
+    Box(modifier.clickable(interactionSource = source, indication = null, onClick = onClick)) {
+        Box(Modifier.matchParentSize().focusRing(focused, { scale.value }, shape).clip(shape)) { content(focused) }
+    }
 }
 
 /** Artwork from the server (relative `/media/…` URL), filling its box; nothing while there is none. */

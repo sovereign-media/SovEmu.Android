@@ -82,4 +82,18 @@ class GameListTest {
         assertEquals("1.1 GB", formatSize(1_137_133_112.0))
         assertEquals(1762250400L, GameIndex.playedAt("2025-11-04 10:00:00"))
     }
+
+    @Test
+    fun releaseDatesAndPlayersReadNaturally() {
+        assertEquals("March 11, 1995", formatReleaseDate("1995-03-11"))
+        assertEquals("March 1995", formatReleaseDate("1995-03"))
+        assertEquals("1995", formatReleaseDate("1995"))
+        assertNull(formatReleaseDate(null))
+        assertNull(formatReleaseDate("unknown"))
+        assertEquals("1 player", formatPlayers("1"))
+        assertEquals("1-2 players", formatPlayers("1 - 2"))
+        assertEquals("4 players", formatPlayers("4"))
+        assertEquals("Up to 4 players", formatPlayers("1 to 4"))
+        assertNull(formatPlayers(null))
+    }
 }

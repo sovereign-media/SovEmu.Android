@@ -159,6 +159,31 @@ fun formatAgo(epochSeconds: Long, now: Long): String {
     }
 }
 
+private val MONTHS = listOf("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
+
+/** A release date as people say it: "March 11, 1995", "March 1995" or "1995" (from `YYYY[-MM[-DD]]`). */
+fun formatReleaseDate(date: String?): String? {
+    val parts = date?.split('-')?.takeIf { it.isNotEmpty() && it[0].length == 4 } ?: return null
+    val month = parts.getOrNull(1)?.toIntOrNull()?.takeIf { it in 1..12 }?.let { MONTHS[it - 1] }
+    val day = parts.getOrNull(2)?.toIntOrNull()?.takeIf { it in 1..31 }
+    return when {
+        month != null && day != null -> "$month $day, ${parts[0]}"
+        month != null -> "$month ${parts[0]}"
+        else -> parts[0]
+    }
+}
+
+/** "1 player", "1-2 players", "Up to 4 players" (from the metadata's "1", "1-2", "1 to 4"…); null when unknown. */
+fun formatPlayers(players: String?): String? {
+    val most = maxPlayers(players) ?: return null
+    return when {
+        most == 1 -> "1 player"
+        players!!.trim().matches(Regex("\\d+\\s*-\\s*\\d+")) -> "${players.replace(" ", "")} players"
+        players.trim() == most.toString() -> "$most players"
+        else -> "Up to $most players"
+    }
+}
+
 /** "1.2 GB", "820 KB". */
 fun formatSize(bytes: Double): String {
     val units = listOf("B", "KB", "MB", "GB", "TB")

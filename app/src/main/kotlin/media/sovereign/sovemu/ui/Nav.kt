@@ -64,6 +64,12 @@ class Nav(
     /** Whether the CRT scan lines are on, and the switch. */
     val scanlines: () -> Boolean,
     val toggleScanlines: () -> Unit,
+    /** Whether the menus' background music is on, and the switch. */
+    val music: () -> Boolean,
+    val toggleMusic: () -> Unit,
+    /** Minutes without input before the screensaver (0: never), and the switch through the choices. */
+    val screensaver: () -> Int,
+    val nextScreensaver: () -> Unit,
     val signOut: () -> Unit,
 )
 
@@ -248,6 +254,16 @@ private fun AccountMenu(user: User, nav: Nav, anchor: @Composable (show: () -> U
     Box {
         anchor { expanded = true }
         Menu(expanded, { expanded = false }, "Signed in as ${user.username}") {
+            MenuRow(
+                if (nav.music()) "Music: on" else "Music: off",
+                onClick = nav.toggleMusic,
+                leading = { LucideIcon(Lucide.Music, tint = Sov.Slate300, size = 16.dp) },
+            )
+            MenuRow(
+                nav.screensaver().let { if (it == 0) "Screensaver: off" else "Screensaver: after $it min" },
+                onClick = nav.nextScreensaver,
+                leading = { LucideIcon(Lucide.Play, tint = Sov.Slate300, size = 16.dp) },
+            )
             MenuRow(
                 if (nav.scanlines()) "Scan lines: on" else "Scan lines: off",
                 onClick = nav.toggleScanlines,

@@ -12,6 +12,7 @@ webrtc = "1.3.10"
 coil = "3.6.3"
 apollo = "5.2.0"
 navigation3 = "1.2.2"
+media3 = "1.11.1"
 junit = "4.13.2"
 
 [libraries]
@@ -31,6 +32,8 @@ apollo-api = { module = "com.apollographql.apollo:apollo-api", version.ref = "ap
 apollo-runtime = { module = "com.apollographql.apollo:apollo-runtime", version.ref = "apollo" }
 navigation3-runtime = { module = "androidx.navigation3:navigation3-runtime", version.ref = "navigation3" }
 navigation3-ui = { module = "androidx.navigation3:navigation3-ui", version.ref = "navigation3" }
+media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = "media3" }
+media3-datasource-okhttp = { module = "androidx.media3:media3-datasource-okhttp", version.ref = "media3" }
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
 junit = { module = "junit:junit", version.ref = "junit" }

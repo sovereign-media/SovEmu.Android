@@ -1,6 +1,8 @@
 package media.sovereign.sovemu
 
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.flow.first
+import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -11,6 +13,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import media.sovereign.sovemu.core.ApiException
+import media.sovereign.sovemu.core.Game
 import media.sovereign.sovemu.core.GameIndex
 import media.sovereign.sovemu.core.HomeFeed
 import media.sovereign.sovemu.core.SystemSummary
@@ -64,6 +67,20 @@ class Store(
         games.getOrPut(system) {
             MutableStateFlow<Load<GameIndex>>(Load.Loading).also { flow -> launch { loadGames(system, flow) } }
         }
+
+    /**
+     * A random game with a video snap, for the screensaver: a system picked in proportion to its
+     * games (so a big library shows more), then one of its games. Loads (and keeps) that system's
+     * list the first time; null while there is nothing to show.
+     */
+    suspend fun randomVideoGame(): Game? {
+        val withGames = (_systems.value as? Load.Ready)?.value?.filter { it.gameCount > 0 }.orEmpty()
+        if (withGames.isEmpty()) return null
+        var pick = Random.nextInt(withGames.sumOf { it.gameCount })
+        val system = withGames.first { s -> pick -= s.gameCount; pick < 0 }
+        val index = games(system.id).first { it !is Load.Loading } as? Load.Ready ?: return null
+        return index.value.games.filter { it.video != null }.randomOrNull()
+    }
 
     /** After a game: its play count and the home rows changed. */
     fun played(system: String) {

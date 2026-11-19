@@ -1,6 +1,11 @@
 package media.sovereign.sovemu
 
 import android.os.Bundle
+import media.sovereign.sovemu.ui.Screensaver
+import kotlinx.coroutines.delay
+import androidx.compose.runtime.mutableIntStateOf
+import android.view.WindowManager
+import android.os.SystemClock
 import androidx.navigation3.ui.NavDisplay
 import androidx.navigation3.runtime.entryProvider
 import androidx.compose.runtime.mutableStateListOf
@@ -68,12 +73,25 @@ class MainActivity : ComponentActivity() {
     private lateinit var sessions: Sessions
     private lateinit var presence: InputPresence
     private val controller = Controller()
+    private lateinit var music: MenuMusic
+    /** The screens want music (not in a game, switched on), and the app is in the foreground. */
+    private var menusWantMusic = false
+    private var foreground = false
+    /** Showing the screensaver (input ends it, and goes no further). */
+    private var screensaverOn by mutableStateOf(false)
+    /** When a person last pressed, touched or moved something (uptime ms). */
+    private var lastInput = SystemClock.uptimeMillis()
+    /** The key whose press ended the screensaver: its release is swallowed too. */
+    private var swallowKey: Int? = null
     /** True while a game is playing: controller input goes to the game, not the UI. */
     private var playing = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Awake while the app is open: after a while without input it shows its own screensaver
+        // (game videos), rather than the TV dimming or sleeping.
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         // Compose paints every pixel: the window's own background would be a wasted full-screen
         // fill on every frame (fill rate is what a TV's GPU runs out of first).
         window.setBackgroundDrawable(null)
@@ -83,6 +101,7 @@ class MainActivity : ComponentActivity() {
         sessions = Sessions(api, lifecycleScope)
         controller.start(this)
         presence = InputPresence(this, controller)
+        music = MenuMusic(this, lifecycleScope)
         val signedIn = settings.serverUrl.isNotEmpty() && settings.sessionCookie != null
         if (signedIn) store.refresh()
         setContent {
@@ -106,8 +125,13 @@ class MainActivity : ComponentActivity() {
                 signedIn = false
             }
         }
+        var musicOn by remember { mutableStateOf(settings.music) }
         if (!signedIn) {
-            SideEffect { playing = false }
+            SideEffect {
+                playing = false
+                menusWantMusic = musicOn
+                updateMusic()
+            }
             LoginScreen(settings, api) {
                 store.clear()
                 store.refresh()
@@ -130,11 +154,22 @@ class MainActivity : ComponentActivity() {
             if (stack.size > 1) stack.removeAt(stack.lastIndex) else finish()
         }
         var crt by remember { mutableStateOf(settings.scanlines) }
+        var idleMinutes by remember { mutableIntStateOf(settings.screensaverMinutes) }
         val nav = remember {
             Nav(
                 home = { stack.removeRange(1, stack.size) },
                 system = { push(Route.System(it)) },
                 scanlines = { crt },
+                music = { musicOn },
+                screensaver = { idleMinutes },
+                nextScreensaver = {
+                    idleMinutes = SCREENSAVER_CHOICES[(SCREENSAVER_CHOICES.indexOf(idleMinutes) + 1) % SCREENSAVER_CHOICES.size]
+                    settings.screensaverMinutes = idleMinutes
+                },
+                toggleMusic = {
+                    musicOn = !musicOn
+                    settings.music = musicOn
+                },
                 toggleScanlines = {
                     crt = !crt
                     settings.scanlines = crt
@@ -157,6 +192,20 @@ class MainActivity : ComponentActivity() {
         SideEffect {
             playing = route is Route.Play
             if (route is Route.Play) controller.analogSticks = route.system.needsGpu
+            // Music in the menus; a game, and the screensaver's videos, have their own sound.
+            menusWantMusic = musicOn && route !is Route.Play && !screensaverOn
+            updateMusic()
+        }
+
+        // The screensaver, after idleMinutes without input; never over a game.
+        val inGame = route is Route.Play
+        LaunchedEffect(idleMinutes, inGame) {
+            if (idleMinutes == 0 || inGame) return@LaunchedEffect
+            lastInput = SystemClock.uptimeMillis()
+            while (true) {
+                delay(5_000)
+                if (!screensaverOn && SystemClock.uptimeMillis() - lastInput >= idleMinutes * 60_000L) screensaverOn = true
+            }
         }
 
         // Scan lines over the menus; never over a game (the stream is the console's own picture).
@@ -203,10 +252,28 @@ class MainActivity : ComponentActivity() {
                     }
                 },
             )
+            if (screensaverOn && !inGame) {
+                Screensaver(api, remember(systems) { systems.associateBy { it.id } }, store::randomVideoGame)
+            }
         }
     }
 
+    private fun updateMusic() = music.play(menusWantMusic && foreground)
+
+    override fun onStart() {
+        super.onStart()
+        foreground = true
+        updateMusic()
+    }
+
+    override fun onStop() {
+        foreground = false
+        updateMusic()
+        super.onStop()
+    }
+
     override fun onDestroy() {
+        music.release()
         controller.stop()
         super.onDestroy()
     }
@@ -215,6 +282,19 @@ class MainActivity : ComponentActivity() {
     // every controller event goes to the game. Otherwise the system handles them (D-pad focus,
     // A to click, B to go back).
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        lastInput = SystemClock.uptimeMillis()
+        // Any button ends the screensaver, and does nothing else (its release included).
+        if (screensaverOn) {
+            if (event.action == KeyEvent.ACTION_DOWN) {
+                screensaverOn = false
+                swallowKey = event.keyCode
+            }
+            return true
+        }
+        if (swallowKey == event.keyCode) {
+            if (event.action == KeyEvent.ACTION_UP) swallowKey = null
+            return true
+        }
         if (controller.captureKey(event)) return true
         // The guide/home button opens (and closes) the in-game menu: with only a controller in
         // hand, B goes to the game, so this and Select+Start are the ways out.
@@ -226,12 +306,47 @@ class MainActivity : ComponentActivity() {
         return super.dispatchKeyEvent(event)
     }
 
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        lastInput = SystemClock.uptimeMillis()
+        if (screensaverOn) {
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) screensaverOn = false
+            return true
+        }
+        return super.dispatchTouchEvent(event)
+    }
+
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
+        // A stick pushed well over (not resting noise) counts as input, and ends the screensaver.
+        if (stickMoved(event)) {
+            lastInput = SystemClock.uptimeMillis()
+            if (screensaverOn) {
+                screensaverOn = false
+                return true
+            }
+        }
+        if (screensaverOn) return true
         if (controller.captureMotion(event)) return true
         if (playing && controller.toGame && controller.onMotion(event)) return true
         return super.dispatchGenericMotionEvent(event)
     }
 }
+
+/** The screensaver's choices, in minutes without input (0: never). */
+private val SCREENSAVER_CHOICES = listOf(3, 5, 10, 0)
+
+private fun stickMoved(e: MotionEvent): Boolean =
+    listOf(MotionEvent.AXIS_X, MotionEvent.AXIS_Y, MotionEvent.AXIS_Z, MotionEvent.AXIS_RZ, MotionEvent.AXIS_HAT_X, MotionEvent.AXIS_HAT_Y)
+        .any { kotlin.math.abs(e.getAxisValue(it)) > 0.5f }
+
+/** Minutes without input before the screensaver (5 by default; 0 turns it off). */
+var Settings.screensaverMinutes: Int
+    get() = prefs.getInt("screensaver", 5)
+    set(value) = prefs.edit().putInt("screensaver", value).apply()
+
+/** Background music in the menus (on by default). */
+var Settings.music: Boolean
+    get() = prefs.getBoolean("music", true)
+    set(value) = prefs.edit().putBoolean("music", value).apply()
 
 /** CRT scan lines over the menus (on by default). */
 var Settings.scanlines: Boolean
