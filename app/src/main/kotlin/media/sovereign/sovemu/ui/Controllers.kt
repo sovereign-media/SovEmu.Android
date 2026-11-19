@@ -99,6 +99,7 @@ fun ControllersScreen(
 @Composable
 private fun ColumnScope.DeviceList(devices: List<InputDeviceInfo>, controller: Controller, onOpen: (Int) -> Unit, onClose: () -> Unit) {
     val first = remember { FocusRequester() }
+    val scope = rememberCoroutineScope()
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         LucideIcon(Lucide.Gamepad2, tint = Sov.Accent, size = 24.dp)
         Text("Controllers", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
@@ -125,6 +126,9 @@ private fun ColumnScope.DeviceList(devices: List<InputDeviceInfo>, controller: C
                     Column(Modifier.weight(1f)) {
                         Text(d.name, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                         Text(if (d.isKeyboard) "Keyboard" else d.model.family.title, color = Sov.Slate400, fontSize = 12.sp)
+                    }
+                    if (!d.isKeyboard) {
+                        SovButton("Identify", { controller.identify(d.device, scope) }, variant = Variant.Glass, icon = Lucide.Vibrate, large = false)
                     }
                     SovButton("Buttons", { onOpen(d.device) }, variant = Variant.Glass, icon = Lucide.SlidersHorizontal, large = false)
                 }

@@ -1,6 +1,15 @@
 package media.sovereign.sovemu
 
 import android.content.Context
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.CoroutineScope
+import androidx.annotation.RequiresApi
+import android.os.VibrationEffect
+import android.os.Build
+import android.hardware.lights.LightsRequest
+import android.hardware.lights.LightState
+import android.hardware.lights.Light
 import android.hardware.input.InputManager
 import android.os.Handler
 import android.os.Looper
@@ -137,6 +146,54 @@ class Controller {
     private fun publish() {
         _devices.value = mixer.devices()
     }
+
+    /**
+     * Shows which physical controller [device] is: rumbles it and blinks its lights, each where
+     * Android can drive them (a PlayStation pad's light bar, a Switch pad's player LEDs; an Xbox
+     * pad over Bluetooth only rumbles). Needs Android 12; false when it can do neither.
+     */
+    fun identify(device: Int, scope: CoroutineScope): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return false
+        val d = InputDevice.getDevice(device) ?: return false
+        var did = false
+        val vibrator = d.vibratorManager.defaultVibrator
+        if (vibrator.hasVibrator()) {
+            vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 180, 140, 180), -1))
+            did = true
+        }
+        val lights = d.lightsManager.lights.filter {
+            it.hasRgbControl() || it.type == Light.LIGHT_TYPE_PLAYER_ID || it.type == Light.LIGHT_TYPE_INPUT
+        }
+        if (lights.isNotEmpty()) {
+            scope.launch {
+                val session = d.lightsManager.openSession()
+                try {
+                    repeat(3) {
+                        session.requestLights(lightsRequest(lights, on = true))
+                        delay(250)
+                        session.requestLights(lightsRequest(lights, on = false))
+                        delay(250)
+                    }
+                } finally {
+                    // Closing hands the lights back to the system (its own colour, player number).
+                    session.close()
+                }
+            }
+            did = true
+        }
+        return did
+    }
+
+    @RequiresApi(Build.VERSION_CODES.S)
+    private fun lightsRequest(lights: List<Light>, on: Boolean): LightsRequest =
+        LightsRequest.Builder().apply {
+            for (light in lights) {
+                val state = LightState.Builder()
+                if (light.hasRgbControl()) state.setColor(if (on) 0xFFFFFFFF.toInt() else 0xFF000000.toInt())
+                if (light.type == Light.LIGHT_TYPE_PLAYER_ID) state.setPlayerId(if (on) 4 else 0)
+                addLight(light, state.build())
+            }
+        }.build()
 
     /** Moves a device (or [InputMixer.KEYBOARD_DEVICE]) to another player, for this session. */
     fun assign(device: Int, port: Int) {
