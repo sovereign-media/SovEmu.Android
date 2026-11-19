@@ -194,6 +194,8 @@ class Controller {
     /** The hat as `up`/`down`/`left`/`right`, the analog triggers as `l2`/`r2`. */
     private fun axes(e: MotionEvent): Set<String> = axisInputs(
         e.getAxisValue(MotionEvent.AXIS_HAT_X), e.getAxisValue(MotionEvent.AXIS_HAT_Y), leftTrigger(e), rightTrigger(e),
+        e.getAxisValue(MotionEvent.AXIS_X), e.getAxisValue(MotionEvent.AXIS_Y),
+        e.getAxisValue(MotionEvent.AXIS_Z), e.getAxisValue(MotionEvent.AXIS_RZ),
     )
 
     fun setTouch(button: Button, pressed: Boolean) = mixer.touch(button, pressed)

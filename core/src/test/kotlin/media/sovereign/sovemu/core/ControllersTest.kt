@@ -524,4 +524,23 @@ class ControllersTest {
         assertFalse(Controllers.isRemote("Xbox Wireless Controller", 0x045e, 0x0b13, faceButtons = true))
         assertFalse(Controllers.isRemote("8BitDo Pro 2", 0x2dc8, 0x6006, faceButtons = true))
     }
+
+    @Test
+    fun stickDirectionsBindAndTheLeftStickFallsBackToTheDpad() {
+        assertEquals(setOf("ls_left", "rs_down"), axisInputs(0f, 0f, 0f, 0f, lx = -0.9f, ly = 0.1f, rx = 0f, ry = 0.8f))
+        assertEquals("LS ←", Family.XBOX.label("ls_left"))
+        assertEquals("r3", Controllers.diagramKey("rs_up"))
+        val xbox = Controllers.identify(0x045e, 0x0b13, "Xbox Wireless Controller")
+
+        // Unbound: the left stick drives the D-pad.
+        val mixer = InputMixer()
+        mixer.connect(7, "Pad", xbox)
+        mixer.padAxes(7, axisInputs(0f, 0f, 0f, 0f, lx = -1f), -1f, 0f, Protocol.Analog.CENTRED)
+        assertEquals(Button.LEFT.bit, mixer.read().ports[0])
+
+        // Bound: it does what it is bound to instead, and lights its stick.
+        mixer.setMappings(listOf(ControllerMapping(xbox.id, bindings = listOf(Binding("ls_left", Button.L)))))
+        assertEquals(Button.L.bit, mixer.read().ports[0])
+        assertEquals(setOf("l3"), highlight(Button.L, Mapping.of(listOf(Binding("ls_left", Button.L)))).controllerKeys)
+    }
 }

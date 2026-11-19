@@ -83,7 +83,9 @@ fun ControllersScreen(
     BackHandler { if (selected != null) selected = null else onClose() }
 
     Column(
-        (if (device == null) Modifier.width(560.dp).fillMaxHeight(0.92f) else Modifier.fillMaxWidth(0.97f).fillMaxHeight(0.96f))
+        // The device list is as tall as its devices (centred by the overlay; it scrolls if it ever
+        // outgrows the screen); the bindings page takes the screen for its diagrams.
+        (if (device == null) Modifier.width(560.dp) else Modifier.fillMaxWidth(0.97f).fillMaxHeight(0.96f))
             .clip(RoundedCornerShape(16.dp)).background(Sov.Panel).border(1.dp, Sov.Edge, RoundedCornerShape(16.dp)).padding(20.dp),
     ) {
         if (device == null) {

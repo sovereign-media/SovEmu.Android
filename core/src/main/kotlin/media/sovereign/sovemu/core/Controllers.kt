@@ -22,10 +22,13 @@ enum class Family(val title: String, val layoutId: String) {
             NINTENDO -> 2
             else -> 0
         }
+        STICK.matchEntire(input)?.let { m -> return "${m.groupValues[1].uppercase()} ${ARROWS[m.groupValues[2]]}" }
         return LABELS[input]?.get(i) ?: input
     }
 
     private companion object {
+        val STICK = Regex("(ls|rs)_(up|down|left|right)")
+        val ARROWS = mapOf("up" to "↑", "down" to "↓", "left" to "←", "right" to "→")
         val LABELS = mapOf(
             "south" to listOf("A", "✕", "B"),
             "east" to listOf("B", "○", "A"),
@@ -68,6 +71,16 @@ object Controllers {
 
     /** Every keyboard shares this mapping. */
     const val KEYBOARD = "keyboard"
+
+    /** A controller's stick directions (pushed past half-way), bindable like buttons. */
+    val STICK_INPUTS = listOf("ls_up", "ls_down", "ls_left", "ls_right", "rs_up", "rs_down", "rs_left", "rs_right")
+
+    /** The diagram key an input lights: a stick direction lights its stick. */
+    fun diagramKey(input: String): String = when {
+        input.startsWith("ls_") -> "l3"
+        input.startsWith("rs_") -> "r3"
+        else -> input
+    }
 
     /** A controller's inputs, by position: the W3C standard gamepad's buttons 0 to 15. */
     val PAD_INPUTS = listOf(
@@ -162,6 +175,9 @@ object Controllers {
  * have several inputs. A saved mapping replaces the defaults.
  */
 class Mapping private constructor(private val byInput: Map<String, Button>) {
+    /** Whether any of the left stick's directions is bound (then it no longer doubles as the D-pad). */
+    val bindsLeftStick: Boolean = byInput.keys.any { it.startsWith("ls_") }
+
     val bindings: List<Binding> get() = byInput.map { (input, button) -> Binding(input, button) }
 
     fun button(input: String): Button? = byInput[input]
@@ -426,8 +442,26 @@ fun dpadBits(x: Float, y: Float): Int {
     return state
 }
 
-/** The positional inputs a controller's hat and analog triggers are pressing. */
-fun axisInputs(hatX: Float, hatY: Float, leftTrigger: Float, rightTrigger: Float): Set<String> = buildSet {
+/**
+ * The inputs a controller's axes are pressing: the hat as the D-pad, the analog triggers as
+ * `l2`/`r2`, and the sticks' directions past half-way (`ls_left` …).
+ */
+fun axisInputs(
+    hatX: Float,
+    hatY: Float,
+    leftTrigger: Float,
+    rightTrigger: Float,
+    lx: Float = 0f,
+    ly: Float = 0f,
+    rx: Float = 0f,
+    ry: Float = 0f,
+): Set<String> = buildSet {
+    for ((side, x, y) in listOf(Triple("ls", lx, ly), Triple("rs", rx, ry))) {
+        if (x < -0.5f) add("${side}_left")
+        if (x > 0.5f) add("${side}_right")
+        if (y < -0.5f) add("${side}_up")
+        if (y > 0.5f) add("${side}_down")
+    }
     if (hatX < -0.5f) add("left")
     if (hatX > 0.5f) add("right")
     if (hatY < -0.5f) add("up")
@@ -622,7 +656,8 @@ class InputMixer {
             val port = players.port(device) ?: continue
             val map = mappings[pad.model.id] ?: Mapping.PAD_DEFAULT
             var state = map.buttons(pad.held) or map.buttons(pad.axes)
-            if (!analogSticks) state = state or pad.stick
+            // Unbound, the left stick doubles as the D-pad (not on a system that reads the sticks).
+            if (!analogSticks && !map.bindsLeftStick) state = state or pad.stick
             ports[port] = ports[port] or state
             analog[port] = mixAnalog(analog[port], pad.analog)
             count = maxOf(count, port + 1)
@@ -768,7 +803,8 @@ data class Highlight(
     val controllerKeys: Set<String>,
 )
 
-fun highlight(button: Button, mapping: Mapping): Highlight = Highlight(button.name, mapping.inputs(button).toSet())
+fun highlight(button: Button, mapping: Mapping): Highlight =
+    Highlight(button.name, mapping.inputs(button).map(Controllers::diagramKey).toSet())
 
 /** The part of a layout's canvas a diagram draws. */
 data class Bounds(val x: Double, val y: Double, val w: Double, val h: Double)
