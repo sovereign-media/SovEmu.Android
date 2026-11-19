@@ -235,6 +235,7 @@ fun PlayerScreen(
                 game, system,
                 onResume = { menuOpen = false },
                 saves = { attempt { api.states(game.id) }.getOrDefault(emptyList()) },
+                cheats = { first -> CheatsPage(api, game.id, first = first) },
                 onSaveTo = { slot ->
                     scope.launch {
                         toast = info?.let { s -> attempt { api.saveState(s.id, slot) }.fold({ "Saved to slot $slot" }, { e -> "Save failed: ${e.message}" }) }
@@ -258,7 +259,7 @@ fun PlayerScreen(
     }
 }
 
-private enum class MenuPage { Main, Save, Load }
+private enum class MenuPage { Main, Save, Load, Cheats }
 
 /**
  * The in-game menu, as the web client's: a panel over the paused game. The focus starts on
@@ -272,6 +273,7 @@ private fun InGameMenu(
     system: SystemSummary,
     onResume: () -> Unit,
     saves: suspend () -> List<SaveSlot>,
+    cheats: @Composable (first: Modifier) -> Unit,
     onSaveTo: (Int) -> Unit,
     onLoadFrom: (Int) -> Unit,
     onControllers: () -> Unit,
@@ -281,7 +283,7 @@ private fun InGameMenu(
     var page by remember { mutableStateOf(MenuPage.Main) }
     var slots by remember { mutableStateOf<List<SaveSlot>?>(null) }
     LaunchedEffect(page) {
-        if (page != MenuPage.Main) {
+        if (page == MenuPage.Save || page == MenuPage.Load) {
             slots = null
             slots = saves()
         }
@@ -297,7 +299,7 @@ private fun InGameMenu(
     }
     Box(modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.7f)), contentAlignment = Alignment.Center) {
         Column(
-            Modifier.width(if (page == MenuPage.Main) 360.dp else 440.dp)
+            Modifier.width(if (page == MenuPage.Main) 360.dp else 480.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(Sov.Panel)
                 .border(1.dp, Sov.Edge, RoundedCornerShape(16.dp))
@@ -313,6 +315,7 @@ private fun InGameMenu(
                         MenuPage.Main -> game.title
                         MenuPage.Save -> "Save to a slot"
                         MenuPage.Load -> "Load a save"
+                        MenuPage.Cheats -> "Cheats"
                     },
                     color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
@@ -322,10 +325,12 @@ private fun InGameMenu(
                     MenuItem("Resume", Lucide.Play, Modifier.focusRequester(first), onResume)
                     MenuItem("Save state", Lucide.Check, onClick = { page = MenuPage.Save })
                     MenuItem("Load state", Lucide.History, onClick = { page = MenuPage.Load })
+                    MenuItem("Cheats", Lucide.Sparkles, onClick = { page = MenuPage.Cheats })
                     MenuItem("Controllers", Lucide.Gamepad2, onClick = onControllers)
                     Box(Modifier.padding(vertical = 4.dp).fillMaxWidth().height(1.dp).background(Sov.Edge))
                     MenuItem("Quit game", Lucide.LogOut, onClick = onQuit)
                 }
+                MenuPage.Cheats -> cheats(Modifier.focusRequester(first))
                 else -> {
                     val list = slots
                     if (list == null) {

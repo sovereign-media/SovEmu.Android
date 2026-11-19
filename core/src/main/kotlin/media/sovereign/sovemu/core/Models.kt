@@ -1,6 +1,7 @@
 package media.sovereign.sovemu.core
 
 import media.sovereign.sovemu.core.graphql.ControlsQuery
+import media.sovereign.sovemu.core.graphql.fragment.CheatFields
 import media.sovereign.sovemu.core.graphql.fragment.GameFields
 import media.sovereign.sovemu.core.graphql.fragment.LayoutFields
 import media.sovereign.sovemu.core.graphql.fragment.MappingFields
@@ -21,6 +22,7 @@ typealias SystemSummary = SystemFields
 typealias SaveSlot = SaveFields
 typealias SessionInfo = SessionFields
 typealias User = UserFields
+typealias Cheat = CheatFields
 
 /**
  * An API error. [code] is the GraphQL error's `extensions.code` (`UNAUTHENTICATED`,

@@ -217,3 +217,34 @@ query Controls($id: ID!) {
     ...LayoutFields
   }
 }
+
+fragment CheatFields on Cheat {
+  id
+  description
+  code
+  enabled
+}
+
+query Cheats($id: Int!) {
+  game(id: $id) {
+    cheats {
+      ...CheatFields
+    }
+  }
+}
+
+mutation AddCheat($gameId: Int!, $code: String!, $description: String!) {
+  addCheat(gameId: $gameId, code: $code, description: $description) {
+    ...CheatFields
+  }
+}
+
+mutation SetCheatEnabled($gameId: Int!, $cheatId: Int!, $enabled: Boolean!) {
+  setCheatEnabled(gameId: $gameId, cheatId: $cheatId, enabled: $enabled) {
+    ...CheatFields
+  }
+}
+
+mutation DeleteCheat($gameId: Int!, $cheatId: Int!) {
+  deleteCheat(gameId: $gameId, cheatId: $cheatId)
+}

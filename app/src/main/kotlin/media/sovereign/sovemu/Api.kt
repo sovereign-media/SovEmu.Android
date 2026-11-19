@@ -9,6 +9,7 @@ import com.apollographql.apollo.network.okHttpClient
 import java.util.concurrent.TimeUnit
 import media.sovereign.sovemu.core.ApiException
 import media.sovereign.sovemu.core.Binding
+import media.sovereign.sovemu.core.Cheat
 import media.sovereign.sovemu.core.ControllerMapping
 import media.sovereign.sovemu.core.Game
 import media.sovereign.sovemu.core.HomeFeed
@@ -20,7 +21,11 @@ import media.sovereign.sovemu.core.SystemControls
 import media.sovereign.sovemu.core.SystemSummary
 import media.sovereign.sovemu.core.User
 import media.sovereign.sovemu.core.Viewer
+import media.sovereign.sovemu.core.graphql.AddCheatMutation
+import media.sovereign.sovemu.core.graphql.CheatsQuery
 import media.sovereign.sovemu.core.graphql.ClientConfigQuery
+import media.sovereign.sovemu.core.graphql.DeleteCheatMutation
+import media.sovereign.sovemu.core.graphql.SetCheatEnabledMutation
 import media.sovereign.sovemu.core.graphql.ControllerMappingsQuery
 import media.sovereign.sovemu.core.graphql.ControlsQuery
 import media.sovereign.sovemu.core.graphql.HomeQuery
@@ -144,6 +149,17 @@ class SovEmuApi(private val settings: Settings) {
     /** Removes this user's mapping for a model on [system] (or every system); returns whether there was one. */
     suspend fun resetControllerMapping(controller: String, system: String?): Boolean =
         mutate(ResetControllerMappingMutation(controller, Optional.present(system))).resetControllerMapping
+    /** This user's cheats for a game. */
+    suspend fun cheats(gameId: Int): List<Cheat> = query(CheatsQuery(gameId)).game.cheats.map { it.cheatFields }
+    /** Adds a cheat (on); a running session gets it at once. Returns the game's cheats. */
+    suspend fun addCheat(gameId: Int, code: String, description: String): List<Cheat> =
+        mutate(AddCheatMutation(gameId, code, description)).addCheat.map { it.cheatFields }
+    suspend fun setCheatEnabled(gameId: Int, cheatId: Int, enabled: Boolean): List<Cheat> =
+        mutate(SetCheatEnabledMutation(gameId, cheatId, enabled)).setCheatEnabled.map { it.cheatFields }
+    suspend fun deleteCheat(gameId: Int, cheatId: Int) {
+        mutate(DeleteCheatMutation(gameId, cheatId))
+    }
+
     /** A system's button labels and pad (null for an unknown system), and the controllers' pads. */
     suspend fun controls(system: String): Pair<SystemControls?, List<PadLayout>> = query(ControlsQuery(system)).toControls()
 }
