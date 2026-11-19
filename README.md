@@ -19,7 +19,7 @@ Needs JDK 21 and the Android SDK (platform 37). Put the SDK path in `local.prope
 (`sdk.dir=…`), then:
 
 ```bash
-./gradlew :core:test :app:assembleDebug        # what CI runs
+./gradlew :core:test :app:testDebugUnitTest :app:assembleDebug   # what CI runs
 ```
 
 To use the app, install the release build: R8 makes Compose several times faster than a debug

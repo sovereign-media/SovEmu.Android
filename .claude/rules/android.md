@@ -29,4 +29,4 @@ paths:
   `Models.kt`. Never write a query string or decode API JSON by hand.
 - **Navigation 3.** The back stack is a list of `Route`s in `MainActivity`, shown by `NavDisplay`
   (which keeps each entry's saved state); system Back pops it. Screens get callbacks, not the stack.
-- Versions live in `gradle/libs.versions.toml`. Before a PR: `./gradlew :core:test :app:assembleDebug`.
+- Versions live in `gradle/libs.versions.toml`. Before a PR: `./gradlew :core:test :app:testDebugUnitTest :app:assembleDebug`.

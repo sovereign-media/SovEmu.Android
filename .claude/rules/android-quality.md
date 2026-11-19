@@ -109,6 +109,8 @@ here. "(judgement)" marks a rule that is ours rather than the docs'.
 - Assert a `StateFlow` on `.value`; use `first()` / `take(n).toList()` for finite checks. [FT]
 - Compose UI tests (`createComposeRule`) render the stateless composable with fake state and
   find nodes by text or semantics as a user would; `testTag` is a last resort. [CUI][SEM]
+  They run on the JVM under Robolectric (`app/src/test`, `TestApp` supplies the composition
+  locals), so CI needs no emulator. (judgement for Robolectric)
 - Test D-pad traversal, initial focus and focus restoration with Compose focus tests. [FOC]
 - Measure performance with Macrobenchmark (or `dumpsys gfxinfo` on a real TV) on the release
   build, never in unit tests. Every fix for a crash or a regression lands with a test that

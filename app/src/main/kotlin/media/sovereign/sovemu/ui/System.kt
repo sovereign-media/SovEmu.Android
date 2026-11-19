@@ -455,7 +455,7 @@ private fun CoverCard(
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun GamePanel(
+internal fun GamePanel(
     game: Game?,
     system: SystemSummary,
     slots: List<SaveSlot>,
