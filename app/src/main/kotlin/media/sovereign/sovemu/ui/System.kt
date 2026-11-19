@@ -43,9 +43,6 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -71,11 +68,9 @@ import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -83,7 +78,6 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -643,6 +637,7 @@ private fun FilterDrawer(
     val genres = remember(index) { index.genreCounts.take(24) }
     val n = filters.count + if (query.isNotBlank()) 1 else 0
     val first = remember { FocusRequester() }
+    var typing by remember { mutableStateOf(false) }
     // Drawn in the page's own window (a Dialog window loses Back on some TVs): Back closes it,
     // and the focus cannot leave it for the grid behind.
     BackHandler(onBack = onClose)
@@ -679,7 +674,14 @@ private fun FilterDrawer(
                     Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(24.dp),
                 ) {
-                    SearchField(query, onQuery, onClose, if (tv) Modifier else Modifier.focusRequester(first))
+                    // A box the D-pad passes over until A swaps in the field (a focused text field
+                    // opens a TV's keyboard at once, and the keyboard keeps the D-pad).
+                    TvTextField(
+                        "Search titles, makers, genres", query, onQuery, typing, { typing = it },
+                        if (tv) Modifier else Modifier.focusRequester(first),
+                        action = ImeAction.Search,
+                        onAction = { typing = false },
+                    )
                     FilterSection("Lists") {
                         Toggle(filters.favourites, { onFilters(filters.copy(favourites = !filters.favourites)) }, if (tv) Modifier.focusRequester(first) else Modifier) {
                             LucideIcon(Lucide.Heart, tint = if (filters.favourites) Color.White else Sov.Red300, size = 16.dp)
@@ -738,33 +740,6 @@ private fun FilterSection(title: String, content: @Composable () -> Unit) =
         Eyebrow(title)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { content() }
     }
-
-@Composable
-private fun SearchField(query: String, onQuery: (String) -> Unit, onDone: () -> Unit, modifier: Modifier) {
-    var focused by remember { mutableStateOf(false) }
-    BasicTextField(
-        query, onQuery,
-        modifier = modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused },
-        singleLine = true,
-        textStyle = TextStyle(color = Sov.Slate100, fontSize = 14.sp),
-        cursorBrush = SolidColor(Sov.Accent),
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-        keyboardActions = KeyboardActions(onSearch = { onDone() }),
-        decorationBox = { inner ->
-            Row(
-                Modifier.height(40.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.3f))
-                    .border(1.dp, if (focused) Sov.Accent else Color.White.copy(alpha = 0.15f), CircleShape).padding(horizontal = 12.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                LucideIcon(Lucide.Search, tint = Sov.Slate500, size = 16.dp)
-                Box(Modifier.weight(1f)) {
-                    if (query.isEmpty()) Text("Search titles, makers, genres", color = Sov.Slate500, fontSize = 14.sp)
-                    inner()
-                }
-            }
-        },
-    )
-}
 
 /** Jump to a letter: a carousel of letter discs, the current one large in the middle. */
 @Composable

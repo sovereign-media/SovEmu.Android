@@ -160,6 +160,12 @@ query Home {
   }
 }
 
+query Search($text: String!) {
+  search(text: $text) {
+    ...GameFields
+  }
+}
+
 query CollectionChoices($id: Int!) {
   collections {
     id

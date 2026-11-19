@@ -39,6 +39,7 @@ import media.sovereign.sovemu.core.graphql.LogoutMutation
 import media.sovereign.sovemu.core.graphql.ResetControllerMappingMutation
 import media.sovereign.sovemu.core.graphql.SaveControllerMappingMutation
 import media.sovereign.sovemu.core.graphql.SaveStateMutation
+import media.sovereign.sovemu.core.graphql.SearchQuery
 import media.sovereign.sovemu.core.graphql.SavesQuery
 import media.sovereign.sovemu.core.graphql.SessionOfferMutation
 import media.sovereign.sovemu.core.graphql.SetDiscMutation
@@ -132,6 +133,8 @@ class SovEmuApi(private val settings: Settings) {
             d.collections.map { c -> HomeCollection(c.id, c.name, c.games.map { it.gameFields }) },
         )
     }
+    /** Games from every system matching every word of [text], best first (at most 48). */
+    suspend fun search(text: String): List<Game> = query(SearchQuery(text)).search.map { it.gameFields }
     /** Adds a game to this user's favourites, or takes it out. */
     suspend fun setFavourite(gameId: Int, favourite: Boolean) {
         mutate(SetFavouriteMutation(gameId, favourite))

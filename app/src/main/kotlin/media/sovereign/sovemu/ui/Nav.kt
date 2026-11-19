@@ -55,11 +55,12 @@ import media.sovereign.sovemu.core.badge
 import media.sovereign.sovemu.core.groupByMaker
 
 /** Which section a screen belongs to, lit in the navigation. */
-enum class Section { Home, Systems }
+enum class Section { Home, Search, Systems }
 
 /** Where the navigation can go. */
 class Nav(
     val home: () -> Unit,
+    val search: () -> Unit,
     val system: (SystemSummary) -> Unit,
     /** Whether the CRT scan lines are on, and the switch. */
     val scanlines: () -> Boolean,
@@ -139,6 +140,7 @@ private fun Dock(section: Section, nav: Nav, user: User?, systems: List<SystemSu
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         DockEntry(Lucide.House, "Home", section == Section.Home, width, open, onClick = nav.home)
+        DockEntry(Lucide.Search, "Search", section == Section.Search, width, open, onClick = nav.search)
         SystemsMenu(systems, nav) { show -> DockEntry(Lucide.Gamepad2, "Systems", section == Section.Systems, width, open, onClick = show) }
         Box(Modifier.animatedWidth(width, 9.dp).padding(horizontal = 8.dp, vertical = 4.dp).background(Color.White.copy(alpha = 0.1f)))
         if (user != null) {
@@ -204,6 +206,7 @@ private fun TabBar(section: Section, nav: Nav, user: User?, systems: List<System
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         TabItem(Lucide.House, "Home", section == Section.Home, Modifier.weight(1f), onClick = nav.home)
+        TabItem(Lucide.Search, "Search", section == Section.Search, Modifier.weight(1f), onClick = nav.search)
         Box(Modifier.weight(1f)) {
             SystemsMenu(systems, nav) { show -> TabItem(Lucide.Gamepad2, "Systems", section == Section.Systems, Modifier.fillMaxWidth(), onClick = show) }
         }

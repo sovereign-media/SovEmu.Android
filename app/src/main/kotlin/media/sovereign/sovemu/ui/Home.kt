@@ -79,7 +79,7 @@ private const val ADVANCE_MS = 9000L
 /**
  * Home, as the web client's: a hero of featured games over rows of games to continue, systems
  * and recently added games. The D-pad moves between rows and along them; on the hero, left and
- * right change game and A plays.
+ * right change game and A plays. X searches every system.
  */
 @Composable
 fun HomeScreen(
@@ -87,22 +87,39 @@ fun HomeScreen(
     systems: List<SystemSummary>,
     onPlay: (Game, Start) -> Unit,
     onSystem: (SystemSummary, Int?) -> Unit,
+    onSearch: () -> Unit,
 ) {
     when (feed) {
         Load.Loading -> Box(Modifier.fillMaxWidth().aspectRatio(16 / 6.3f).background(Sov.Panel.copy(alpha = 0.4f)))
         is Load.Failed -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(feed.message, color = Sov.Red300) }
-        is Load.Ready -> HomeContent(feed.value, systems, onPlay, onSystem)
+        is Load.Ready -> HomeContent(feed.value, systems, onPlay, onSystem, onSearch)
     }
 }
 
 @Composable
-private fun HomeContent(feed: HomeFeed, all: List<SystemSummary>, onPlay: (Game, Start) -> Unit, onSystem: (SystemSummary, Int?) -> Unit) {
+private fun HomeContent(
+    feed: HomeFeed,
+    all: List<SystemSummary>,
+    onPlay: (Game, Start) -> Unit,
+    onSystem: (SystemSummary, Int?) -> Unit,
+    onSearch: () -> Unit,
+) {
     val systems = remember(all) { all.filter { it.gameCount > 0 } }
     val byId = remember(all) { all.associateBy { it.id } }
     val memory = rememberFocusMemory()
     val scroll = rememberScrollState()
     val scope = rememberCoroutineScope()
-    Box(Modifier.fillMaxSize()) {
+    Box(
+        // X (the top face button) searches every system, as on the web.
+        Modifier.fillMaxSize().onPreviewKeyEvent { e ->
+            if (e.type == KeyEventType.KeyDown && (e.key == Key.ButtonY || e.key == Key.Search)) {
+                onSearch()
+                true
+            } else {
+                false
+            }
+        },
+    ) {
         Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(bottom = 112.dp)) {
             Hero(feed.featured, byId, memory, systems.isEmpty(), onFocus = { scope.launch { scroll.animateScrollTo(0) } }, onPlay = { onPlay(it, Start.Ask) }, onBrowse = { g -> byId[g.system]?.let { onSystem(it, null) } })
             Column(Modifier.offset(y = (-32).dp), verticalArrangement = Arrangement.spacedBy(40.dp)) {
@@ -152,7 +169,7 @@ private fun HomeContent(feed: HomeFeed, all: List<SystemSummary>, onPlay: (Game,
                 }
             }
         }
-        HintBar(listOf(Hint.Dpad to "Choose", Hint.A to "Open"), Modifier.align(Alignment.BottomCenter))
+        HintBar(listOf(Hint.Dpad to "Choose", Hint.A to "Open", Hint.X to "Search"), Modifier.align(Alignment.BottomCenter))
     }
 }
 
@@ -302,7 +319,7 @@ private fun HomeRow(title: String, icon: androidx.compose.ui.graphics.vector.Ima
 
 /** A game: box art (portrait), or where the player left off (landscape, [wide]). */
 @Composable
-private fun GameCard(game: Game, system: SystemSummary?, wide: Boolean, memory: FocusMemory, key: String, onOpen: () -> Unit) {
+internal fun GameCard(game: Game, system: SystemSummary?, wide: Boolean, memory: FocusMemory, key: String, onOpen: () -> Unit) {
     val c = system?.colour() ?: Sov.Accent
     val brush = remember(c) { tile(c) }
     val short = system?.short ?: game.system.uppercase()
