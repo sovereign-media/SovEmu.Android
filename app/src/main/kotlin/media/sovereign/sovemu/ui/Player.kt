@@ -68,6 +68,7 @@ import kotlinx.coroutines.launch
 import media.sovereign.sovemu.Controller
 import media.sovereign.sovemu.SovEmuApi
 import media.sovereign.sovemu.Stream
+import media.sovereign.sovemu.StreamView
 import media.sovereign.sovemu.WebRtc
 import media.sovereign.sovemu.core.Button
 import media.sovereign.sovemu.core.Game
@@ -75,8 +76,6 @@ import media.sovereign.sovemu.core.MappingBook
 import media.sovereign.sovemu.core.SessionInfo
 import media.sovereign.sovemu.core.SystemSummary
 import org.webrtc.PeerConnection
-import org.webrtc.RendererCommon
-import org.webrtc.SurfaceViewRenderer
 
 /** Systems whose picture keeps its own shape rather than a TV's 4:3. */
 private val HANDHELDS = setOf("gb", "gbc", "gba", "gamegear")
@@ -119,13 +118,8 @@ fun PlayerScreen(
     // Started at once, and owned by the app: leaving now still stops it once it exists.
     val starting = remember(game.id) { sessions.start(game.id) }
 
-    val renderer = remember {
-        SurfaceViewRenderer(context).apply {
-            init(WebRtc.egl.eglBaseContext, null)
-            setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FIT)
-            setEnableHardwareScaler(true)
-        }
-    }
+    // The whole frame, scaled into the box below: never cropped (StreamView).
+    val renderer = remember { StreamView(context, WebRtc.egl.eglBaseContext) }
 
     LaunchedEffect(game.id) {
         // The mappings, labels and the question (if any) come while the session starts, rather
@@ -206,7 +200,7 @@ fun PlayerScreen(
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         // The console's shape, centred, as on the web: 4:3 for a TV console, the screen's own for a
-        // handheld. (Given the whole screen, the renderer stretches the picture to fill it.)
+        // handheld. The whole frame is scaled into this box, never cropped.
         val aspect = info?.let { if (system.id in HANDHELDS && it.height > 0) it.width.toFloat() / it.height else null } ?: (4f / 3f)
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             AndroidView({ renderer }, Modifier.aspectRatio(aspect))
