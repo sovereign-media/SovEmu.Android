@@ -86,8 +86,19 @@ import org.webrtc.PeerConnection
 /** Systems whose picture keeps its own shape rather than a TV's 4:3. */
 private val HANDHELDS = setOf("gb", "gbc", "gba", "gamegear")
 
-/** How a game starts: from its auto save, from scratch, or asking when there is an auto save. */
-enum class Start { Continue, New, Ask }
+/**
+ * How a game starts: from a save slot ([Continue] is the auto save's), from scratch, or asking
+ * (Continue or Start over) when there is an auto save.
+ */
+sealed interface Start {
+    data class FromSlot(val slot: Int) : Start
+    data object New : Start
+    data object Ask : Start
+
+    companion object {
+        val Continue: Start = FromSlot(AUTO_SLOT)
+    }
+}
 
 /**
  * The player: starts the session, streams it, and shows on-screen controls when the device has
@@ -149,7 +160,7 @@ fun PlayerScreen(
                 start
             }
             val session = starting.await()
-            if (how == Start.Continue) attempt { api.loadState(session.id, 0) }.onFailure { e -> toast = "Could not load: ${e.message}" }
+            if (how is Start.FromSlot) attempt { api.loadState(session.id, how.slot) }.onFailure { e -> toast = "Could not load: ${e.message}" }
             info = session
             status = ""
             // WebRTC's factory and peer connection are slow to build: not on the main thread.
