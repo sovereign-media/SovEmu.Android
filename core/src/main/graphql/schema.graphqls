@@ -260,6 +260,10 @@ type Game {
 	lastPlayedAt: String
 	playCount: Int!
 	"""
+	How many discs (1 for most games): a multi-disc game is one entry, its discs changed in play.
+	"""
+	discs: Int!
+	"""
 	The artwork and video it has.
 	"""
 	media: [MediaKind!]!
@@ -313,6 +317,14 @@ type GameSession {
 	A client is streaming it.
 	"""
 	connected: Boolean!
+	"""
+	How many discs the game has (1 for most games).
+	"""
+	discs: Int!
+	"""
+	The disc in the tray, from 1.
+	"""
+	disc: Int!
 }
 
 """
@@ -552,7 +564,9 @@ type Mutation {
 	resetSession(id: ID!): Boolean!
 	"""
 	Saves the session's game to a slot (1–9), with a screenshot.
+	Changes a multi-disc game's disc (from 1), as when the game asks for the next one.
 	"""
+	setDisc(sessionId: ID!, disc: Int!): Boolean!
 	saveState(sessionId: ID!, slot: Int!): Boolean!
 	"""
 	Loads a slot (0 is the auto save) into the session's game.

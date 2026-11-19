@@ -496,6 +496,7 @@ private fun GamePanel(
                             (g.developer ?: g.publisher)?.let { Fact(Lucide.Building2, it) }
                             g.genre?.let { Fact(Lucide.Tag, it) }
                             maxPlayers(g.players)?.let { Fact(Lucide.Users, if (it == 1) "1 player" else "${g.players} players") }
+                            if (g.discs > 1) Fact(Lucide.Disc3, "${g.discs} discs")
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

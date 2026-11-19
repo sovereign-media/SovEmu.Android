@@ -131,6 +131,8 @@ fun PlayerScreen(
     var stream by remember { mutableStateOf<Stream?>(null) }
     var toast by remember { mutableStateOf<String?>(null) }
     var controllersOpen by remember { mutableStateOf(false) }
+    /** The disc in the tray (1-based), for a multi-disc game. */
+    var disc by remember { mutableStateOf(1) }
     val book = remember(system.id) { MappingBook(system.id) }
     var controls by remember { mutableStateOf(Controls()) }
     /** Waiting for Continue or Start over (there is an auto save and the player was not asked yet). */
@@ -247,6 +249,16 @@ fun PlayerScreen(
                 onResume = { menuOpen = false },
                 saves = { attempt { api.states(game.id) }.getOrDefault(emptyList()) },
                 cheats = { first -> CheatsPage(api, game.id, first = first) },
+                discs = info?.discs ?: 1,
+                disc = disc,
+                onDisc = { n ->
+                    scope.launch {
+                        toast = info?.let { s ->
+                            attempt { api.setDisc(s.id, n) }.fold({ disc = n; "Disc $n is in" }, { e -> "Could not change disc: ${e.message}" })
+                        }
+                        menuOpen = false
+                    }
+                },
                 onSaveTo = { slot ->
                     scope.launch {
                         toast = info?.let { s -> attempt { api.saveState(s.id, slot) }.fold({ "Saved to slot $slot" }, { e -> "Save failed: ${e.message}" }) }
@@ -270,7 +282,7 @@ fun PlayerScreen(
     }
 }
 
-private enum class MenuPage { Main, Save, Load, Cheats }
+private enum class MenuPage { Main, Save, Load, Cheats, Disc }
 
 /**
  * The in-game menu, as the web client's: a panel over the paused game. The focus starts on
@@ -285,6 +297,10 @@ private fun InGameMenu(
     onResume: () -> Unit,
     saves: suspend () -> List<SaveSlot>,
     cheats: @Composable (first: Modifier) -> Unit,
+    /** A multi-disc game's disc count and the disc in the tray (1-based); 1 of 1 for most. */
+    discs: Int,
+    disc: Int,
+    onDisc: (Int) -> Unit,
     onSaveTo: (Int) -> Unit,
     onLoadFrom: (Int) -> Unit,
     onControllers: () -> Unit,
@@ -327,6 +343,7 @@ private fun InGameMenu(
                         MenuPage.Save -> "Save to a slot"
                         MenuPage.Load -> "Load a save"
                         MenuPage.Cheats -> "Cheats"
+                        MenuPage.Disc -> "Change disc"
                     },
                     color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
@@ -336,12 +353,20 @@ private fun InGameMenu(
                     MenuItem("Resume", Lucide.Play, Modifier.focusRequester(first), onResume)
                     MenuItem("Save state", Lucide.Check, onClick = { page = MenuPage.Save })
                     MenuItem("Load state", Lucide.History, onClick = { page = MenuPage.Load })
+                    if (discs > 1) MenuItem("Change disc · disc $disc of $discs", Lucide.Disc3, onClick = { page = MenuPage.Disc })
                     MenuItem("Cheats", Lucide.Sparkles, onClick = { page = MenuPage.Cheats })
                     MenuItem("Controllers", Lucide.Gamepad2, onClick = onControllers)
                     Box(Modifier.padding(vertical = 4.dp).fillMaxWidth().height(1.dp).background(Sov.Edge))
                     MenuItem("Quit game", Lucide.LogOut, onClick = onQuit)
                 }
                 MenuPage.Cheats -> cheats(Modifier.focusRequester(first))
+                MenuPage.Disc -> for (n in 1..discs) {
+                    MenuItem(
+                        if (n == disc) "Disc $n · in the console" else "Disc $n",
+                        Lucide.Disc3,
+                        if (n == disc) Modifier.focusRequester(first) else Modifier,
+                    ) { onDisc(n) }
+                }
                 else -> {
                     val list = slots
                     if (list == null) {
