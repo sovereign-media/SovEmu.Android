@@ -1,6 +1,7 @@
 package media.sovereign.sovemu.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import media.sovereign.sovemu.core.AUTO_SLOT
 import media.sovereign.sovemu.core.year
 import media.sovereign.sovemu.attempt
@@ -508,9 +509,9 @@ private fun GamePanel(
                     g.description?.let { Text(it, color = Sov.Slate300, fontSize = 14.sp, lineHeight = 22.sp) }
                     if (slots.isNotEmpty()) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Eyebrow("Saves")
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                for (s in slots) SaveThumb(s)
+                            Eyebrow("Start from a save")
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                for (s in slots.sortedBy { it.slot }) SaveThumb(s) { onPlay(Start.FromSlot(s.slot)) }
                             }
                         }
                     }
@@ -551,15 +552,31 @@ private fun Fact(icon: androidx.compose.ui.graphics.vector.ImageVector, text: St
         Text(text, color = Sov.Slate300, fontSize = 14.sp)
     }
 
+/** A save, as a button that starts the game from it: its screenshot, slot and age. */
 @Composable
-private fun SaveThumb(s: SaveSlot) {
-    Box(
-        Modifier.width(64.dp).height(48.dp).clip(RoundedCornerShape(4.dp)).background(Color.Black.copy(alpha = 0.5f))
-            .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(4.dp)),
-        contentAlignment = Alignment.Center,
+private fun SaveThumb(s: SaveSlot, onClick: () -> Unit) {
+    val source = remember { MutableInteractionSource() }
+    val focused by source.collectIsFocusedAsState()
+    val now = remember { System.currentTimeMillis() / 1000 }
+    val shape = RoundedCornerShape(6.dp)
+    Column(
+        Modifier.width(112.dp).clickable(interactionSource = source, indication = null, onClick = onClick),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(if (s.slot == AUTO_SLOT) "Auto" else "Slot ${s.slot}", color = Sov.Slate400, fontSize = 10.sp)
-        s.screenshotUrl?.let { Screenshot(it, Modifier.fillMaxSize()) }
+        Box(
+            Modifier.fillMaxWidth().aspectRatio(4 / 3f).clip(shape).background(Color.Black)
+                .border(if (focused) 3.dp else 1.dp, if (focused) Color.White.copy(alpha = 0.8f) else Color.White.copy(alpha = 0.1f), shape),
+            contentAlignment = Alignment.Center,
+        ) {
+            s.screenshotUrl?.let { Screenshot(it, Modifier.fillMaxSize()) }
+            if (focused) {
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)), contentAlignment = Alignment.Center) {
+                    LucideIcon(PlayFilled, size = 22.dp)
+                }
+            }
+        }
+        Text(if (s.slot == AUTO_SLOT) "Auto save" else "Slot ${s.slot}", color = if (focused) Color.White else Sov.Slate300, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        Text(formatAgo(s.savedAt.toLong(), now), color = Sov.Slate500, fontSize = 11.sp)
     }
 }
 
