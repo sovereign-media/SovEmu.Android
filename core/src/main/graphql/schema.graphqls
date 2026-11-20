@@ -193,6 +193,29 @@ type ControllerMapping {
 	source: MappingSource!
 }
 
+type Decoration {
+	"""
+	The image (PNG), under `/media/decorations/`.
+	"""
+	url: String!
+	"""
+	Its size in pixels.
+	"""
+	width: Int!
+	height: Int!
+	"""
+	The window's margins from the image's edges, in the image's pixels.
+	"""
+	top: Int!
+	left: Int!
+	bottom: Int!
+	right: Int!
+	"""
+	The set it comes from (`sovemu` is the built-in one).
+	"""
+	set: String!
+}
+
 """
 An emulator setting (a libretro core option).
 """
@@ -284,6 +307,12 @@ type Game {
 	named as it), the default first. Choose one with `setPatch`.
 	"""
 	patches: [Patch!]!
+	"""
+	The decoration (bezel) to draw around its picture: the set chosen for its system
+	(`SOVEMU_DECORATION`, `SOVEMU_SYSTEMS__<id>__DECORATION`), its own image there, else its
+	system's, else the set's default. Null when the set is `none` or has nothing for it.
+	"""
+	decoration: Decoration
 	"""
 	One of this user's favourites.
 	"""

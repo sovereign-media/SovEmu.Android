@@ -78,6 +78,7 @@ import media.sovereign.sovemu.StreamView
 import media.sovereign.sovemu.WebRtc
 import media.sovereign.sovemu.core.Button
 import media.sovereign.sovemu.core.Game
+import media.sovereign.sovemu.core.GameDecoration
 import media.sovereign.sovemu.core.MappingBook
 import media.sovereign.sovemu.core.SessionInfo
 import media.sovereign.sovemu.core.SystemSummary
@@ -142,10 +143,13 @@ fun PlayerScreen(
 
     // The whole frame, scaled into the box below: never cropped (StreamView).
     val renderer = remember { StreamView(context, WebRtc.egl.eglBaseContext) }
+    // The artwork framing the picture (its system's decoration), fetched alongside the start.
+    var decoration by remember(game.id) { mutableStateOf<GameDecoration?>(null) }
 
     LaunchedEffect(game.id) {
         // The mappings, labels and the question (if any) come while the session starts, rather
         // than each adding a round trip before the game.
+        launch { decoration = attempt { api.decoration(game.id) }.getOrNull() }
         launch {
             attempt { book.refresh(api::controllerMappings) }
                 .onSuccess { controller.mixer.setMappings(book.forSystem) }
@@ -223,10 +227,11 @@ fun PlayerScreen(
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         // The console's shape, centred, as on the web: 4:3 for a TV console, the screen's own for a
-        // handheld. The whole frame is scaled into this box, never cropped.
+        // handheld. The whole frame is scaled into this box, never cropped; its decoration (if
+        // any) frames it.
         val aspect = info?.let { if (system.id in HANDHELDS && it.height > 0) it.width.toFloat() / it.height else null } ?: (4f / 3f)
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            AndroidView({ renderer }, Modifier.aspectRatio(aspect))
+        Decorated(decoration, aspect) {
+            AndroidView({ renderer }, Modifier.fillMaxSize())
         }
         if (status.isNotEmpty()) Splash(game, system, status, choice)
         if (touchControls && !menuOpen && !controllersOpen && status.isEmpty()) {

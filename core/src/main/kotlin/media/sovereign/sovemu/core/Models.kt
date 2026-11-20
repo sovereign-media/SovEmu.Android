@@ -65,6 +65,30 @@ fun nextPatch(patches: List<GamePatch>, current: String?): GamePatch? {
     return options[(at + 1) % options.size]
 }
 
+/**
+ * Artwork drawn around a game's picture (`Game.decoration`, Batocera's format): an image
+ * [width] x [height] with a transparent window [left]/[top]/[right]/[bottom] pixels in from its
+ * edges, which the picture shows through.
+ */
+data class GameDecoration(
+    val url: String,
+    val width: Int,
+    val height: Int,
+    val top: Int,
+    val left: Int,
+    val bottom: Int,
+    val right: Int,
+) {
+    /** The image's shape. */
+    val aspect: Float get() = if (height > 0) width.toFloat() / height else 16f / 9f
+}
+
+/**
+ * Whether to frame the picture: only when the screen is wider than it, so there are bars to
+ * fill (a phone held upright shows the picture alone, as large as it can be).
+ */
+fun shouldFrame(screenAspect: Float, pictureAspect: Float): Boolean = screenAspect > pictureAspect * 1.05f
+
 /** A collection a game can go in, and whether it is in it. */
 data class CollectionChoice(val id: Int, val name: String, val member: Boolean)
 
