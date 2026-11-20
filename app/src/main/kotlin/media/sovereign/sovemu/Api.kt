@@ -129,7 +129,7 @@ class SovEmuApi(private val settings: Settings) {
     fun media(path: String?): String? = path?.let { if (it.startsWith("http")) it else settings.serverUrl + it }
 
     suspend fun status(): Viewer = query(ViewerQuery()).viewer.let { Viewer(it.setupRequired, it.user?.userFields) }
-    /** Signs in with the password grant; a refusal is an `OAuthException` with the server's reason. */
+    /** Signs in at `/oauth/password` with a username and password; a refusal is an `OAuthException` with the server's reason. */
     suspend fun signIn(username: String, password: String) = auth.signIn(username, password)
     /** Revokes the sign-in on the server, and forgets it here even when that fails. */
     suspend fun signOut() = auth.signOut()

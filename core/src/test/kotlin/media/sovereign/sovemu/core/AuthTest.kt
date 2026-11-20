@@ -66,16 +66,16 @@ class AuthTest {
         }
 
     @Test
-    fun signInSendsThePasswordGrantAndKeepsTheTokens() = runBlocking {
+    fun signInPostsToThePasswordRouteAndKeepsTheTokens() = runBlocking {
         server.enqueue(tokens("a1", "r1"))
         auth.signIn("ada", "p&ss word")
 
         val request = server.takeRequest()
-        assertEquals("/oauth/token", request.url.encodedPath)
+        assertEquals("/oauth/password", request.url.encodedPath)
         assertEquals("application/x-www-form-urlencoded", request.headers["Content-Type"]?.substringBefore(';'))
         assertEquals(
             mapOf(
-                "grant_type" to "password", "client_id" to "sovemu-native", "username" to "ada",
+                "client_id" to "sovemu-native", "username" to "ada",
                 "password" to "p&ss word", "scope" to "openid profile offline_access",
             ),
             request.form(),
@@ -106,6 +106,15 @@ class AuthTest {
     }
 
     @Test
+    fun passwordSignInSwitchedOffIsTheServersDescription() = runBlocking {
+        server.enqueue(error(400, "unsupported_grant_type", "Password sign-in is off: sign in with a code"))
+        val e = assertThrows(OAuthException::class.java) { runBlocking { auth.signIn("ada", "pw") } }
+        assertEquals("unsupported_grant_type", e.error)
+        assertEquals("Password sign-in is off: sign in with a code", e.message)
+        assertFalse(auth.signedIn.value)
+    }
+
+    @Test
     fun refreshingStoresTheRotatedRefreshToken() = runBlocking {
         server.enqueue(tokens("a1", "r1"))
         server.enqueue(tokens("a2", "r2"))
@@ -116,7 +125,9 @@ class AuthTest {
         // Under a minute left: refreshed before use, with the stored token, and the new one kept.
         clock += 3_541_000
         assertEquals("a2", auth.accessToken())
-        assertEquals(mapOf("grant_type" to "refresh_token", "client_id" to "sovemu-native", "refresh_token" to "r1"), server.takeRequest().form())
+        val refresh = server.takeRequest()
+        assertEquals("/oauth/token", refresh.url.encodedPath)
+        assertEquals(mapOf("grant_type" to "refresh_token", "client_id" to "sovemu-native", "refresh_token" to "r1"), refresh.form())
         assertEquals("r2", store.refreshToken)
 
         clock += 3_600_000

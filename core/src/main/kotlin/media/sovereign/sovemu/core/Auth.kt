@@ -39,8 +39,8 @@ interface TokenStore {
 }
 
 /**
- * SovEmu's OAuth 2 endpoints, as the public client `sovemu-native`: the password grant to sign
- * in, the refresh_token grant, and revocation to sign out. [server] is the address the user
+ * SovEmu's OAuth endpoints, as the public client `sovemu-native`: `/oauth/password` to sign in,
+ * the refresh_token grant at `/oauth/token`, and revocation to sign out. [server] is the address the user
  * typed (`http://192.168.1.10:8080`).
  */
 class TokenClient(
@@ -48,9 +48,13 @@ class TokenClient(
     private val server: () -> String,
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
+    /**
+     * Signs in with a username and password at the server's own `/oauth/password` route (OAuth
+     * 2.1 has no password grant, so it takes no `grant_type`); it answers as `/oauth/token` does.
+     */
     suspend fun signIn(username: String, password: String): Tokens = token(
+        "/oauth/password",
         FormBody.Builder()
-            .add("grant_type", "password")
             .add("client_id", CLIENT_ID)
             .add("username", username)
             .add("password", password)
@@ -59,6 +63,7 @@ class TokenClient(
     )
 
     suspend fun refresh(refreshToken: String): Tokens = token(
+        "/oauth/token",
         FormBody.Builder()
             .add("grant_type", "refresh_token")
             .add("client_id", CLIENT_ID)
@@ -72,8 +77,8 @@ class TokenClient(
         withContext(io) { http.newCall(post("/oauth/revoke", form)).execute().close() }
     }
 
-    private suspend fun token(form: FormBody): Tokens = withContext(io) {
-        http.newCall(post("/oauth/token", form)).execute().use { response ->
+    private suspend fun token(path: String, form: FormBody): Tokens = withContext(io) {
+        http.newCall(post(path, form)).execute().use { response ->
             val body = response.body.string()
             val json = parse(body)
             if (!response.isSuccessful) {
@@ -151,7 +156,7 @@ class Auth(
     /** Whether a refresh token is stored; false once signed out (or the sign-in expires). */
     val signedIn: StateFlow<Boolean> = _signedIn.asStateFlow()
 
-    /** Signs in with the password grant; throws [OAuthException] with the server's reason. */
+    /** Signs in with a username and password; throws [OAuthException] with the server's reason. */
     suspend fun signIn(username: String, password: String) {
         val tokens = client.signIn(username, password)
         if (tokens.refreshToken == null) {
