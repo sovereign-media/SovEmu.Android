@@ -447,6 +447,18 @@ private fun CoverCard(
                         overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(12.dp))
                 }
                 Art(game.thumb ?: game.image, Modifier.fillMaxSize(), onLoaded = { loaded = it })
+                // Several discs: a pill top left, as the web's.
+                if (game.discs > 1) {
+                    Row(
+                        Modifier.align(Alignment.TopStart).padding(8.dp).height(24.dp).clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.7f)).padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        LucideIcon(Lucide.Disc3, size = 14.dp)
+                        Text("${game.discs}", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
                 if (game.playCount > 0) {
                     Box(Modifier.align(Alignment.TopEnd).padding(8.dp).size(24.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.7f)), contentAlignment = Alignment.Center) {
                         LucideIcon(Lucide.CircleCheck, size = 16.dp)
