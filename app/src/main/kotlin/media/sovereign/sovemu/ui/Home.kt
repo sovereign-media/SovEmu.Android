@@ -73,6 +73,7 @@ import media.sovereign.sovemu.core.SystemSummary
 import media.sovereign.sovemu.core.badge
 import media.sovereign.sovemu.core.formatAgo
 import media.sovereign.sovemu.core.GameIndex
+import media.sovereign.sovemu.core.assetCacheKey
 
 private const val ADVANCE_MS = 9000L
 
@@ -356,7 +357,10 @@ fun Screenshot(path: String, modifier: Modifier) {
     val api = LocalApi.current
     val context = LocalContext.current
     val url = api.media(path) ?: return
-    val request = remember(url) { ImageRequest.Builder(context).data(url).build() }
+    val request = remember(url) {
+        val key = assetCacheKey(url)
+        ImageRequest.Builder(context).data(url).memoryCacheKey(key).diskCacheKey(key).build()
+    }
     // Fitted, never cropped: a console frame's edges (a HUD, a score) are part of the picture.
     AsyncImage(request, null, modifier, contentScale = ContentScale.Fit, filterQuality = FilterQuality.None)
 }
