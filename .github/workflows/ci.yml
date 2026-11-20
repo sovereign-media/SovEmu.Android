@@ -12,17 +12,25 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# The job runs where the LINUX_RUNNER variable says: `sovereign-linux`, the self-hosted runners on
+# the cluster (Actions Runner Controller, sovereign-media/sovereign#1547), or GitHub's runners when it
+# is unset. The self-hosted image is the stock `ghcr.io/actions/actions-runner` (Ubuntu 24.04, no
+# JDK or Android SDK), so the job installs what it needs itself, in a way that also works on
+# GitHub's runners.
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
 
+      # Downloads the JDK into the tool cache on either kind of runner.
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
 
+      # GitHub's runners have an SDK to add to; on the self-hosted image there is none, so the
+      # action installs one into ~/.android/sdk, which the non-root runner user can write.
       - uses: android-actions/setup-android@v3
         with:
           packages: "platforms;android-37.0 build-tools;37.0.0"
