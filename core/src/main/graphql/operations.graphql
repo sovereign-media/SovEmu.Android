@@ -35,6 +35,7 @@ fragment GameFields on Game {
   rating
   discs
   favourite
+  release
   autoSave {
     slot
     savedAt

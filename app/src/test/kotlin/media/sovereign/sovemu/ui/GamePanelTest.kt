@@ -122,4 +122,12 @@ class GamePanelTest {
         open = game(favourite = true)
         rule.onNodeWithText("Favourite").assertExists()
     }
+
+    @Test
+    fun aReleaseLabelTellsSameTitledGamesApart() {
+        show()
+        rule.waitForIdle()
+        open = game(title = "Final Fantasy VII", release = "Translation")
+        rule.onNodeWithText("Translation").assertExists()
+    }
 }

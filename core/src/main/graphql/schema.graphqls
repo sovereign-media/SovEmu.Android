@@ -270,6 +270,11 @@ type Game {
 	lastPlayedAt: String
 	playCount: Int!
 	"""
+	What tells it apart from games of the same title on its system: the tags they do not
+	share ("Translation", "Rev 1"), else its file's own title. Null when its title is its own.
+	"""
+	release: String
+	"""
 	One of this user's favourites.
 	"""
 	favourite: Boolean!
