@@ -90,6 +90,7 @@ import media.sovereign.sovemu.SovEmuApi
 import media.sovereign.sovemu.core.Game
 import media.sovereign.sovemu.core.GameFilters
 import media.sovereign.sovemu.core.GameIndex
+import media.sovereign.sovemu.core.graphql.type.PartKind
 import media.sovereign.sovemu.core.GamePatch
 import media.sovereign.sovemu.core.nextPatch
 import media.sovereign.sovemu.core.GameSort
@@ -447,7 +448,7 @@ private fun CoverCard(
                         overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(12.dp))
                 }
                 Art(game.thumb ?: game.image, Modifier.fillMaxSize(), onLoaded = { loaded = it })
-                // Several discs: a pill top left, as the web's.
+                // Several discs (disks, tapes…): a pill top left, as the web's.
                 if (game.discs > 1) {
                     Row(
                         Modifier.align(Alignment.TopStart).padding(8.dp).height(24.dp).clip(CircleShape)
@@ -455,7 +456,7 @@ private fun CoverCard(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        LucideIcon(Lucide.Disc3, size = 14.dp)
+                        LucideIcon(partIcon(game.partKind), size = 14.dp)
                         Text("${game.discs}", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
@@ -838,3 +839,11 @@ private fun Disc(stop: String, onClick: () -> Unit) =
     Box(Modifier.size(44.dp).clip(CircleShape).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
         Text(stop, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
     }
+
+/** The icon for what a multi-part game's files are: a disc, a floppy, a cassette or a stack. */
+fun partIcon(kind: PartKind?): androidx.compose.ui.graphics.vector.ImageVector = when (kind) {
+    PartKind.DISK, PartKind.SIDE -> Lucide.Save
+    PartKind.TAPE -> Lucide.CassetteTape
+    PartKind.PART -> Lucide.Layers
+    else -> Lucide.Disc3
+}

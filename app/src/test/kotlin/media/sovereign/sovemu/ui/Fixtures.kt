@@ -20,7 +20,7 @@ fun game(
     id = id, system = "nes", title = title, fileTitle = null, tags = emptyList(), path = "nes/$title.nes", size = 0.0,
     lastPlayedAt = null, playCount = 0, image = null, thumb = null, video = null, description = null,
     releaseDate = null, developer = null, publisher = null, genre = null, players = null, rating = null,
-    discs = discs, favourite = favourite, release = release, patch = patch, autoSave = null,
+    discs = discs, partKind = null, favourite = favourite, release = release, patch = patch, autoSave = null,
 )
 
 fun system(): SystemSummary = SystemSummary(

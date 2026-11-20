@@ -34,6 +34,7 @@ fragment GameFields on Game {
   players
   rating
   discs
+  partKind
   favourite
   release
   patch

@@ -298,6 +298,11 @@ type Game {
 	"""
 	release: String
 	"""
+	What its several files are (discs, disks, tapes, sides or parts), shown with its count
+	(`discs`). Null for a game in one file.
+	"""
+	partKind: PartKind
+	"""
 	The soft patch this user plays it with (a translation, a fix, a hack), by name: their
 	choice, else the patch beside it with its name. Null: the original.
 	"""
@@ -753,6 +758,32 @@ type PadLayout {
 	height: Float!
 	body: [Shape!]!
 	keys: [PadKey!]!
+}
+
+"""
+What a multi-part game's files are.
+"""
+enum PartKind {
+	"""
+	Optical discs (CDs, DVDs, GD-ROMs).
+	"""
+	DISC
+	"""
+	Floppy disks (the Famicom Disk System's included).
+	"""
+	DISK
+	"""
+	Cassette tapes.
+	"""
+	TAPE
+	"""
+	The sides of one disk or tape.
+	"""
+	SIDE
+	"""
+	Numbered files of any other kind.
+	"""
+	PART
 }
 
 type Patch {

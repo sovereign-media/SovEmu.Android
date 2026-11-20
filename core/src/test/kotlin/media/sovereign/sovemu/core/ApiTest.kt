@@ -30,10 +30,10 @@ class ApiTest {
             "featured":[{"__typename":"Game","id":7,"system":"snes","title":"Chrono Trigger","fileTitle":null,"tags":["USA"],
               "path":"snes/ct.sfc","size":4194304.0,"lastPlayedAt":null,"playCount":0,"image":null,"thumb":"/media/games/7/thumb",
               "video":null,"description":null,"releaseDate":"1995-03-11","developer":"Square","publisher":null,"genre":"RPG",
-              "players":"1","rating":null,"discs":1,"favourite":true,"release":"Translation","patch":"IPS patch","autoSave":null}],
+              "players":"1","rating":null,"discs":1,"partKind":null,"favourite":true,"release":"Translation","patch":"IPS patch","autoSave":null}],
             "recent":[{"__typename":"Game","id":8,"system":"nes","title":"Metroid","fileTitle":null,"tags":[],"path":"nes/m.nes",
               "size":131088.0,"lastPlayedAt":"2026-11-19 16:05:56","playCount":2,"image":null,"thumb":null,"video":null,
-              "description":null,"releaseDate":null,"developer":null,"publisher":null,"genre":null,"players":null,"rating":null,"discs":2,"favourite":false,"release":null,"patch":null,
+              "description":null,"releaseDate":null,"developer":null,"publisher":null,"genre":null,"players":null,"rating":null,"discs":2,"partKind":"DISC","favourite":false,"release":null,"patch":null,
               "autoSave":{"slot":0,"savedAt":1.7e9,"screenshotUrl":"/media/games/8/saves/0?t=1"}}],
             "added":[],"favourites":[]},
           "collections":[{"__typename":"Collection","id":3,"name":"Co-op","games":[]}]}}"""
