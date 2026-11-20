@@ -10,6 +10,8 @@ import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import mockwebserver3.RecordedRequest
+import com.apollographql.apollo.ApolloClient
+import com.apollographql.apollo.network.okHttpClient
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.junit.After
@@ -30,10 +32,20 @@ class AuthTest {
     private val store = MemoryStore()
     private var clock = 0L
     private lateinit var auth: Auth
+    /** What the server's bootstrapConfig said: SovEmu's own paths, unless a test asks it. */
+    private var config: SignInConfig? = null
 
     @Before
     fun start() {
         server.start()
+        config = SignInConfig(
+            address = "${server.hostName}:${server.port}",
+            signInAvailable = true,
+            clientId = "sovemu-native",
+            tokenEndpoint = server.url("/oauth/token").toString(),
+            revocationEndpoint = server.url("/oauth/revoke").toString(),
+            passwordEndpoint = server.url("/oauth/password").toString(),
+        )
         auth = auth()
     }
 
@@ -42,7 +54,28 @@ class AuthTest {
         server.close()
     }
 
-    private fun auth() = Auth(TokenClient(http, { server.url("/").toString().trimEnd('/') }), store, now = { clock })
+    private fun address() = server.url("/").toString().trimEnd('/')
+
+    private fun auth() = Auth(TokenClient(http, ::address, { config }), store, now = { clock })
+
+    private fun bootstrapAnswer(available: Boolean = true, password: String? = "/auth/pw") = MockResponse.Builder()
+        .code(200)
+        .setHeader("Content-Type", "application/json")
+        .body(
+            if (!available) {
+                """{"data":{"bootstrapConfig":{"signInAvailable":false,"address":"10.0.0.5:8080","nativeClientId":null,""" +
+                    """"tokenEndpoint":null,"revocationEndpoint":null,"passwordEndpoint":null}}}"""
+            } else {
+                // Elsewhere than SovEmu's own paths, and another client id: the app must use these.
+                """{"data":{"bootstrapConfig":{"signInAvailable":true,"address":"10.0.0.5:8080","nativeClientId":"tv-app",""" +
+                    """"tokenEndpoint":"${server.url("/auth/token")}","revocationEndpoint":"/auth/revoke",""" +
+                    """"passwordEndpoint":${password?.let { "\"$it\"" } ?: "null"}}}}"""
+            },
+        )
+        .build()
+
+    private suspend fun fetchBootstrap(): SignInConfig =
+        ApolloClient.Builder().serverUrl("${address()}/graphql").okHttpClient(http).build().use { bootstrap(it, address()) }
 
     private fun tokens(access: String, refresh: String, expiresIn: Int = 3600) = MockResponse.Builder()
         .code(200)
@@ -265,5 +298,63 @@ class AuthTest {
         client.newCall(Request.Builder().url(server.url("/media/games/7/thumb")).build()).execute().close()
         assertEquals("Bearer a1", server.takeRequest().headers["Authorization"])
         assertNull(server.takeRequest().headers["Authorization"])
+    }
+
+    @Test
+    fun theBootstrapAnswerNamesTheEndpointsAndClient() = runBlocking {
+        server.enqueue(bootstrapAnswer())
+        config = fetchBootstrap()
+        val ask = server.takeRequest()
+        assertEquals("/graphql", ask.url.encodedPath)
+        assertNull(ask.headers["Authorization"])
+        assertNull(config!!.problem)
+
+        server.enqueue(tokens("a1", "r1"))
+        server.enqueue(tokens("a2", "r2"))
+        server.enqueue(MockResponse.Builder().code(200).build())
+        auth.signIn("ada", "pw")
+        val signIn = server.takeRequest()
+        assertEquals("/auth/pw", signIn.url.encodedPath)
+        assertEquals("tv-app", signIn.form()["client_id"])
+
+        clock += 3_600_000
+        assertEquals("a2", auth.accessToken())
+        val refresh = server.takeRequest()
+        assertEquals("/auth/token", refresh.url.encodedPath)
+        assertEquals("tv-app", refresh.form()["client_id"])
+
+        auth.signOut()
+        val revoke = server.takeRequest()
+        // A relative endpoint resolves against the address the user typed.
+        assertEquals("/auth/revoke", revoke.url.encodedPath)
+        assertEquals(mapOf("token" to "r2", "client_id" to "tv-app"), revoke.form())
+    }
+
+    @Test
+    fun anAddressOutsidePublicUrlCannotSignIn() = runBlocking {
+        server.enqueue(bootstrapAnswer(available = false))
+        config = fetchBootstrap()
+        val why = "Signing in isn't available at 10.0.0.5:8080. Add it to SOVEMU_PUBLIC_URL on the server."
+        assertEquals(why, config!!.problem)
+        val e = assertThrows(OAuthException::class.java) { runBlocking { auth.signIn("ada", "pw") } }
+        assertEquals(why, e.message)
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test
+    fun passwordSignInOffNeedsTheDeviceCode() = runBlocking {
+        server.enqueue(bootstrapAnswer(password = null))
+        config = fetchBootstrap()
+        val why = "This server signs in with a code shown on the screen, which this version of the app can't do yet."
+        assertEquals(why, config!!.problem)
+        assertEquals(why, assertThrows(OAuthException::class.java) { runBlocking { auth.signIn("ada", "pw") } }.message)
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test
+    fun noSovEmuServerAtTheAddress() = runBlocking {
+        server.enqueue(MockResponse.Builder().code(404).body("Not Found").build())
+        val e = assertThrows(ApiException::class.java) { runBlocking { fetchBootstrap() } }
+        assertEquals("NOT_SOVEMU", e.code)
     }
 }

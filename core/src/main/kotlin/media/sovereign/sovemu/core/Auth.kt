@@ -1,6 +1,8 @@
 package media.sovereign.sovemu.core
 
+import com.apollographql.apollo.ApolloClient
 import com.apollographql.apollo.api.json.jsonReader
+import com.apollographql.apollo.exception.ApolloNetworkException
 import com.apollographql.apollo.api.json.JsonReader
 import java.io.IOException
 import kotlin.coroutines.cancellation.CancellationException
@@ -13,6 +15,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import media.sovereign.sovemu.core.graphql.BootstrapQuery
 import okhttp3.FormBody
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
@@ -39,43 +42,114 @@ interface TokenStore {
 }
 
 /**
- * SovEmu's OAuth endpoints, as the public client `sovemu-native`: `/oauth/password` to sign in,
- * the refresh_token grant at `/oauth/token`, and revocation to sign out. [server] is the address the user
- * typed (`http://192.168.1.10:8080`).
+ * Where and how to sign in at a server address: its `bootstrapConfig`, which the app asks first
+ * (signed out) and keeps with the address, so a stored sign-in refreshes even when the app
+ * starts offline. The endpoints are used as given; the app hard-codes nothing but `/graphql`.
+ */
+data class SignInConfig(
+    /** The address the server saw (`Host`), which is what `SOVEMU_PUBLIC_URL` must list. */
+    val address: String,
+    val signInAvailable: Boolean,
+    /** The apps' OAuth client id. */
+    val clientId: String?,
+    val tokenEndpoint: String?,
+    val revocationEndpoint: String?,
+    /** The password sign-in; null when the server has switched it off. */
+    val passwordEndpoint: String?,
+) {
+    /** Why this app cannot sign in with a password here, written for people; null when it can. */
+    val problem: String?
+        get() = when {
+            !signInAvailable ->
+                "Signing in isn't available at $address. Add it to SOVEMU_PUBLIC_URL on the server."
+            passwordEndpoint == null ->
+                "This server signs in with a code shown on the screen, which this version of the " +
+                    "app can't do yet."
+            clientId == null || tokenEndpoint == null -> "The server sent no sign-in details."
+            else -> null
+        }
+}
+
+/**
+ * Asks the server at [apollo]'s address how to sign in (`bootstrapConfig`, which works signed
+ * out). Anything but a GraphQL answer with it means there is no SovEmu server there, or one too
+ * old for this app: that is an [ApiException] `NOT_SOVEMU`. A network failure is thrown as it is.
+ */
+suspend fun bootstrap(apollo: ApolloClient, address: String): SignInConfig {
+    val response = apollo.query(BootstrapQuery()).execute()
+    if (response.exception is ApolloNetworkException) throw response.exception!!
+    val data = try {
+        response.orThrow()
+    } catch (_: ApiException) {
+        throw ApiException("NOT_SOVEMU", "No SovEmu server answered at $address (or it is older than this app).")
+    }
+    return data.bootstrapConfig.toSignInConfig()
+}
+
+fun BootstrapQuery.BootstrapConfig.toSignInConfig(): SignInConfig = SignInConfig(
+    address = address,
+    signInAvailable = signInAvailable,
+    clientId = nativeClientId,
+    tokenEndpoint = tokenEndpoint,
+    revocationEndpoint = revocationEndpoint,
+    passwordEndpoint = passwordEndpoint,
+)
+
+/**
+ * SovEmu's OAuth endpoints, as the apps' public client, at the URLs [config] (the server's
+ * `bootstrapConfig`) gives: the password sign-in, the refresh_token grant at the token endpoint,
+ * and revocation to sign out. [server] is the address the user typed
+ * (`http://192.168.1.10:8080`), which relative endpoints resolve against.
  */
 class TokenClient(
     private val http: OkHttpClient,
     private val server: () -> String,
+    private val config: () -> SignInConfig?,
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
     /**
-     * Signs in with a username and password at the server's own `/oauth/password` route (OAuth
-     * 2.1 has no password grant, so it takes no `grant_type`); it answers as `/oauth/token` does.
+     * Signs in with a username and password at the server's password endpoint (OAuth 2.1 has no
+     * password grant, so it takes no `grant_type`); it answers as the token endpoint does.
      */
-    suspend fun signIn(username: String, password: String): Tokens = token(
-        "/oauth/password",
-        FormBody.Builder()
-            .add("client_id", CLIENT_ID)
-            .add("username", username)
-            .add("password", password)
-            .add("scope", SCOPE)
-            .build(),
-    )
+    suspend fun signIn(username: String, password: String): Tokens {
+        val c = config() ?: throw unavailable("Check the server address first.")
+        c.problem?.let { throw unavailable(it) }
+        return token(
+            c.passwordEndpoint!!,
+            FormBody.Builder()
+                .add("client_id", c.clientId!!)
+                .add("username", username)
+                .add("password", password)
+                .add("scope", SCOPE)
+                .build(),
+        )
+    }
 
-    suspend fun refresh(refreshToken: String): Tokens = token(
-        "/oauth/token",
-        FormBody.Builder()
-            .add("grant_type", "refresh_token")
-            .add("client_id", CLIENT_ID)
-            .add("refresh_token", refreshToken)
-            .build(),
-    )
+    suspend fun refresh(refreshToken: String): Tokens {
+        val c = config()
+        val endpoint = c?.tokenEndpoint
+        val clientId = c?.clientId
+        if (endpoint == null || clientId == null) throw unavailable("The server sent no sign-in details.")
+        return token(
+            endpoint,
+            FormBody.Builder()
+                .add("grant_type", "refresh_token")
+                .add("client_id", clientId)
+                .add("refresh_token", refreshToken)
+                .build(),
+        )
+    }
 
     /** Revokes the sign-in [refreshToken] belongs to (the server always answers 200). */
     suspend fun revoke(refreshToken: String) {
-        val form = FormBody.Builder().add("token", refreshToken).add("client_id", CLIENT_ID).build()
-        withContext(io) { http.newCall(post("/oauth/revoke", form)).execute().close() }
+        val c = config()
+        val endpoint = c?.revocationEndpoint ?: return
+        val clientId = c.clientId ?: return
+        val form = FormBody.Builder().add("token", refreshToken).add("client_id", clientId).build()
+        withContext(io) { http.newCall(post(endpoint, form)).execute().close() }
     }
+
+    private fun unavailable(why: String) = OAuthException(SIGN_IN_UNAVAILABLE, why, 0)
 
     private suspend fun token(path: String, form: FormBody): Tokens = withContext(io) {
         http.newCall(post(path, form)).execute().use { response ->
@@ -99,8 +173,8 @@ class TokenClient(
         }
     }
 
-    private fun post(path: String, form: FormBody): Request {
-        val url = "${server()}$path".toHttpUrlOrNull()
+    private fun post(endpoint: String, form: FormBody): Request {
+        val url = server().toHttpUrlOrNull()?.resolve(endpoint)
             ?: throw ApiException("BAD_REQUEST", "Invalid server address")
         return Request.Builder().url(url).post(form).build()
     }
@@ -128,8 +202,10 @@ class TokenClient(
     }
 
     companion object {
-        const val CLIENT_ID = "sovemu-native"
         const val SCOPE = "openid profile offline_access"
+
+        /** [OAuthException.error] when the server's sign-in details rule a sign-in out. */
+        const val SIGN_IN_UNAVAILABLE = "sign_in_unavailable"
     }
 }
 

@@ -21,6 +21,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,8 +46,13 @@ import media.sovereign.sovemu.Settings
 import media.sovereign.sovemu.SovEmuApi
 import media.sovereign.sovemu.core.ApiException
 import media.sovereign.sovemu.core.OAuthException
+import media.sovereign.sovemu.core.SignInConfig
 
-/** The server's address, then sign in. First-run setup (the admin account) happens in a browser. */
+/**
+ * The server's address, then sign in. The address is checked first (its `bootstrapConfig`: is
+ * there a SovEmu server, and can this app sign in there); only then does the form ask for a
+ * username and password. First-run setup (the admin account) happens in a browser.
+ */
 @Composable
 fun LoginScreen(settings: Settings, api: SovEmuApi, onSignedIn: () -> Unit) {
     var server by remember { mutableStateOf(settings.serverUrl.ifEmpty { "http://" }) }
@@ -54,18 +60,51 @@ fun LoginScreen(settings: Settings, api: SovEmuApi, onSignedIn: () -> Unit) {
     var password by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
+    // How to sign in at the address in the field: null until it has been checked.
+    var config by remember { mutableStateOf<SignInConfig?>(settings.signInConfig) }
+    val ready = config?.problem == null && config != null
     val scope = rememberCoroutineScope()
+
+    fun failed(e: Exception) {
+        // The server's error_description (wrong password, wait N minutes …) as it is.
+        error = when (e) {
+            is OAuthException, is ApiException -> e.message
+            else -> null
+        } ?: "Cannot reach the server: ${e.message}"
+    }
+
+    /** Asks the address how to sign in; [quiet] keeps a failure off the screen (on launch). */
+    suspend fun check(address: String, quiet: Boolean = false) {
+        settings.serverUrl = address
+        try {
+            val answer = api.bootstrap()
+            config = answer
+            error = answer.problem
+            if (answer.problem == null && api.status().setupRequired) {
+                config = null
+                error = "Finish first-run setup in a browser at $address first."
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (!quiet) failed(e)
+        }
+    }
+
+    // A stored address is asked again on every launch, so its sign-in details stay current.
+    LaunchedEffect(Unit) {
+        if (settings.serverUrl.isNotEmpty()) check(settings.serverUrl, quiet = true)
+    }
 
     fun submit() {
         if (busy) return
         busy = true
         error = null
         val address = server.trim().let { if ("://" in it) it else "http://$it" }
-        settings.serverUrl = address
         scope.launch {
             try {
-                if (api.status().setupRequired) {
-                    error = "Finish first-run setup in a browser at $address first."
+                if (!ready || address.trimEnd('/') != settings.serverUrl) {
+                    check(address)
                 } else {
                     api.signIn(username.trim(), password)
                     onSignedIn()
@@ -73,11 +112,7 @@ fun LoginScreen(settings: Settings, api: SovEmuApi, onSignedIn: () -> Unit) {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                // The server's error_description (wrong password, wait N minutes …) as it is.
-                error = when (e) {
-                    is OAuthException, is ApiException -> e.message
-                    else -> null
-                } ?: "Cannot reach the server: ${e.message}"
+                failed(e)
             } finally {
                 busy = false
             }
@@ -104,9 +139,20 @@ fun LoginScreen(settings: Settings, api: SovEmuApi, onSignedIn: () -> Unit) {
                 Brand(size = 30)
                 Text("Sign in to play.", color = Sov.Muted, fontSize = 14.sp, modifier = Modifier.padding(top = 4.dp))
             }
-            Field("Server address", server, { server = it; error = null }, KeyboardType.Uri)
-            Field("Username", username, { username = it; error = null })
-            Field("Password", password, { password = it; error = null }, KeyboardType.Password, secret = true, onDone = ::submit)
+            Field(
+                "Server address", server,
+                {
+                    server = it
+                    error = null
+                    config = null
+                },
+                KeyboardType.Uri,
+                onDone = if (ready) null else ::submit,
+            )
+            if (ready) {
+                Field("Username", username, { username = it; error = null })
+                Field("Password", password, { password = it; error = null }, KeyboardType.Password, secret = true, onDone = ::submit)
+            }
             error?.let {
                 Row(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(Color(0x26EF4444)).padding(horizontal = 12.dp, vertical = 8.dp),
@@ -116,7 +162,18 @@ fun LoginScreen(settings: Settings, api: SovEmuApi, onSignedIn: () -> Unit) {
                     Text(it, color = Sov.Red300, fontSize = 14.sp)
                 }
             }
-            SovButton(if (busy) "Signing in…" else "Sign in", ::submit, Modifier.fillMaxWidth(), icon = Lucide.LogIn, enabled = !busy)
+            SovButton(
+                when {
+                    !ready && busy -> "Checking…"
+                    !ready -> "Continue"
+                    busy -> "Signing in…"
+                    else -> "Sign in"
+                },
+                ::submit,
+                Modifier.fillMaxWidth(),
+                icon = Lucide.LogIn,
+                enabled = !busy,
+            )
         }
     }
 }

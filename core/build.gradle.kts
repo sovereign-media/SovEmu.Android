@@ -32,6 +32,8 @@ tasks.register<Copy>("syncSchema") {
 
 dependencies {
     api(libs.apollo.api)
+    // Asking a server's bootstrapConfig (`Auth.kt`), signed out, before any sign-in.
+    api(libs.apollo.runtime)
     // The OAuth token client (`Auth.kt`): plain HTTP form posts, outside Apollo.
     api(libs.okhttp)
     api(libs.kotlinx.coroutines.core)

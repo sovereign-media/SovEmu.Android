@@ -23,6 +23,8 @@ import media.sovereign.sovemu.core.IceServer
 import media.sovereign.sovemu.core.PadLayout
 import media.sovereign.sovemu.core.SaveSlot
 import media.sovereign.sovemu.core.SessionInfo
+import media.sovereign.sovemu.core.SignInConfig
+import media.sovereign.sovemu.core.bootstrap
 import media.sovereign.sovemu.core.SystemControls
 import media.sovereign.sovemu.core.SystemSummary
 import media.sovereign.sovemu.core.TokenClient
@@ -65,9 +67,9 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 
 /**
- * The server address and the sign-in's refresh token, kept across launches. The token is in the
- * app's private preferences (excluded from backups by `allowBackup="false"`); the access token
- * lives only in memory.
+ * The server address, how to sign in there (its `bootstrapConfig`) and the sign-in's refresh
+ * token, kept across launches. The token is in the app's private preferences (excluded from
+ * backups by `allowBackup="false"`); the access token lives only in memory.
  */
 class Settings(context: Context) : TokenStore {
     internal val prefs = context.getSharedPreferences("sovemu", Context.MODE_PRIVATE)
@@ -85,6 +87,31 @@ class Settings(context: Context) : TokenStore {
     override var refreshToken: String?
         get() = prefs.getString("refresh_token", null)
         set(value) = prefs.edit().putString("refresh_token", value).apply()
+
+    /** The sign-in details last fetched from [serverUrl]; null for another address, or none yet. */
+    var signInConfig: SignInConfig?
+        get() {
+            if (prefs.getString("signin.server", null) != serverUrl) return null
+            return SignInConfig(
+                address = prefs.getString("signin.address", null) ?: return null,
+                signInAvailable = prefs.getBoolean("signin.available", false),
+                clientId = prefs.getString("signin.client", null),
+                tokenEndpoint = prefs.getString("signin.token", null),
+                revocationEndpoint = prefs.getString("signin.revoke", null),
+                passwordEndpoint = prefs.getString("signin.password", null),
+            )
+        }
+        set(value) {
+            prefs.edit()
+                .putString("signin.server", value?.let { serverUrl })
+                .putString("signin.address", value?.address)
+                .putBoolean("signin.available", value?.signInAvailable == true)
+                .putString("signin.client", value?.clientId)
+                .putString("signin.token", value?.tokenEndpoint)
+                .putString("signin.revoke", value?.revocationEndpoint)
+                .putString("signin.password", value?.passwordEndpoint)
+                .apply()
+        }
 }
 
 /**
@@ -99,8 +126,8 @@ class SovEmuApi(private val settings: Settings) {
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
-    /** The sign-in: OAuth tokens from the server's `/oauth/token`, as `sovemu-native`. */
-    val auth = Auth(TokenClient(plain, { settings.serverUrl }), settings)
+    /** The sign-in: OAuth tokens from the endpoints the server's `bootstrapConfig` names. */
+    val auth = Auth(TokenClient(plain, { settings.serverUrl }, { settings.signInConfig }), settings)
 
     /**
      * Shared with Apollo, the image loader and the video players: GraphQL requests carry the
@@ -112,11 +139,30 @@ class SovEmuApi(private val settings: Settings) {
     private var apollo: Pair<String, ApolloClient>? = null
 
     private fun apollo(): ApolloClient {
-        val url = "${settings.serverUrl}/graphql"
-        if (url.toHttpUrlOrNull() == null) throw ApiException("BAD_REQUEST", "Invalid server address")
+        val url = graphqlUrl()
         apollo?.let { (u, c) -> if (u == url) return c }
         return ApolloClient.Builder().serverUrl(url).okHttpClient(client).build().also { apollo = url to it }
     }
+
+    private fun graphqlUrl(): String {
+        val url = "${settings.serverUrl}/graphql"
+        if (url.toHttpUrlOrNull() == null) throw ApiException("BAD_REQUEST", "Invalid server address")
+        return url
+    }
+
+    /**
+     * Asks the server how to sign in (`bootstrapConfig`), which also tells whether a SovEmu server
+     * is at the address, and keeps the answer with it. Signed out: no bearer, no refresh.
+     */
+    suspend fun bootstrap(): SignInConfig {
+        val url = graphqlUrl()
+        val anonymous = signedOut?.takeIf { it.first == url }?.second
+            ?: ApolloClient.Builder().serverUrl(url).okHttpClient(plain).build().also { signedOut = url to it }
+        return bootstrap(anonymous, settings.serverUrl).also { settings.signInConfig = it }
+    }
+
+    /** [bootstrap]'s Apollo client, per address: the plain HTTP client, without the bearer. */
+    private var signedOut: Pair<String, ApolloClient>? = null
 
     // An access token the server rejects (revoked, or the clocks disagree) is refreshed and the
     // request sent once more.
@@ -129,7 +175,7 @@ class SovEmuApi(private val settings: Settings) {
     fun media(path: String?): String? = path?.let { if (it.startsWith("http")) it else settings.serverUrl + it }
 
     suspend fun status(): Viewer = query(ViewerQuery()).viewer.let { Viewer(it.setupRequired, it.user?.userFields) }
-    /** Signs in at `/oauth/password` with a username and password; a refusal is an `OAuthException` with the server's reason. */
+    /** Signs in with a username and password (after [bootstrap]); a refusal is an `OAuthException` with the server's reason. */
     suspend fun signIn(username: String, password: String) = auth.signIn(username, password)
     /** Revokes the sign-in on the server, and forgets it here even when that fails. */
     suspend fun signOut() = auth.signOut()

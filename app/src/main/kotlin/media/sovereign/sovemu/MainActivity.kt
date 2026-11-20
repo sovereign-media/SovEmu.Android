@@ -109,7 +109,12 @@ class MainActivity : ComponentActivity() {
         controller.start(this)
         presence = InputPresence(this, controller)
         music = MenuMusic(this, lifecycleScope)
-        if (settings.serverUrl.isNotEmpty() && api.auth.signedIn.value) store.refresh()
+        if (settings.serverUrl.isNotEmpty() && api.auth.signedIn.value) {
+            // The server's sign-in details, asked again on each launch it can be reached (the
+            // stored copy lets a sign-in refresh when it cannot).
+            lifecycleScope.launch { attempt { api.bootstrap() } }
+            store.refresh()
+        }
         setContent {
             // Artwork goes through the API's client (its timeouts; /media URLs are signed).
             setSingletonImageLoaderFactory { context ->

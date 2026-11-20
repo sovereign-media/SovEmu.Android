@@ -133,6 +133,51 @@ enum BiosState {
 }
 
 """
+Where and how to sign in at the address this request reached. Apps ask it first, signed out,
+and use these URLs as given (they hard-code nothing but `/graphql`).
+"""
+type BootstrapConfig {
+	"""
+	Whether anything can sign in at this address. False when it is not one of
+	`SOVEMU_PUBLIC_URL`'s; then the rest is null, and `address` says what to add.
+	"""
+	signInAvailable: Boolean!
+	"""
+	The address the request reached, as `Host` named it.
+	"""
+	address: String!
+	"""
+	The OpenID Connect issuer for this address (discovery at
+	`<issuer>/.well-known/openid-configuration`).
+	"""
+	issuer: String
+	"""
+	The web client's id: the authorization code flow with PKCE.
+	"""
+	webClientId: String
+	"""
+	The apps' id: the device grant, and the password fallback.
+	"""
+	nativeClientId: String
+	authorizationEndpoint: String
+	tokenEndpoint: String
+	revocationEndpoint: String
+	"""
+	Where an app asks for a code to show (RFC 8628 device authorization).
+	"""
+	deviceAuthorizationEndpoint: String
+	"""
+	Where a person approves that code, in a signed-in browser.
+	"""
+	verificationUri: String
+	"""
+	The apps' password fallback: a form post of `client_id`, `username`, `password` and
+	`scope`, answered like the token endpoint. Null when `SOVEMU_PASSWORD_SIGN_IN` is off.
+	"""
+	passwordEndpoint: String
+}
+
+"""
 A cheat code for a game, this user's.
 """
 type Cheat {
@@ -195,7 +240,7 @@ type ControllerMapping {
 
 type Decoration {
 	"""
-	The image (PNG), under `/media/decorations/`.
+	The image (PNG), under `/media/decorations/`: a URL signed for this user.
 	"""
 	url: String!
 	"""
@@ -335,7 +380,8 @@ type Game {
 	"""
 	media: [MediaKind!]!
 	"""
-	Where to load a kind of artwork from, if the game has it.
+	Where to load a kind of artwork from, if the game has it: a URL signed for this user
+	(valid `SOVEMU_ASSET_URL_HOURS`; ask again for a fresh one).
 	"""
 	mediaUrl(kind: MediaKind!): String
 	description: String
@@ -582,12 +628,14 @@ type MirrorSync {
 
 type Mutation {
 	"""
-	First run: creates the admin account and signs it in (sets the cookie). Only while no
-	account exists.
+	First run: creates the admin account. Only while no account exists. The browser is then
+	signed in at the server's sign-in page (a cookie only `/oauth/authorize` reads), so the
+	web client finishes signing in there without asking for the password again. Apps sign in
+	at `/oauth/token`; there is no sign-in mutation.
 	"""
 	setup(username: String!, password: String!): User!
 	"""
-	Admins: adds an account.
+	Admins: adds an account (a viewer unless `role` says otherwise).
 	"""
 	addUser(input: NewUserInput!): User!
 	"""
@@ -693,7 +741,7 @@ type Mutation {
 input NewUserInput {
 	username: String!
 	password: String!
-	isAdmin: Boolean! = false
+	role: Role! = VIEWER
 }
 
 """
@@ -792,6 +840,11 @@ type Patch {
 
 type Query {
 	"""
+	Where and how to sign in here. Works signed out: an app's first question, which also tells
+	it a SovEmu server is at the address it was given.
+	"""
+	bootstrapConfig: BootstrapConfig!
+	"""
 	Who is signed in, and whether first-run setup is needed. Works signed out.
 	"""
 	viewer: Viewer!
@@ -871,7 +924,13 @@ enum Rendering {
 What an account may do.
 """
 enum Role {
+	"""
+	Plays games: browse the library, play, keep saves and settings of their own.
+	"""
 	VIEWER
+	"""
+	Also runs the server: users, the library, emulator settings.
+	"""
 	ADMIN
 }
 
@@ -885,7 +944,8 @@ type SaveSlot {
 	"""
 	savedAt: Float!
 	"""
-	The screen when it was saved, if there is one (the URL changes with each save).
+	The screen when it was saved, if there is one: a URL signed for this user that changes
+	with each save.
 	"""
 	screenshotUrl: String
 }
@@ -1079,8 +1139,11 @@ An account.
 type User {
 	id: Int!
 	username: String!
-	isAdmin: Boolean!
 	role: Role!
+	"""
+	Whether the role is `ADMIN`.
+	"""
+	isAdmin: Boolean!
 }
 
 type Viewer {
