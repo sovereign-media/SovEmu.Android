@@ -13,6 +13,7 @@ import android.hardware.lights.Light
 import android.hardware.input.InputManager
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -121,6 +122,7 @@ class Controller {
     }
 
     private fun remove(id: Int) {
+        if (mixer.isPad(id)) Log.i(TAG, "controller $id removed")
         mixer.disconnect(id)
         if (keyboards.remove(id) && keyboards.isEmpty()) mixer.setKeyboardPresent(false)
         publish()
@@ -129,7 +131,8 @@ class Controller {
     private fun connectPad(id: Int, d: InputDevice?) {
         val name = d?.name ?: "Controller"
         val model = Controllers.identify(d?.vendorId ?: 0, d?.productId ?: 0, name)
-        mixer.connect(id, name, model)
+        val port = mixer.connect(id, name, model, physical = d?.descriptor)
+        Log.i(TAG, "controller $id ($name, ${model.id}) connected as player ${port?.plus(1)}")
     }
 
     /** A device we did not see connect (or that hides its gamepad source) sends a pad button. */
@@ -256,6 +259,15 @@ class Controller {
     )
 
     fun setTouch(button: Button, pressed: Boolean) = mixer.touch(button, pressed)
+
+    /**
+     * The app lost its window (a system overlay, a notification panel, another app): Android
+     * stops sending it events, so a held button's release would never arrive.
+     */
+    fun lostFocus() {
+        Log.w(TAG, "window lost focus: releasing held input")
+        mixer.release()
+    }
 
     /** Lets go of everything (leaving the game). */
     fun clear() {
@@ -404,6 +416,7 @@ class Controller {
     }
 
     companion object {
+        private const val TAG = "SovEmu.Input"
         private const val DEADZONE = 0.15f
 
         /** A stick axis (−1..1) in libretro's range, with the dead zone taken out. */

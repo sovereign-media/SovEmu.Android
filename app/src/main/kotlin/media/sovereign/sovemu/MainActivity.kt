@@ -290,6 +290,11 @@ class MainActivity : ComponentActivity() {
         updateMusic()
     }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (!hasFocus && playing) controller.lostFocus()
+    }
+
     override fun onStop() {
         foreground = false
         updateMusic()

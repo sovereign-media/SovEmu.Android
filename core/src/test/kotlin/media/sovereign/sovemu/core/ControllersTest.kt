@@ -185,6 +185,24 @@ class ControllersTest {
     }
 
     @Test
+    fun aControllerBackUnderANewIdReplacesItsStuckOldSelf() {
+        val mixer = InputMixer()
+        val xbox = ControllerModel("xbox", Family.XBOX)
+        mixer.connect(5, "Pad", xbox, physical = "bt-1")
+        mixer.connect(6, "Other", xbox, physical = "bt-2")
+        // Player 1 holds the stick left; then their pad drops and comes back as device 9, before
+        // Android removed device 5.
+        mixer.padAxes(5, emptySet(), -1f, 0f, Protocol.Analog.CENTRED)
+        assertEquals(Button.LEFT.bit, mixer.read().ports[0])
+        assertEquals(0, mixer.connect(9, "Pad", xbox, physical = "bt-1"))
+        assertEquals("the old self is gone, and nothing is held", 0, mixer.read().ports[0])
+        assertFalse(mixer.isPad(5))
+        mixer.pad(9, "south", true)
+        assertEquals(Button.B.bit, mixer.read().ports[0])
+        assertEquals("the other player is untouched", 1, mixer.devices().first { it.device == 6 }.port)
+    }
+
+    @Test
     fun hotkeysAreReadAfterMapping() {
         val mixer = InputMixer()
         mixer.connect(5, "Pad", ControllerModel("xbox", Family.XBOX))
