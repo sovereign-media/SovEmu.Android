@@ -14,6 +14,7 @@ import media.sovereign.sovemu.core.CollectionChoice
 import media.sovereign.sovemu.core.HomeCollection
 import media.sovereign.sovemu.core.ControllerMapping
 import media.sovereign.sovemu.core.Game
+import media.sovereign.sovemu.core.GamePatch
 import media.sovereign.sovemu.core.HomeFeed
 import media.sovereign.sovemu.core.IceServer
 import media.sovereign.sovemu.core.PadLayout
@@ -38,6 +39,7 @@ import media.sovereign.sovemu.core.graphql.LoginMutation
 import media.sovereign.sovemu.core.graphql.LogoutMutation
 import media.sovereign.sovemu.core.graphql.ResetControllerMappingMutation
 import media.sovereign.sovemu.core.graphql.SaveControllerMappingMutation
+import media.sovereign.sovemu.core.graphql.PatchesQuery
 import media.sovereign.sovemu.core.graphql.SaveStateMutation
 import media.sovereign.sovemu.core.graphql.SearchQuery
 import media.sovereign.sovemu.core.graphql.SavesQuery
@@ -45,6 +47,7 @@ import media.sovereign.sovemu.core.graphql.SessionOfferMutation
 import media.sovereign.sovemu.core.graphql.SetDiscMutation
 import media.sovereign.sovemu.core.graphql.SetFavouriteMutation
 import media.sovereign.sovemu.core.graphql.SetInCollectionMutation
+import media.sovereign.sovemu.core.graphql.SetPatchMutation
 import media.sovereign.sovemu.core.graphql.StartSessionMutation
 import media.sovereign.sovemu.core.graphql.StopSessionMutation
 import media.sovereign.sovemu.core.graphql.SystemGamesQuery
@@ -135,6 +138,13 @@ class SovEmuApi(private val settings: Settings) {
     }
     /** Games from every system matching every word of [text], best first (at most 48). */
     suspend fun search(text: String): List<Game> = query(SearchQuery(text)).search.map { it.gameFields }
+    /** A game's soft patches, the default first. */
+    suspend fun patches(gameId: Int): List<GamePatch> =
+        query(PatchesQuery(gameId)).game.patches.map { GamePatch(it.id, it.name, it.isDefault) }
+    /** Plays the game with [patchId] from now on, or the original (null). */
+    suspend fun setPatch(gameId: Int, patchId: Int?) {
+        mutate(SetPatchMutation(gameId, Optional.present(patchId)))
+    }
     /** Adds a game to this user's favourites, or takes it out. */
     suspend fun setFavourite(gameId: Int, favourite: Boolean) {
         mutate(SetFavouriteMutation(gameId, favourite))

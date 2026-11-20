@@ -52,6 +52,19 @@ data class HomeFeed(
 /** One of this user's collections, with its games (most recently added first). */
 data class HomeCollection(val id: Int, val name: String, val games: List<Game>)
 
+/**
+ * A soft patch for a game (a translation, a fix, a hack; applied as it loads). [isDefault]: it
+ * sits beside the game with its name, and applies unless the player chose otherwise.
+ */
+data class GamePatch(val id: Int, val name: String, val isDefault: Boolean)
+
+/** The choice after [current] when stepping through the original (null) and then [patches]. */
+fun nextPatch(patches: List<GamePatch>, current: String?): GamePatch? {
+    val options = listOf<GamePatch?>(null) + patches
+    val at = options.indexOfFirst { it?.name == current }.coerceAtLeast(0)
+    return options[(at + 1) % options.size]
+}
+
 /** A collection a game can go in, and whether it is in it. */
 data class CollectionChoice(val id: Int, val name: String, val member: Boolean)
 

@@ -36,6 +36,7 @@ fragment GameFields on Game {
   discs
   favourite
   release
+  patch
   autoSave {
     slot
     savedAt
@@ -165,6 +166,20 @@ query Search($text: String!) {
   search(text: $text) {
     ...GameFields
   }
+}
+
+query Patches($id: Int!) {
+  game(id: $id) {
+    patches {
+      id
+      name
+      isDefault
+    }
+  }
+}
+
+mutation SetPatch($gameId: Int!, $patchId: Int) {
+  setPatch(gameId: $gameId, patchId: $patchId)
 }
 
 query CollectionChoices($id: Int!) {

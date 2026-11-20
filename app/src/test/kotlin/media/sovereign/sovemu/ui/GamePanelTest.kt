@@ -24,6 +24,7 @@ import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.unit.dp
 import media.sovereign.sovemu.core.Game
+import media.sovereign.sovemu.core.GamePatch
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -41,6 +42,8 @@ class GamePanelTest {
     val rule = createComposeRule()
 
     private var open: Game? by mutableStateOf(game())
+    private var patches: List<GamePatch> = emptyList()
+    private var chosen: GamePatch? = null
     private var trapFocus by mutableStateOf(true)
     private val outside = FocusRequester()
     private var favourites = 0
@@ -57,6 +60,8 @@ class GamePanelTest {
                         onClose = { open = null }, onPlay = {},
                         onFavourite = { favourites++ }, onCollections = { collections++ },
                         trapFocus = trapFocus,
+                        patches = patches,
+                        onPatch = { chosen = it },
                     )
                 }
             }
@@ -129,5 +134,22 @@ class GamePanelTest {
         rule.waitForIdle()
         open = game(title = "Final Fantasy VII", release = "Translation")
         rule.onNodeWithText("Translation").assertExists()
+    }
+
+    @Test
+    fun aGameWithoutPatchesShowsNoPatchButton() {
+        show()
+        rule.waitForIdle()
+        rule.onNodeWithText("Patch: Original").assertDoesNotExist()
+    }
+
+    @Test
+    fun thePatchButtonStepsToTheNextPatch() {
+        patches = listOf(GamePatch(1, "IPS patch", true), GamePatch(2, "Hard Mode", false))
+        open = game(patch = "IPS patch")
+        show()
+        rule.waitForIdle()
+        rule.onNodeWithText("Patch: IPS patch").performClick()
+        assertEquals("Hard Mode", chosen?.name)
     }
 }
