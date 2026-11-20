@@ -345,7 +345,7 @@ internal fun GameCard(game: Game, system: SystemSummary?, wide: Boolean, memory:
             val ago = remember(game.lastPlayedAt, wide) {
                 if (wide) game.lastPlayedAt?.let { " · " + formatAgo(GameIndex.playedAt(it), System.currentTimeMillis() / 1000) } ?: "" else ""
             }
-            Text(short + ago, color = Sov.Slate400, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(withRelease(game.release, short + ago, first = false), color = Sov.Slate400, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }

@@ -47,6 +47,10 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -370,3 +374,27 @@ fun SectionTitle(title: String, icon: ImageVector, modifier: Modifier = Modifier
 @Composable
 fun Eyebrow(text: String, modifier: Modifier = Modifier) =
     Text(text.uppercase(), color = Sov.Slate500, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.2.sp, modifier = modifier)
+
+/**
+ * A card's detail line with the game's release label (what tells it from same-titled games on its
+ * system: "Translation", "Rev 1") in amber, before the rest ([first]) or after its first part.
+ */
+@Composable
+fun withRelease(release: String?, line: String, first: Boolean): AnnotatedString = remember(release, line, first) {
+    buildAnnotatedString {
+        if (release == null) {
+            append(line)
+            return@buildAnnotatedString
+        }
+        val label = { withStyle(SpanStyle(color = Sov.Amber200, fontWeight = FontWeight.Medium)) { append(release) } }
+        if (first) {
+            label()
+            append(" · ")
+            append(line)
+        } else {
+            append(line)
+            append(" · ")
+            label()
+        }
+    }
+}

@@ -442,7 +442,7 @@ private fun CoverCard(
             Text(game.title, color = Sov.Slate100, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             val players = maxPlayers(game.players)
             val line = (game.year ?: game.tags.firstOrNull() ?: system.short) + if (players != null && players >= 2) " · $players players" else ""
-            Text(line, color = Sov.Slate400, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(withRelease(game.release, line, first = true), color = Sov.Slate400, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -522,6 +522,7 @@ internal fun GamePanel(
                 ) {
                     Column {
                         Text(g.title, color = Color.White, fontSize = 24.sp, lineHeight = 28.sp, fontWeight = FontWeight.Black)
+                        g.release?.let { Text(it, color = Sov.Amber200, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 4.dp)) }
                         if (g.tags.isNotEmpty()) Text(g.tags.joinToString(" · "), color = Sov.Slate500, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
                         FlowRow(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             g.year?.let { Fact(Lucide.CalendarDays, it) }
