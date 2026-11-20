@@ -182,6 +182,20 @@ mutation SetPatch($gameId: Int!, $patchId: Int) {
   setPatch(gameId: $gameId, patchId: $patchId)
 }
 
+query GameDecoration($id: Int!) {
+  game(id: $id) {
+    decoration {
+      url
+      width
+      height
+      top
+      left
+      bottom
+      right
+    }
+  }
+}
+
 query CollectionChoices($id: Int!) {
   collections {
     id

@@ -14,6 +14,7 @@ import media.sovereign.sovemu.core.CollectionChoice
 import media.sovereign.sovemu.core.HomeCollection
 import media.sovereign.sovemu.core.ControllerMapping
 import media.sovereign.sovemu.core.Game
+import media.sovereign.sovemu.core.GameDecoration
 import media.sovereign.sovemu.core.GamePatch
 import media.sovereign.sovemu.core.HomeFeed
 import media.sovereign.sovemu.core.IceServer
@@ -33,6 +34,7 @@ import media.sovereign.sovemu.core.graphql.DeleteCheatMutation
 import media.sovereign.sovemu.core.graphql.SetCheatEnabledMutation
 import media.sovereign.sovemu.core.graphql.ControllerMappingsQuery
 import media.sovereign.sovemu.core.graphql.ControlsQuery
+import media.sovereign.sovemu.core.graphql.GameDecorationQuery
 import media.sovereign.sovemu.core.graphql.HomeQuery
 import media.sovereign.sovemu.core.graphql.LoadStateMutation
 import media.sovereign.sovemu.core.graphql.LoginMutation
@@ -138,6 +140,11 @@ class SovEmuApi(private val settings: Settings) {
     }
     /** Games from every system matching every word of [text], best first (at most 48). */
     suspend fun search(text: String): List<Game> = query(SearchQuery(text)).search.map { it.gameFields }
+    /** The artwork to frame a game's picture with, if its system has any. */
+    suspend fun decoration(gameId: Int): GameDecoration? =
+        query(GameDecorationQuery(gameId)).game.decoration?.let {
+            GameDecoration(it.url, it.width, it.height, it.top, it.left, it.bottom, it.right)
+        }
     /** A game's soft patches, the default first. */
     suspend fun patches(gameId: Int): List<GamePatch> =
         query(PatchesQuery(gameId)).game.patches.map { GamePatch(it.id, it.name, it.isDefault) }
