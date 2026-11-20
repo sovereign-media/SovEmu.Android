@@ -587,14 +587,6 @@ type Mutation {
 	"""
 	setup(username: String!, password: String!): User!
 	"""
-	Signs in (sets the cookie). Repeated failures for a username are slowed down.
-	"""
-	login(username: String!, password: String!): User!
-	"""
-	Signs out (clears the cookie).
-	"""
-	logout: Boolean!
-	"""
 	Admins: adds an account.
 	"""
 	addUser(input: NewUserInput!): User!
@@ -875,6 +867,14 @@ enum Rendering {
 	OFF
 }
 
+"""
+What an account may do.
+"""
+enum Role {
+	VIEWER
+	ADMIN
+}
+
 type SaveSlot {
 	"""
 	0 is the auto save; 1–9 are the player's.
@@ -1080,6 +1080,7 @@ type User {
 	id: Int!
 	username: String!
 	isAdmin: Boolean!
+	role: Role!
 }
 
 type Viewer {

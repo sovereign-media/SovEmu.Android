@@ -44,6 +44,7 @@ import kotlinx.coroutines.launch
 import media.sovereign.sovemu.Settings
 import media.sovereign.sovemu.SovEmuApi
 import media.sovereign.sovemu.core.ApiException
+import media.sovereign.sovemu.core.OAuthException
 
 /** The server's address, then sign in. First-run setup (the admin account) happens in a browser. */
 @Composable
@@ -66,13 +67,17 @@ fun LoginScreen(settings: Settings, api: SovEmuApi, onSignedIn: () -> Unit) {
                 if (api.status().setupRequired) {
                     error = "Finish first-run setup in a browser at $address first."
                 } else {
-                    api.login(username.trim(), password)
+                    api.signIn(username.trim(), password)
                     onSignedIn()
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                error = (e as? ApiException)?.message ?: "Cannot reach the server: ${e.message}"
+                // The server's error_description (wrong password, wait N minutes …) as it is.
+                error = when (e) {
+                    is OAuthException, is ApiException -> e.message
+                    else -> null
+                } ?: "Cannot reach the server: ${e.message}"
             } finally {
                 busy = false
             }

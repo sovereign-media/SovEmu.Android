@@ -8,6 +8,8 @@ import com.apollographql.apollo.api.Query
 import com.apollographql.apollo.network.okHttpClient
 import java.util.concurrent.TimeUnit
 import media.sovereign.sovemu.core.ApiException
+import media.sovereign.sovemu.core.Auth
+import media.sovereign.sovemu.core.BearerInterceptor
 import media.sovereign.sovemu.core.Binding
 import media.sovereign.sovemu.core.Cheat
 import media.sovereign.sovemu.core.CollectionChoice
@@ -23,7 +25,8 @@ import media.sovereign.sovemu.core.SaveSlot
 import media.sovereign.sovemu.core.SessionInfo
 import media.sovereign.sovemu.core.SystemControls
 import media.sovereign.sovemu.core.SystemSummary
-import media.sovereign.sovemu.core.User
+import media.sovereign.sovemu.core.TokenClient
+import media.sovereign.sovemu.core.TokenStore
 import media.sovereign.sovemu.core.Viewer
 import media.sovereign.sovemu.core.graphql.AddCheatMutation
 import media.sovereign.sovemu.core.graphql.CheatsQuery
@@ -37,8 +40,6 @@ import media.sovereign.sovemu.core.graphql.ControlsQuery
 import media.sovereign.sovemu.core.graphql.GameDecorationQuery
 import media.sovereign.sovemu.core.graphql.HomeQuery
 import media.sovereign.sovemu.core.graphql.LoadStateMutation
-import media.sovereign.sovemu.core.graphql.LoginMutation
-import media.sovereign.sovemu.core.graphql.LogoutMutation
 import media.sovereign.sovemu.core.graphql.ResetControllerMappingMutation
 import media.sovereign.sovemu.core.graphql.SaveControllerMappingMutation
 import media.sovereign.sovemu.core.graphql.PatchesQuery
@@ -60,37 +61,30 @@ import media.sovereign.sovemu.core.orThrow
 import media.sovereign.sovemu.core.toControls
 import media.sovereign.sovemu.core.toInput
 import media.sovereign.sovemu.core.toMapping
-import okhttp3.Cookie
-import okhttp3.CookieJar
-import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 
-/** The server address and the sign-in cookie, kept across launches. */
-class Settings(context: Context) {
+/**
+ * The server address and the sign-in's refresh token, kept across launches. The token is in the
+ * app's private preferences (excluded from backups by `allowBackup="false"`); the access token
+ * lives only in memory.
+ */
+class Settings(context: Context) : TokenStore {
     internal val prefs = context.getSharedPreferences("sovemu", Context.MODE_PRIVATE)
+
+    init {
+        // Before OAuth the app signed in with a session cookie, which the server no longer
+        // accepts: dropping it shows the sign-in screen once after the upgrade.
+        if (prefs.contains("cookie")) prefs.edit().remove("cookie").apply()
+    }
 
     var serverUrl: String
         get() = prefs.getString("server", "") ?: ""
         set(value) = prefs.edit().putString("server", value.trim().trimEnd('/')).apply()
 
-    var sessionCookie: String?
-        get() = prefs.getString("cookie", null)
-        set(value) = prefs.edit().putString("cookie", value).apply()
-}
-
-/** Keeps the server's `sovemu_session` cookie in [Settings]. */
-private class SessionCookieJar(private val settings: Settings) : CookieJar {
-    override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
-        cookies.firstOrNull { it.name == "sovemu_session" }?.let {
-            settings.sessionCookie = if (it.value.isEmpty()) null else it.value
-        }
-    }
-
-    override fun loadForRequest(url: HttpUrl): List<Cookie> {
-        val value = settings.sessionCookie ?: return emptyList()
-        return listOf(Cookie.Builder().name("sovemu_session").value(value).hostOnlyDomain(url.host).path("/").build())
-    }
+    override var refreshToken: String?
+        get() = prefs.getString("refresh_token", null)
+        set(value) = prefs.edit().putString("refresh_token", value).apply()
 }
 
 /**
@@ -99,12 +93,20 @@ private class SessionCookieJar(private val settings: Settings) : CookieJar {
  * and parse off the main thread (Apollo's own dispatcher).
  */
 class SovEmuApi(private val settings: Settings) {
-    /** Shared with Apollo and the image loader, so every request carries the sign-in cookie. */
-    val client: OkHttpClient = OkHttpClient.Builder()
-        .cookieJar(SessionCookieJar(settings))
+    /** The sign-in's token client: plain HTTP, without the bearer interceptor. */
+    private val plain: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
+
+    /** The sign-in: OAuth tokens from the server's `/oauth/token`, as `sovemu-native`. */
+    val auth = Auth(TokenClient(plain, { settings.serverUrl }), settings)
+
+    /**
+     * Shared with Apollo, the image loader and the video players: GraphQL requests carry the
+     * access token; `/media/…` URLs are signed and need nothing.
+     */
+    val client: OkHttpClient = plain.newBuilder().addInterceptor(BearerInterceptor(auth)).build()
 
     /** One Apollo client per server address (the address changes at sign-in). */
     private var apollo: Pair<String, ApolloClient>? = null
@@ -116,18 +118,21 @@ class SovEmuApi(private val settings: Settings) {
         return ApolloClient.Builder().serverUrl(url).okHttpClient(client).build().also { apollo = url to it }
     }
 
-    private suspend fun <D : Query.Data> query(q: Query<D>): D = apollo().query(q).execute().orThrow()
-    private suspend fun <D : Mutation.Data> mutate(m: Mutation<D>): D = apollo().mutation(m).execute().orThrow()
+    // An access token the server rejects (revoked, or the clocks disagree) is refreshed and the
+    // request sent once more.
+    private suspend fun <D : Query.Data> query(q: Query<D>): D =
+        auth.retryingUnauthenticated { apollo().query(q).execute().orThrow() }
+    private suspend fun <D : Mutation.Data> mutate(m: Mutation<D>): D =
+        auth.retryingUnauthenticated { apollo().mutation(m).execute().orThrow() }
 
     /** An absolute URL for a path the API hands out (`/media/games/7/thumb`). */
     fun media(path: String?): String? = path?.let { if (it.startsWith("http")) it else settings.serverUrl + it }
 
     suspend fun status(): Viewer = query(ViewerQuery()).viewer.let { Viewer(it.setupRequired, it.user?.userFields) }
-    suspend fun login(username: String, password: String): User = mutate(LoginMutation(username, password)).login.userFields
-    suspend fun logout() {
-        mutate(LogoutMutation())
-        settings.sessionCookie = null
-    }
+    /** Signs in with the password grant; a refusal is an `OAuthException` with the server's reason. */
+    suspend fun signIn(username: String, password: String) = auth.signIn(username, password)
+    /** Revokes the sign-in on the server, and forgets it here even when that fails. */
+    suspend fun signOut() = auth.signOut()
     suspend fun iceServers(): List<IceServer> = iceServers(query(ClientConfigQuery()).clientConfig.iceServers)
     suspend fun systems(): List<SystemSummary> = query(SystemsQuery()).systems.map { it.systemFields }
     suspend fun home(): HomeFeed = query(HomeQuery()).let { d ->
