@@ -1,6 +1,9 @@
 package media.sovereign.sovemu
 
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.hours
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
@@ -40,6 +43,8 @@ class Store(
     private val api: SovEmuApi,
     private val scope: CoroutineScope,
     private val compute: CoroutineDispatcher = Dispatchers.Default,
+    /** How often the lists are fetched again, well inside a signed URL's day. */
+    private val refreshEvery: Duration = 6.hours,
 ) {
     private val _user = MutableStateFlow<User?>(null)
     private val _systems = MutableStateFlow<Load<List<SystemSummary>>>(Load.Loading)
@@ -54,6 +59,7 @@ class Store(
 
     private val games = HashMap<String, MutableStateFlow<Load<GameIndex>>>()
     private var signIn: Job = SupervisorJob(scope.coroutineContext[Job])
+    private var freshening: Job? = null
 
     private fun launch(block: suspend CoroutineScope.() -> Unit) = scope.launch(signIn, block = block)
 
@@ -61,6 +67,25 @@ class Store(
         launch { _user.value = attempt { api.status().user }.onFailure(::note).getOrNull() }
         launch { load(_systems) { api.systems() } }
         launch { load(_home) { api.home() } }
+        keepFresh()
+    }
+
+    /**
+     * The file URLs in these lists are signed for a day (`SOVEMU_ASSET_URL_HOURS`), and a TV may
+     * keep the app open for longer: every [refreshEvery] the lists are fetched again, quietly
+     * (what is on screen stays until the new copy arrives), so their artwork and videos keep
+     * loading.
+     */
+    private fun keepFresh() {
+        if (freshening?.isActive == true) return
+        freshening = launch {
+            while (true) {
+                delay(refreshEvery)
+                launch { load(_systems) { api.systems() } }
+                launch { load(_home) { api.home() } }
+                for ((system, flow) in games.entries.toList()) launch { loadGames(system, flow, quiet = true) }
+            }
+        }
     }
 
     /** A system's games, fetched the first time they are asked for. */
@@ -135,6 +160,7 @@ class Store(
     /** Signed out: forget everything, and cancel what the old sign-in still has in flight. */
     fun clear() {
         signIn.cancel()
+        freshening = null
         signIn = SupervisorJob(scope.coroutineContext[Job])
         _user.value = null
         _systems.value = Load.Loading

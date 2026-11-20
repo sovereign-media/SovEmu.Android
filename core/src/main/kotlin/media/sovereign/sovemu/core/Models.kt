@@ -217,3 +217,18 @@ fun parseColor(hex: String): Long {
     val rgb = hex.removePrefix("#").toLongOrNull(16) ?: 0x4169e1
     return 0xff00_0000L or rgb
 }
+
+/** The query parameters of a signed file URL (the server's `assets.rs`, Sovereign's names). */
+private val SIGNATURE_PARAMS = setOf("Sov-UserId", "Sov-Expiry", "Sov-Signature")
+
+/**
+ * A file URL without its signature: the same picture's key in the image caches, whichever
+ * signature it was fetched with (the server signs URLs afresh each hour). Other parameters, such
+ * as a save screenshot's `?t=` (which changes with each save), are kept.
+ */
+fun assetCacheKey(url: String): String {
+    val at = url.indexOf('?')
+    if (at < 0) return url
+    val kept = url.substring(at + 1).split('&').filter { it.substringBefore('=') !in SIGNATURE_PARAMS }
+    return if (kept.isEmpty()) url.substring(0, at) else url.substring(0, at) + "?" + kept.joinToString("&")
+}

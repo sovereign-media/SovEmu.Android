@@ -60,6 +60,7 @@ import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import coil3.request.ImageRequest
 import media.sovereign.sovemu.SovEmuApi
+import media.sovereign.sovemu.core.assetCacheKey
 import media.sovereign.sovemu.core.SystemSummary
 import media.sovereign.sovemu.core.parseColor
 
@@ -190,7 +191,11 @@ fun Art(
     val context = LocalContext.current
     val url = api.media(path) ?: return
     val request = remember(url, sizePx) {
-        ImageRequest.Builder(context).data(url).apply { if (sizePx != null) size(sizePx) }.build()
+        // Cached by the URL without its signature, which changes hourly: the same picture is
+        // fetched once, not again with each new signature.
+        val key = assetCacheKey(url) + (sizePx?.let { "#$it" } ?: "")
+        ImageRequest.Builder(context).data(url).memoryCacheKey(key).diskCacheKey(assetCacheKey(url))
+            .apply { if (sizePx != null) size(sizePx) }.build()
     }
     AsyncImage(
         model = request, contentDescription = null, contentScale = scale, alpha = alpha, modifier = modifier,
