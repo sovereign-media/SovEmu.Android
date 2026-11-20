@@ -20,7 +20,7 @@ fun game(
     id = id, system = system, title = title, fileTitle = fileTitle, tags = tags, path = "$system/$title", size = 0.0,
     lastPlayedAt = lastPlayedAt, playCount = playCount, image = null, thumb = null, video = null, description = null,
     releaseDate = releaseDate, developer = developer, publisher = null, genre = genre, players = players, rating = null,
-    discs = 1, favourite = favourite, release = null, autoSave = null,
+    discs = 1, favourite = favourite, release = null, patch = null, autoSave = null,
 )
 
 fun system(

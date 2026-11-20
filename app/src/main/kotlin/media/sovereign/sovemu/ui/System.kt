@@ -90,6 +90,8 @@ import media.sovereign.sovemu.SovEmuApi
 import media.sovereign.sovemu.core.Game
 import media.sovereign.sovemu.core.GameFilters
 import media.sovereign.sovemu.core.GameIndex
+import media.sovereign.sovemu.core.GamePatch
+import media.sovereign.sovemu.core.nextPatch
 import media.sovereign.sovemu.core.GameSort
 import media.sovereign.sovemu.core.PlayedFilter
 import media.sovereign.sovemu.core.SaveSlot
@@ -128,6 +130,7 @@ fun SystemScreen(
     onPlay: (Game, Start) -> Unit,
     onFavourite: suspend (Game, Boolean) -> String?,
     onCollectionsChanged: () -> Unit,
+    onPatch: suspend (Game, GamePatch?) -> String?,
 ) {
     val colour = system.colour()
     // The page's tint: the system's colour from the top-left corner, as on the web. It is the
@@ -140,7 +143,7 @@ fun SystemScreen(
         when (index) {
             Load.Loading -> Header(system, null, null, sort, onSort, 0, {}, null, Modifier.padding(32.dp).statusBarsPadding())
             is Load.Failed -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(index.message, color = Sov.Red300) }
-            is Load.Ready -> Games(api, system, index.value, openFirst, sort, onSort, onPlay, onFavourite, onCollectionsChanged)
+            is Load.Ready -> Games(api, system, index.value, openFirst, sort, onSort, onPlay, onFavourite, onCollectionsChanged, onPatch)
         }
     }
 }
@@ -157,6 +160,7 @@ private fun Games(
     onPlay: (Game, Start) -> Unit,
     onFavourite: suspend (Game, Boolean) -> String?,
     onCollectionsChanged: () -> Unit,
+    onPatch: suspend (Game, GamePatch?) -> String?,
 ) {
     val form = LocalForm.current
     val scope = rememberCoroutineScope()
@@ -170,6 +174,7 @@ private fun Games(
     var openId by rememberSaveable { mutableStateOf(openFirst) }
     var jump by remember { mutableStateOf<Int?>(null) }
     var slots by remember { mutableStateOf<List<SaveSlot>>(emptyList()) }
+    var patches by remember { mutableStateOf<List<GamePatch>>(emptyList()) }
     val memory = rememberFocusMemory()
     val grid = rememberLazyGridState()
     // Back from a game with the panel open: the panel takes the focus, not the card behind it.
@@ -193,10 +198,17 @@ private fun Games(
             }
         }
     }
-    // The panel's saves, after a pause: moving quickly through games does not ask for each.
+    // The panel's patches, and its saves after a pause (moving quickly through games does not
+    // ask for each). A patched game's saves are its own: they change with the patch.
     LaunchedEffect(openId) {
-        slots = emptyList()
+        patches = emptyList()
         notice = null
+        val id = openId ?: return@LaunchedEffect
+        delay(150)
+        patches = attempt { api.patches(id) }.getOrDefault(emptyList())
+    }
+    LaunchedEffect(openId, open?.patch) {
+        slots = emptyList()
         val id = openId ?: return@LaunchedEffect
         delay(150)
         slots = attempt { api.states(id) }.getOrDefault(emptyList())
@@ -279,6 +291,10 @@ private fun Games(
                 open?.let { g -> scope.launch { notice = onFavourite(g, !g.favourite)?.let { "Could not change favourites: $it" } } }
             },
             onCollections = { collectionsOpen = true },
+            patches = patches,
+            onPatch = { patch ->
+                open?.let { g -> scope.launch { notice = onPatch(g, patch)?.let { "Could not change the patch: $it" } } }
+            },
             notice = notice,
             backToCollections = backToCollections,
             trapFocus = !collectionsOpen,
@@ -465,6 +481,8 @@ internal fun GamePanel(
     onFavourite: () -> Unit,
     onCollections: () -> Unit,
     modifier: Modifier = Modifier,
+    patches: List<GamePatch> = emptyList(),
+    onPatch: (GamePatch?) -> Unit = {},
     notice: String? = null,
     backToCollections: Int = 0,
     trapFocus: Boolean = true,
@@ -547,6 +565,14 @@ internal fun GamePanel(
                             iconTint = if (g.favourite) Sov.Red300 else null,
                         )
                         SovButton("Collections", onCollections, Modifier.focusRequester(collections), variant = Variant.Outline, icon = Lucide.ListPlus, large = false)
+                    }
+                    // A, again and again, steps through the original and each patch: one button,
+                    // no menu to navigate on a remote.
+                    if (patches.isNotEmpty()) {
+                        SovButton(
+                            "Patch: ${g.patch ?: "Original"}", { onPatch(nextPatch(patches, g.patch)) },
+                            variant = Variant.Outline, icon = Lucide.FileDiff, large = false,
+                        )
                     }
                     notice?.let { Text(it, color = Sov.Red300, fontSize = 14.sp) }
                     g.description?.let { Text(it, color = Sov.Slate300, fontSize = 14.sp, lineHeight = 22.sp) }

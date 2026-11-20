@@ -275,6 +275,16 @@ type Game {
 	"""
 	release: String
 	"""
+	The soft patch this user plays it with (a translation, a fix, a hack), by name: their
+	choice, else the patch beside it with its name. Null: the original.
+	"""
+	patch: String
+	"""
+	The soft patches found with it (IPS, UPS or BPS, beside it with its name or in a folder
+	named as it), the default first. Choose one with `setPatch`.
+	"""
+	patches: [Patch!]!
+	"""
 	One of this user's favourites.
 	"""
 	favourite: Boolean!
@@ -590,10 +600,14 @@ type Mutation {
 	"""
 	resetSession(id: ID!): Boolean!
 	"""
-	Saves the session's game to a slot (1–9), with a screenshot.
 	Adds a game to this user's favourites, or takes it out.
 	"""
 	setFavourite(gameId: Int!, favourite: Boolean!): Boolean!
+	"""
+	Plays a game with one of its soft patches from now on (`Game.patches`), or the original
+	(`patchId` null). Its next session loads it so; a patched game keeps its own saves.
+	"""
+	setPatch(gameId: Int!, patchId: Int): Boolean!
 	"""
 	Creates a collection (CONFLICT if this user already has one by that name).
 	"""
@@ -608,6 +622,9 @@ type Mutation {
 	Changes a multi-disc game's disc (from 1), as when the game asks for the next one.
 	"""
 	setDisc(sessionId: ID!, disc: Int!): Boolean!
+	"""
+	Saves the session's game to a slot (1–9), with a screenshot.
+	"""
 	saveState(sessionId: ID!, slot: Int!): Boolean!
 	"""
 	Loads a slot (0 is the auto save) into the session's game.
@@ -707,6 +724,18 @@ type PadLayout {
 	height: Float!
 	body: [Shape!]!
 	keys: [PadKey!]!
+}
+
+type Patch {
+	id: Int!
+	"""
+	From its file: "BPS patch" beside the game, else the file's name ("English v1.1").
+	"""
+	name: String!
+	"""
+	Applied unless the player chose otherwise (it is beside the game, with its name).
+	"""
+	isDefault: Boolean!
 }
 
 type Query {

@@ -15,11 +15,12 @@ fun game(
     favourite: Boolean = false,
     discs: Int = 1,
     release: String? = null,
+    patch: String? = null,
 ): Game = Game(
     id = id, system = "nes", title = title, fileTitle = null, tags = emptyList(), path = "nes/$title.nes", size = 0.0,
     lastPlayedAt = null, playCount = 0, image = null, thumb = null, video = null, description = null,
     releaseDate = null, developer = null, publisher = null, genre = null, players = null, rating = null,
-    discs = discs, favourite = favourite, release = release, autoSave = null,
+    discs = discs, favourite = favourite, release = release, patch = patch, autoSave = null,
 )
 
 fun system(): SystemSummary = SystemSummary(

@@ -15,6 +15,7 @@ import kotlinx.coroutines.withContext
 import media.sovereign.sovemu.core.ApiException
 import media.sovereign.sovemu.core.Game
 import media.sovereign.sovemu.core.GameIndex
+import media.sovereign.sovemu.core.GamePatch
 import media.sovereign.sovemu.core.HomeFeed
 import media.sovereign.sovemu.core.SystemSummary
 import media.sovereign.sovemu.core.User
@@ -101,15 +102,33 @@ class Store(
         return error?.let(::note)
     }
 
+    /**
+     * Plays [game] with [patch] (null: the original), at once in its system's list (the panel and
+     * its saves follow: a patched game's saves are its own), then on the server; a failure puts
+     * it back. Home is fetched again (its auto saves may differ). Returns the error, if any.
+     */
+    suspend fun setPatch(game: Game, patch: GamePatch?): String? {
+        val before = game.patch
+        update(game.system, game.id) { it.copy(patch = patch?.name) }
+        val error = attempt { api.setPatch(game.id, patch?.id) }.exceptionOrNull()
+        if (error != null) update(game.system, game.id) { it.copy(patch = before) }
+        launch { load(_home) { api.home() } }
+        return error?.let(::note)
+    }
+
     /** Collections changed (a game went in or out, or one was made): Home shows a row for each. */
     fun collectionsChanged() {
         launch { load(_home) { api.home() } }
     }
 
-    private suspend fun markFavourite(system: String, id: Int, favourite: Boolean) {
+    private suspend fun markFavourite(system: String, id: Int, favourite: Boolean) =
+        update(system, id) { it.copy(favourite = favourite) }
+
+    /** Changes one game in its system's list (if that list is loaded). */
+    private suspend fun update(system: String, id: Int, change: (Game) -> Game) {
         val flow = games[system] ?: return
         val index = (flow.value as? Load.Ready)?.value ?: return
-        val list = index.games.map { if (it.id == id) it.copy(favourite = favourite) else it }
+        val list = index.games.map { if (it.id == id) change(it) else it }
         flow.value = Load.Ready(withContext(compute) { GameIndex(list) })
     }
 

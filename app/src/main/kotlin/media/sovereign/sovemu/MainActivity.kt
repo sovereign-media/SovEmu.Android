@@ -257,6 +257,7 @@ class MainActivity : ComponentActivity() {
                                 onPlay = { game, start -> push(Route.Play(r.system, game, start)) },
                                 onFavourite = store::setFavourite,
                                 onCollectionsChanged = store::collectionsChanged,
+                                onPatch = store::setPatch,
                             )
                         }
                     }
