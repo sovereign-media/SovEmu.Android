@@ -501,7 +501,7 @@ data class InputDeviceInfo(
  * the main thread and the stream reads from another.
  */
 class InputMixer {
-    private class Pad(val name: String, val model: ControllerModel) {
+    private class Pad(val name: String, val model: ControllerModel, val physical: String?) {
         val held = HashSet<String>()
         var axes: Set<String> = emptySet()
         var stick = 0
@@ -533,10 +533,24 @@ class InputMixer {
     /** The game reads analog sticks: the left stick no longer doubles as the D-pad. */
     @Volatile var analogSticks = false
 
-    /** Connects a controller (again: no change); returns its player. */
-    fun connect(device: Int, name: String, model: ControllerModel): Int? = synchronized(lock) {
-        if (device !in pads) pads[device] = Pad(name, model)
-        players.connect(device)
+    /**
+     * Connects a controller (again: no change); returns its player. [physical] names the
+     * physical controller (Android's `InputDevice.descriptor`): one that comes back under a new
+     * device ID (a Bluetooth pad reconnecting before its old ID was removed) replaces its old
+     * self, on its old player, rather than leaving the old one holding whatever it last pressed.
+     */
+    fun connect(device: Int, name: String, model: ControllerModel, physical: String? = null): Int? = synchronized(lock) {
+        if (device in pads) return@synchronized players.connect(device)
+        val stale = physical?.let { key -> pads.entries.firstOrNull { it.value.physical == key }?.key }
+        val oldPort = stale?.let(players::port)
+        if (stale != null) {
+            pads.remove(stale)
+            players.disconnect(stale)
+        }
+        pads[device] = Pad(name, model, physical)
+        val port = players.connect(device)
+        if (oldPort != null && port != oldPort) players.assign(device, oldPort)
+        players.port(device)
     }
 
     fun disconnect(device: Int) = synchronized(lock) {

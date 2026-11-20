@@ -1,6 +1,7 @@
 package media.sovereign.sovemu
 
 import android.content.Context
+import android.util.Log
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -78,7 +79,10 @@ class Stream(
         override fun onIceGatheringChange(state: PeerConnection.IceGatheringState) {
             if (state == PeerConnection.IceGatheringState.COMPLETE) iceGathered.complete(Unit)
         }
-        override fun onConnectionChange(state: PeerConnection.PeerConnectionState) = onState(state)
+        override fun onConnectionChange(state: PeerConnection.PeerConnectionState) {
+            Log.i(TAG, "connection $state")
+            onState(state)
+        }
         override fun onTrack(transceiver: RtpTransceiver) {
             (transceiver.receiver.track() as? VideoTrack)?.addSink(videoSink)
         }
@@ -116,7 +120,10 @@ class Stream(
         )
         channel.registerObserver(object : DataChannel.Observer {
             override fun onBufferedAmountChange(previous: Long) {}
-            override fun onStateChange() {}
+            // The worker lets go of held input when this closes; say so, for the log.
+            override fun onStateChange() {
+                Log.i(TAG, "input channel ${channel.state()}")
+            }
             override fun onMessage(buffer: DataChannel.Buffer) {
                 val bytes = ByteArray(buffer.data.remaining()).also { buffer.data.get(it) }
                 val ack = Protocol.decodeAck(bytes) ?: return
@@ -232,6 +239,7 @@ class Stream(
     private fun now32(): Long = System.nanoTime() / 1_000_000 and 0xffff_ffffL
 
     private companion object {
+        const val TAG = "SovEmu.Stream"
         /** Nothing held: what the game gets while the menu is open. */
         val IDLE = InputMixer.Reading(
             ports = List(Protocol.MAX_PORTS) { 0 },
