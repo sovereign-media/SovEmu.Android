@@ -8,7 +8,7 @@ import com.apollographql.apollo.exception.ApolloHttpException
 import com.benasher44.uuid.uuid4
 import media.sovereign.sovemu.core.graphql.ControlsQuery
 import media.sovereign.sovemu.core.graphql.HomeQuery
-import media.sovereign.sovemu.core.graphql.LogoutMutation
+import media.sovereign.sovemu.core.graphql.StopSessionMutation
 import media.sovereign.sovemu.core.graphql.SystemGamesQuery
 import media.sovereign.sovemu.core.graphql.fragment.MappingFields
 import media.sovereign.sovemu.core.graphql.type.MappingSource as SchemaMappingSource
@@ -56,17 +56,17 @@ class ApiTest {
 
     @Test
     fun errorsBecomeApiExceptionsWithTheirCode() {
-        val signedOut = LogoutMutation().parseResponse(
+        val signedOut = StopSessionMutation("s1").parseResponse(
             json("""{"data":null,"errors":[{"message":"Not signed in","extensions":{"code":"UNAUTHENTICATED"}}]}"""),
         )
         val e = assertThrows(ApiException::class.java) { signedOut.orThrow() }
         assertTrue(e.unauthenticated)
         assertEquals("Not signed in", e.message)
 
-        val plain = ApolloResponse.Builder(LogoutMutation(), uuid4()).errors(listOf(Error.Builder("Bad").build())).build()
+        val plain = ApolloResponse.Builder(StopSessionMutation("s1"), uuid4()).errors(listOf(Error.Builder("Bad").build())).build()
         assertEquals("INTERNAL", assertThrows(ApiException::class.java) { plain.orThrow() }.code)
 
-        val http = ApolloResponse.Builder(LogoutMutation(), uuid4()).exception(ApolloHttpException(404, emptyList(), null, "Not Found")).build()
+        val http = ApolloResponse.Builder(StopSessionMutation("s1"), uuid4()).exception(ApolloHttpException(404, emptyList(), null, "Not Found")).build()
         assertEquals("HTTP_404", assertThrows(ApiException::class.java) { http.orThrow() }.code)
     }
 

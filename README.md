@@ -10,7 +10,7 @@ Checked out as a submodule of `SovEmu` (unpinned, `branch = main`); it builds on
 
 | Module | What |
 |---|---|
-| `core` | Plain Kotlin/JVM: the input wire protocol (`Protocol.kt`), controller IDs, input names, mappings, hotkeys and players (`Controllers.kt`, after SovEmu's `docs/CONTROLLERS.md`), the GraphQL operations (`src/main/graphql/operations.graphql`, generated into typed Kotlin by Apollo from a copy of the server's `schema.graphql`), and the game-list logic (`GameList.kt`). Its tests use the same byte vectors as `SovEmu.Protocol` (Rust) and `SovEmu.Web` (TypeScript). |
+| `core` | Plain Kotlin/JVM: the input wire protocol (`Protocol.kt`), controller IDs, input names, mappings, hotkeys and players (`Controllers.kt`, after SovEmu's `docs/CONTROLLERS.md`), the GraphQL operations (`src/main/graphql/operations.graphql`, generated into typed Kotlin by Apollo from a copy of the server's `schema.graphql`), the sign-in (`Auth.kt`: the server's `bootstrapConfig` first, then its password endpoint and the OAuth refresh-token grant at the URLs and client id it names, one refresh at a time, the bearer interceptor), and the game-list logic (`GameList.kt`). Its tests use the same byte vectors as `SovEmu.Protocol` (Rust) and `SovEmu.Web` (TypeScript). |
 | `app` | Navigation 3 over a back stack of routes, and Jetpack Compose UI after the web client's (sign-in; home with the featured hero and rows of games to continue, systems and new arrivals; a system's cover grid with sort, filters, A–Z jump and a game panel; the player), Apollo Kotlin over OkHttp for the API (`POST /graphql`), Coil for artwork, and Stream's libwebrtc build for the stream. |
 
 ## Building
@@ -45,7 +45,10 @@ checkout this is a submodule of, and the build tells you which operations no lon
 ## Using it
 
 1. First-run setup (the admin account) happens in a browser at the server's address.
-2. In the app, enter the server address (for example `http://192.168.1.20:8080`) and sign in.
+2. In the app, enter the server address (for example `http://192.168.1.20:8080`); the app asks it
+   how to sign in (its address must be in the server's `SOVEMU_PUBLIC_URL`), then sign in. The app keeps
+   the sign-in's refresh token in its private preferences (not backed up) and the access token in
+   memory; signing out revokes the sign-in on the server.
 3. The server must advertise an address the phone can reach (`SOVEMU_ADVERTISE_IP`, the host's
    LAN address), with UDP 50000-50009 open.
 

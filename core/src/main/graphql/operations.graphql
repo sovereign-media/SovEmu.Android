@@ -108,6 +108,19 @@ fragment LayoutFields on PadLayout {
   }
 }
 
+# Where and how to sign in at this address: asked first, signed out, which also tells the app a
+# SovEmu server is there.
+query Bootstrap {
+  bootstrapConfig {
+    signInAvailable
+    address
+    nativeClientId
+    tokenEndpoint
+    revocationEndpoint
+    passwordEndpoint
+  }
+}
+
 query Viewer {
   viewer {
     setupRequired
@@ -115,16 +128,6 @@ query Viewer {
       ...UserFields
     }
   }
-}
-
-mutation Login($username: String!, $password: String!) {
-  login(username: $username, password: $password) {
-    ...UserFields
-  }
-}
-
-mutation Logout {
-  logout
 }
 
 query ClientConfig {

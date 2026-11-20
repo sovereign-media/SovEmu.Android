@@ -69,8 +69,8 @@ private const val VIDEO_VOLUME = 0.35f
  * The screensaver: random games' video snaps, one after another, with a panel along the bottom
  * naming the game, its system, release date and players. Shown after a while without input
  * (outside a game); any button or touch ends it (the activity handles that, so the press does
- * nothing else). Videos come from the server's `/media/…` through the app's HTTP client (the
- * sign-in cookie).
+ * nothing else). Videos come from the server's signed `/media/…` URLs through the app's HTTP
+ * client.
  */
 @OptIn(UnstableApi::class)
 @Composable

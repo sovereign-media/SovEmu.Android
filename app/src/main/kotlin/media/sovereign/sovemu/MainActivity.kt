@@ -109,28 +109,31 @@ class MainActivity : ComponentActivity() {
         controller.start(this)
         presence = InputPresence(this, controller)
         music = MenuMusic(this, lifecycleScope)
-        val signedIn = settings.serverUrl.isNotEmpty() && settings.sessionCookie != null
-        if (signedIn) store.refresh()
+        if (settings.serverUrl.isNotEmpty() && api.auth.signedIn.value) {
+            // The server's sign-in details, asked again on each launch it can be reached (the
+            // stored copy lets a sign-in refresh when it cannot).
+            lifecycleScope.launch { attempt { api.bootstrap() } }
+            store.refresh()
+        }
         setContent {
-            // Artwork goes through the API's client: /media needs the sign-in cookie.
+            // Artwork goes through the API's client (its timeouts; /media URLs are signed).
             setSingletonImageLoaderFactory { context ->
                 ImageLoader.Builder(context).components { add(OkHttpNetworkFetcherFactory(callFactory = { api.client })) }.build()
             }
             SovTheme {
-                CompositionLocalProvider(LocalApi provides api) { App(signedIn) }
+                CompositionLocalProvider(LocalApi provides api) { App() }
             }
         }
     }
 
     @Composable
-    private fun App(initiallySignedIn: Boolean) {
-        var signedIn by remember { mutableStateOf(initiallySignedIn) }
+    private fun App() {
+        // Signed in = a refresh token is stored. Signing out, or a refresh the server refuses
+        // (invalid_grant), clears it and comes back here to the sign-in screen.
+        val signedIn by api.auth.signedIn.collectAsStateWithLifecycle()
         val expired by store.signedOut.collectAsStateWithLifecycle()
         LaunchedEffect(expired) {
-            if (expired) {
-                settings.sessionCookie = null
-                signedIn = false
-            }
+            if (expired) api.auth.forget()
         }
         var musicOn by remember { mutableStateOf(settings.music) }
         if (!signedIn) {
@@ -142,7 +145,6 @@ class MainActivity : ComponentActivity() {
             LoginScreen(settings, api) {
                 store.clear()
                 store.refresh()
-                signedIn = true
             }
             return
         }
@@ -184,10 +186,8 @@ class MainActivity : ComponentActivity() {
                 },
                 signOut = {
                     lifecycleScope.launch {
-                        attempt { api.logout() }
-                        settings.sessionCookie = null
+                        api.signOut()
                         store.clear()
-                        signedIn = false
                     }
                 },
             )
