@@ -15,13 +15,19 @@ concurrency:
 # The job runs where the LINUX_RUNNER variable says: `sovereign-linux`, the self-hosted runners on
 # the cluster (Actions Runner Controller, sovereign-media/sovereign#1547), or GitHub's runners when it
 # is unset. The self-hosted image is the stock `ghcr.io/actions/actions-runner` (Ubuntu 24.04, no
-# JDK or Android SDK), so the job installs what it needs itself, in a way that also works on
+# JDK, Android SDK or zstd), so the job installs what it needs itself, in a way that also works on
 # GitHub's runners.
 jobs:
   build:
     runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
+
+      # Installs what the self-hosted image lacks, before setup-gradle's cache: without zstd it
+      # saves gzip entries, and those and the zstd ones GitHub's runners save cannot restore each
+      # other, so every cache is stored twice (sovereign-media/sovereign#1552).
+      - name: Set up the runner
+        uses: sovereign-media/actions/setup-runner@7c1e75a8ac4ac92c10507edd13f535a8569b5fe1 # v1.0.0
 
       # Downloads the JDK into the tool cache on either kind of runner.
       - uses: actions/setup-java@v4
