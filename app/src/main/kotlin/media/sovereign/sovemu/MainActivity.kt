@@ -162,6 +162,7 @@ class MainActivity : ComponentActivity() {
         }
         var crt by remember { mutableStateOf(settings.scanlines) }
         var idleMinutes by remember { mutableIntStateOf(settings.screensaverMinutes) }
+        var statsOn by remember { mutableStateOf(settings.stats) }
         val nav = remember {
             Nav(
                 home = { stack.removeRange(1, stack.size) },
@@ -265,6 +266,11 @@ class MainActivity : ComponentActivity() {
                         val touchControls by presence.touchControls.collectAsStateWithLifecycle(presence.touchControlsNow)
                         PlayerScreen(
                             api, sessions, r.system, r.game, r.start, controller, touchControls,
+                            stats = statsOn,
+                            onStatsChange = {
+                                statsOn = it
+                                settings.stats = it
+                            },
                             onEnded = { store.played(r.system.id) },
                             onExit = {
                                 gamePaused = false
@@ -381,6 +387,11 @@ var Settings.music: Boolean
 var Settings.scanlines: Boolean
     get() = prefs.getBoolean("scanlines", true)
     set(value) = prefs.edit().putBoolean("scanlines", value).apply()
+
+/** The stats overlay over a game (off by default). */
+var Settings.stats: Boolean
+    get() = prefs.getBoolean("stats", false)
+    set(value) = prefs.edit().putBoolean("stats", value).apply()
 
 /** The game list's sort, kept across launches like the web client's. */
 var Settings.sort: GameSort
