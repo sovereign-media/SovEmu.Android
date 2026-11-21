@@ -76,6 +76,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import media.sovereign.sovemu.ClientEvents
 import media.sovereign.sovemu.Controller
 import media.sovereign.sovemu.LowLatencyWhilePlaying
 import media.sovereign.sovemu.SovEmuApi
@@ -144,6 +145,8 @@ fun PlayerScreen(
     var toast by remember { mutableStateOf<String?>(null) }
     var controllersOpen by remember { mutableStateOf(false) }
     var readout by remember { mutableStateOf<StreamStats?>(null) }
+    /** The stream has connected once: a failure after that is a lost connection. */
+    var everConnected by remember { mutableStateOf(false) }
     /** The disc in the tray (1-based), for a multi-disc game. */
     var disc by remember { mutableStateOf(1) }
     val book = remember(system.id) { MappingBook(system.id) }
@@ -186,6 +189,14 @@ fun PlayerScreen(
             val s = withContext(NonCancellable + Dispatchers.Default) {
                 Stream(context, api, session.id, ice.await(), controller, renderer) { state ->
                     if (state == PeerConnection.PeerConnectionState.FAILED) status = "Connection failed"
+                    when (state) {
+                        PeerConnection.PeerConnectionState.CONNECTED -> everConnected = true
+                        PeerConnection.PeerConnectionState.FAILED, PeerConnection.PeerConnectionState.DISCONNECTED -> {
+                            val kind = if (everConnected) "CONNECTION_LOST" else "CONNECTION_FAILED"
+                            ClientEvents.report(kind, "WebRTC ${state.name.lowercase()}", session.id)
+                        }
+                        else -> {}
+                    }
                 }
             }
             if (!isActive) {
@@ -227,7 +238,7 @@ fun PlayerScreen(
         val s = stream
         if (!stats || s == null) return@LaunchedEffect
         val sampler = StatsSampler()
-        val client = clientName(context)
+        val client = ClientEvents.clientName(context)
         while (true) {
             delay(1000)
             val reading = s.readStats() ?: break
@@ -235,6 +246,22 @@ fun PlayerScreen(
             readout = sample
             s.sendStats(sample.encode(client, currentGameMode))
             Log.i(STATS_TAG, sample.logfmt())
+        }
+    }
+    // A picture that stops while playing (not paused in the menu) is reported once it has been
+    // still for STALL_SECONDS.
+    LaunchedEffect(stream) {
+        if (stream == null) return@LaunchedEffect
+        var last = renderer.frames
+        var still = 0
+        while (true) {
+            delay(1000)
+            val frames = renderer.frames
+            still = if (everConnected && !menuOpen && !controllersOpen && frames == last) still + 1 else 0
+            last = frames
+            if (still == STALL_SECONDS) {
+                ClientEvents.report("STREAM_STALLED", "no new picture for $STALL_SECONDS s", info?.id)
+            }
         }
     }
     LaunchedEffect(toast) {
@@ -505,14 +532,12 @@ private fun Splash(game: Game, system: SystemSummary, status: String, choice: Co
 
 private const val STATS_TAG = "SovEmu.Stats"
 
+/** Seconds without a new video frame, while playing, before it is reported as a stall. */
+private const val STALL_SECONDS = 3
+
 /** Where stats are turned on, and on the overlay: they cost a little every second. */
 internal const val STATS_WARNING = "Stats are logged while shown, and can affect game performance."
 
-/** This app, its version and the device, for the worker's log: `android 0.1.0 (MiTV-AFMU1, Android 11)`. */
-private fun clientName(context: android.content.Context): String {
-    val version = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull()
-    return "android ${version ?: "?"} (${android.os.Build.MODEL}, Android ${android.os.Build.VERSION.RELEASE})"
-}
 
 /**
  * Latency and stream health over the game, as the web client's: a corner panel that never takes

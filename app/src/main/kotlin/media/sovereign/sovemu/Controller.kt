@@ -133,6 +133,8 @@ class Controller {
         val model = Controllers.identify(d?.vendorId ?: 0, d?.productId ?: 0, name)
         val port = mixer.connect(id, name, model, physical = d?.descriptor)
         Log.i(TAG, "controller $id ($name, ${model.id}) connected as player ${port?.plus(1)}")
+        // A model docs/CONTROLLERS.md does not know yet: worth adding.
+        if (model.id.startsWith("pad:")) ClientEvents.report("CONTROLLER_UNKNOWN", "$name → ${model.id}")
     }
 
     /** A device we did not see connect (or that hides its gamepad source) sends a pad button. */

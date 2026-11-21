@@ -110,6 +110,8 @@ class MainActivity : ComponentActivity() {
         window.setBackgroundDrawable(null)
         settings = Settings(this)
         api = SovEmuApi(settings)
+        ClientEvents.recordCrashes(this)
+        ClientEvents.attach(this, api, lifecycleScope)
         store = Store(api, lifecycleScope)
         sessions = Sessions(api, lifecycleScope)
         controller.start(this)
