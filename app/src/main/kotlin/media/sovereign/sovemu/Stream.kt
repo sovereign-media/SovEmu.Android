@@ -10,6 +10,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.cancel
 import kotlin.coroutines.resumeWithException
@@ -17,6 +18,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import media.sovereign.sovemu.core.IceServer
 import media.sovereign.sovemu.core.InputMixer
 import media.sovereign.sovemu.core.Protocol
+import media.sovereign.sovemu.core.StatsReading
 import org.webrtc.DataChannel
 import org.webrtc.DefaultVideoDecoderFactory
 import org.webrtc.EglBase
@@ -26,6 +28,7 @@ import org.webrtc.MediaStream
 import org.webrtc.MediaStreamTrack
 import org.webrtc.PeerConnection
 import org.webrtc.PeerConnectionFactory
+import org.webrtc.RTCStatsReport
 import org.webrtc.RtpReceiver
 import org.webrtc.RtpTransceiver
 import org.webrtc.SdpObserver
@@ -211,6 +214,39 @@ class Stream(
             }
             delay(4)
         }
+    }
+
+    /**
+     * The connection's stats now (for the stats overlay); null once the stream is closed. Call
+     * it from the main thread, as [close] is: getStats on a disposed connection crashes in
+     * native code.
+     */
+    suspend fun readStats(): StatsReading? {
+        if (closed.get()) return null
+        return suspendCancellableCoroutine { cont -> pc.getStats { report -> cont.resume(reading(report)) } }
+    }
+
+    private fun reading(report: RTCStatsReport): StatsReading {
+        val all = report.statsMap.values
+        fun Map<String, Any?>.num(key: String) = (this[key] as? Number)?.toDouble()
+        val video = all.firstOrNull { it.type == "inbound-rtp" && it.members["kind"] == "video" }?.members.orEmpty()
+        val audio = all.firstOrNull { it.type == "inbound-rtp" && it.members["kind"] == "audio" }?.members.orEmpty()
+        val pair = all.firstOrNull {
+            it.type == "candidate-pair" && it.members["nominated"] == true && it.members["state"] == "succeeded"
+        }?.members.orEmpty()
+        return StatsReading(
+            atMs = (report.timestampUs / 1000).toLong(),
+            bytesReceived = video.num("bytesReceived") ?: 0.0,
+            jitterBufferDelay = video.num("jitterBufferDelay") ?: 0.0,
+            jitterBufferEmittedCount = video.num("jitterBufferEmittedCount") ?: 0.0,
+            totalDecodeTime = video.num("totalDecodeTime") ?: 0.0,
+            framesDecoded = video.num("framesDecoded") ?: 0.0,
+            framesPerSecond = video.num("framesPerSecond"),
+            width = video.num("frameWidth")?.toInt(),
+            height = video.num("frameHeight")?.toInt(),
+            packetsLost = ((video.num("packetsLost") ?: 0.0) + (audio.num("packetsLost") ?: 0.0)).toLong(),
+            networkRttMs = pair.num("currentRoundTripTime")?.let { it * 1000 },
+        )
     }
 
     private fun send(bytes: ByteArray) {

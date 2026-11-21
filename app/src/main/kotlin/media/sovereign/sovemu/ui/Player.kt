@@ -1,6 +1,10 @@
 package media.sovereign.sovemu.ui
 
+import android.util.Log
 import androidx.activity.compose.BackHandler
+import androidx.compose.ui.text.font.FontFamily
+import media.sovereign.sovemu.core.StatsSampler
+import media.sovereign.sovemu.core.StreamStats
 import media.sovereign.sovemu.core.formatAgo
 import media.sovereign.sovemu.core.slotRows
 import media.sovereign.sovemu.core.SlotRow
@@ -118,6 +122,9 @@ fun PlayerScreen(
     start: Start,
     controller: Controller,
     touchControls: Boolean,
+    /** The stats overlay is on (a setting, kept across games). */
+    stats: Boolean,
+    onStatsChange: (Boolean) -> Unit,
     onEnded: () -> Unit,
     onExit: () -> Unit,
     /** Paused (the in-game menu or the controllers screen is open): the screensaver may start. */
@@ -132,6 +139,7 @@ fun PlayerScreen(
     var stream by remember { mutableStateOf<Stream?>(null) }
     var toast by remember { mutableStateOf<String?>(null) }
     var controllersOpen by remember { mutableStateOf(false) }
+    var readout by remember { mutableStateOf<StreamStats?>(null) }
     /** The disc in the tray (1-based), for a multi-disc game. */
     var disc by remember { mutableStateOf(1) }
     val book = remember(system.id) { MappingBook(system.id) }
@@ -206,6 +214,21 @@ fun PlayerScreen(
         controller.toGame = !isPaused
         paused(isPaused)
     }
+    // The stats overlay: sampled once a second while it is on, as on the web, and each sample
+    // echoed to the log for debugging (`adb logcat -s SovEmu.Stats`). Off, neither runs.
+    LaunchedEffect(stats, stream) {
+        readout = null
+        val s = stream
+        if (!stats || s == null) return@LaunchedEffect
+        val sampler = StatsSampler()
+        while (true) {
+            delay(1000)
+            val reading = s.readStats() ?: break
+            val sample = sampler.sample(reading, s.inputRtts.toList())
+            readout = sample
+            Log.i(STATS_TAG, sample.logfmt())
+        }
+    }
     LaunchedEffect(toast) {
         if (toast != null) {
             delay(2000)
@@ -237,6 +260,7 @@ fun PlayerScreen(
         if (touchControls && !menuOpen && !controllersOpen && status.isEmpty()) {
             TouchController(controller, Modifier.fillMaxSize().safeDrawingPadding())
         }
+        readout?.let { StatsOverlay(it, Modifier.align(Alignment.TopStart).safeDrawingPadding().padding(16.dp)) }
         toast?.let {
             Text(it, color = Color.White, modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp)
                 .clip(RoundedCornerShape(20.dp)).background(Color.Black.copy(alpha = 0.8f)).padding(horizontal = 16.dp, vertical = 8.dp))
@@ -281,6 +305,8 @@ fun PlayerScreen(
                     menuOpen = false
                     controllersOpen = true
                 },
+                stats = stats,
+                onStatsChange = onStatsChange,
                 onQuit = onExit,
             )
         }
@@ -309,6 +335,8 @@ private fun InGameMenu(
     onSaveTo: (Int) -> Unit,
     onLoadFrom: (Int) -> Unit,
     onControllers: () -> Unit,
+    stats: Boolean,
+    onStatsChange: (Boolean) -> Unit,
     onQuit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -361,6 +389,7 @@ private fun InGameMenu(
                     if (discs > 1) MenuItem("Change disc · disc $disc of $discs", Lucide.Disc3, onClick = { page = MenuPage.Disc })
                     MenuItem("Cheats", Lucide.Sparkles, onClick = { page = MenuPage.Cheats })
                     MenuItem("Controllers", Lucide.Gamepad2, onClick = onControllers)
+                    MenuItem(if (stats) "Hide stats" else "Show stats", Lucide.Activity, onClick = { onStatsChange(!stats) })
                     Box(Modifier.padding(vertical = 4.dp).fillMaxWidth().height(1.dp).background(Sov.Edge))
                     MenuItem("Quit game", Lucide.LogOut, onClick = onQuit)
                 }
@@ -454,6 +483,26 @@ private fun Splash(game: Game, system: SystemSummary, status: String, choice: Co
                 if (status.startsWith("Starting")) CircularProgressIndicator(color = Sov.Accent, strokeWidth = 3.dp, modifier = Modifier.size(32.dp))
                 Text(status, color = Sov.Slate300, fontSize = 14.sp, textAlign = TextAlign.Center)
             }
+        }
+    }
+}
+
+private const val STATS_TAG = "SovEmu.Stats"
+
+/**
+ * Latency and stream health over the game, as the web client's: a corner panel that never takes
+ * focus, so the game keeps its controllers.
+ */
+@Composable
+private fun StatsOverlay(stats: StreamStats, modifier: Modifier = Modifier) {
+    val rows = stats.rows()
+    Row(
+        modifier.clip(RoundedCornerShape(8.dp)).background(Color.Black.copy(alpha = 0.7f)).padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Column { for ((label, _) in rows) Text(label, color = Sov.Slate400, fontSize = 12.sp, fontFamily = FontFamily.Monospace) }
+        Column(horizontalAlignment = Alignment.End) {
+            for ((_, value) in rows) Text(value, color = Color.White, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
         }
     }
 }
