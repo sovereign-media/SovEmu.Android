@@ -16,7 +16,42 @@ object Protocol {
     private const val TYPE_INPUT: Byte = 0x01
     private const val TYPE_HOTKEYS: Byte = 0x02
     private const val TYPE_ANALOG: Byte = 0x03
+    private const val TYPE_STATS: Byte = 0x04
     private const val TYPE_ACK: Byte = 0x81.toByte()
+
+    /**
+     * The stats overlay's numbers for the worker's log (`client stats`): `0x04`, the version,
+     * then a JSON object of the known values. [fields] are `ClientStats`'s keys in its order;
+     * nulls and non-finite numbers are left out, numbers rounded to one decimal.
+     */
+    fun encodeStats(fields: List<Pair<String, Any?>>): ByteArray {
+        val body = fields.mapNotNull { (key, value) ->
+            val json = when (value) {
+                null -> null
+                is Boolean -> value.toString()
+                is Int, is Long -> value.toString()
+                is Double -> value.takeIf { it.isFinite() }?.let { number(it) }
+                is Float -> value.toDouble().takeIf { it.isFinite() }?.let { number(it) }
+                else -> quote(value.toString())
+            }
+            json?.let { "${quote(key)}:$it" }
+        }.joinToString(",", "{", "}")
+        return byteArrayOf(TYPE_STATS, INPUT_VERSION) + body.toByteArray(Charsets.UTF_8)
+    }
+
+    /** One decimal, no trailing zeros: as JavaScript's JSON.stringify writes `Math.round(x * 10) / 10`. */
+    private fun number(x: Double): String =
+        java.math.BigDecimal(x).setScale(1, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()
+
+    private fun quote(s: String): String = buildString {
+        append('"')
+        for (c in s) when {
+            c == '"' || c == '\\' -> append('\\').append(c)
+            c < ' ' -> append(String.format(java.util.Locale.ROOT, "\\u%04x", c.code))
+            else -> append(c)
+        }
+        append('"')
+    }
 
     fun encodeInput(seq: Int, clientTimeMs: Int, ports: IntArray): ByteArray {
         val n = minOf(ports.size, MAX_PORTS)

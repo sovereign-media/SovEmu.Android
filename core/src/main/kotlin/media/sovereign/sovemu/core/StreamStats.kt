@@ -77,6 +77,28 @@ data class StreamStats(
         "packets_lost=$packetsLost",
     ).joinToString(" ")
 
+    /**
+     * The worker's `client stats` message: these values, the client ([client], `android 0.1.0
+     * (Pixel 7, Android 14)`) and whether TV game mode was asked for.
+     */
+    fun encode(client: String, gameMode: Boolean?): ByteArray = Protocol.encodeStats(
+        listOf(
+            "client" to client,
+            "estimate_ms" to estimateMs,
+            "input_rtt_p50_ms" to inputRttP50Ms,
+            "input_rtt_p95_ms" to inputRttP95Ms,
+            "net_rtt_ms" to networkRttMs,
+            "jitter_ms" to jitterBufferMs,
+            "decode_ms" to decodeMs,
+            "width" to width,
+            "height" to height,
+            "fps" to fps,
+            "kbps" to kbps,
+            "packets_lost" to packetsLost,
+            "game_mode" to gameMode,
+        ),
+    )
+
     private fun ms(x: Double?, digits: Int) = x?.let { "${num(it, digits)} ms" } ?: "–"
     private fun num(x: Double, digits: Int) = String.format(Locale.ROOT, "%.${digits}f", x)
 }
