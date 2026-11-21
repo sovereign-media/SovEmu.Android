@@ -14,18 +14,20 @@ import androidx.compose.ui.platform.LocalContext
  * While a game is on screen, asks the device for its lowest-latency path from the network to the
  * glass; both are released when the player closes.
  *
- * - **The display:** minimal post-processing. Over HDMI this is ALLM, which switches the TV to its
- *   game picture mode; a TV's own processing otherwise adds 50-100 ms or more after the frame has
- *   arrived. Android 11+; ignored by displays that cannot.
+ * - **The display**, when [gameMode] is on (the "TV game mode" setting): minimal post-processing.
+ *   Over HDMI this is ALLM, which switches the TV to its game picture mode; a TV's own processing
+ *   otherwise adds 50-100 ms or more after the frame has arrived. Some TVs blank the screen for a
+ *   moment as they switch, entering and leaving a game, hence the setting. Android 11+; ignored by
+ *   displays that cannot.
  * - **Wi-Fi:** a low-latency lock, which turns off power saving that batches incoming packets. A
  *   batched stream arrives in bursts, and the jitter buffer then holds frames back to smooth them.
  *   Android 10+ (high-performance before); it has no effect on Ethernet.
  */
 @Composable
-fun LowLatencyWhilePlaying() {
+fun LowLatencyWhilePlaying(gameMode: Boolean) {
     val context = LocalContext.current
-    DisposableEffect(context) {
-        val window = context.findActivity()?.window
+    DisposableEffect(context, gameMode) {
+        val window = context.findActivity()?.window?.takeIf { gameMode }
         window?.preferMinimalPostProcessing(true)
         val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
         val lock = wifi?.createWifiLock(WIFI_LOCK_MODE, "SovEmu:game")?.apply {

@@ -71,6 +71,9 @@ class Nav(
     /** Minutes without input before the screensaver (0: never), and the switch through the choices. */
     val screensaver: () -> Int,
     val nextScreensaver: () -> Unit,
+    /** Whether games ask the TV for its game picture mode, and the switch. */
+    val gameMode: () -> Boolean,
+    val toggleGameMode: () -> Unit,
     val signOut: () -> Unit,
 )
 
@@ -272,6 +275,12 @@ private fun AccountMenu(user: User, nav: Nav, anchor: @Composable (show: () -> U
                 onClick = nav.toggleScanlines,
                 leading = { LucideIcon(Lucide.Menu, tint = Sov.Slate300, size = 16.dp) },
             )
+            MenuRow(
+                if (nav.gameMode()) "TV game mode: on" else "TV game mode: off",
+                onClick = nav.toggleGameMode,
+                leading = { LucideIcon(Lucide.Gamepad2, tint = Sov.Slate300, size = 16.dp) },
+                detail = GAME_MODE_DETAIL,
+            )
             MenuRow("Sign out", onClick = { expanded = false; nav.signOut() }, leading = { LucideIcon(Lucide.LogOut, tint = Sov.Slate300, size = 16.dp) })
         }
     }
@@ -297,13 +306,28 @@ private fun Menu(expanded: Boolean, onDismiss: () -> Unit, heading: String, cont
     }
 }
 
+/** What the TV game mode setting trades, shown under it. */
+internal const val GAME_MODE_DETAIL = "Less input lag. Some TVs blink entering and leaving a game."
+
+/** A menu row; a [detail] goes on a second, smaller line (a setting's trade-off). */
 @Composable
-private fun MenuRow(label: String, onClick: () -> Unit, leading: @Composable () -> Unit, trailing: String? = null) =
+private fun MenuRow(
+    label: String,
+    onClick: () -> Unit,
+    leading: @Composable () -> Unit,
+    trailing: String? = null,
+    detail: String? = null,
+) =
     DropdownMenuItem(
-        text = { Text(label, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        text = {
+            Column {
+                Text(label, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (detail != null) Text(detail, color = Sov.Slate500, fontSize = 11.sp, lineHeight = 14.sp, maxLines = 2)
+            }
+        },
         onClick = onClick,
         leadingIcon = leading,
         trailingIcon = trailing?.let { { Text(it, color = Sov.Slate500, fontSize = 12.sp) } },
         colors = MenuDefaults.itemColors(textColor = Sov.Slate300),
-        modifier = Modifier.height(40.dp),
+        modifier = if (detail == null) Modifier.height(40.dp) else Modifier.heightIn(min = 56.dp).widthIn(max = 320.dp),
     )
