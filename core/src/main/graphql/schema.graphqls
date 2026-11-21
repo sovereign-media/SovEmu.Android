@@ -307,6 +307,7 @@ type EmulatorSettings {
 	The admin's changes as `SOVEMU_SYSTEMS__…` lines, to move into configuration.
 	"""
 	environment: [String!]!
+	runAhead: RunAheadSetting!
 }
 
 type Game {
@@ -656,6 +657,12 @@ type Mutation {
 	"""
 	changeEmulatorSettings(system: ID!, changes: [SettingChange!]!): EmulatorSettings!
 	"""
+	Admins: how many frames a system's pictures run ahead of its games (0: off), or with no
+	`frames` back to off. Applies to the next game started. Refused while
+	`SOVEMU_SYSTEMS__<id>__RUN_AHEAD` sets it.
+	"""
+	setRunAhead(system: ID!, frames: Int): EmulatorSettings!
+	"""
 	Starts a game (ending this user's running one first) and returns once it is ready to
 	stream. Give a `startId` (8–64 letters, digits, `-` or `_`) to follow its progress with
 	`startProgress` meanwhile.
@@ -932,6 +939,30 @@ enum Role {
 	Also runs the server: users, the library, emulator settings.
 	"""
 	ADMIN
+}
+
+"""
+How many frames a system's pictures run ahead of its games, hiding the games' own input lag:
+a press shows up that many frames sooner. Each frame costs that many more emulated frames.
+"""
+type RunAheadSetting {
+	"""
+	0: off.
+	"""
+	frames: Int!
+	"""
+	The most a system may run ahead.
+	"""
+	max: Int!
+	"""
+	`SOVEMU` when nothing sets it (off); `ENVIRONMENT` is
+	`SOVEMU_SYSTEMS__<id>__RUN_AHEAD`, which always wins (locked).
+	"""
+	source: SettingSource!
+	"""
+	Whether the system can run ahead at all (the 2D systems).
+	"""
+	supported: Boolean!
 }
 
 type SaveSlot {
