@@ -32,7 +32,7 @@ class LowLatencyTest {
     @Test
     fun onlyWhilePlaying() {
         var playing by mutableStateOf(false)
-        rule.setContent { if (playing) LowLatencyWhilePlaying() }
+        rule.setContent { if (playing) LowLatencyWhilePlaying(gameMode = true) }
         assertFalse("the menus keep the TV's own picture", prefersMinimalPostProcessing)
         assertEquals(0, wifiLocks)
 
@@ -45,5 +45,13 @@ class LowLatencyTest {
         rule.waitForIdle()
         assertFalse("leaving the game gives the picture back", prefersMinimalPostProcessing)
         assertEquals("and lets Wi-Fi save power again", 0, wifiLocks)
+    }
+
+    @Test
+    fun gameModeOffLeavesTheTvAloneButKeepsWifiQuick() {
+        rule.setContent { LowLatencyWhilePlaying(gameMode = false) }
+        rule.waitForIdle()
+        assertFalse("no picture mode switch, so no blink", prefersMinimalPostProcessing)
+        assertEquals("Wi-Fi still out of power saving", 1, wifiLocks)
     }
 }

@@ -173,6 +173,7 @@ class MainActivity : ComponentActivity() {
         var crt by remember { mutableStateOf(settings.scanlines) }
         var idleMinutes by remember { mutableIntStateOf(settings.screensaverMinutes) }
         var statsOn by remember { mutableStateOf(settings.stats) }
+        var gameMode by remember { mutableStateOf(settings.gameMode) }
         val nav = remember {
             Nav(
                 home = { stack.removeRange(1, stack.size) },
@@ -192,6 +193,11 @@ class MainActivity : ComponentActivity() {
                 toggleScanlines = {
                     crt = !crt
                     settings.scanlines = crt
+                },
+                gameMode = { gameMode },
+                toggleGameMode = {
+                    gameMode = !gameMode
+                    settings.gameMode = gameMode
                 },
                 signOut = {
                     lifecycleScope.launch {
@@ -283,6 +289,7 @@ class MainActivity : ComponentActivity() {
                             PlayerScreen(
                                 api, sessions, r.system, r.game, r.start, controller, touchControls,
                                 stats = statsOn,
+                                gameMode = gameMode,
                                 onStatsChange = {
                                     statsOn = it
                                     settings.stats = it
@@ -405,6 +412,14 @@ var Settings.music: Boolean
 var Settings.scanlines: Boolean
     get() = prefs.getBoolean("scanlines", true)
     set(value) = prefs.edit().putBoolean("scanlines", value).apply()
+
+/**
+ * Ask the TV for its game picture mode (ALLM) while a game is on screen (on by default): less
+ * input lag, though some TVs blank the screen for a moment as they switch.
+ */
+var Settings.gameMode: Boolean
+    get() = prefs.getBoolean("game_mode", true)
+    set(value) = prefs.edit().putBoolean("game_mode", value).apply()
 
 /** The stats overlay over a game (off by default). */
 var Settings.stats: Boolean
