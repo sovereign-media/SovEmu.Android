@@ -31,6 +31,9 @@ import media.sovereign.sovemu.core.TokenClient
 import media.sovereign.sovemu.core.TokenStore
 import media.sovereign.sovemu.core.Viewer
 import media.sovereign.sovemu.core.graphql.AddCheatMutation
+import media.sovereign.sovemu.core.graphql.ReportClientEventsMutation
+import media.sovereign.sovemu.core.graphql.type.ClientEventInput
+import media.sovereign.sovemu.core.graphql.type.ClientEventKind
 import media.sovereign.sovemu.core.graphql.CheatsQuery
 import media.sovereign.sovemu.core.graphql.CollectionChoicesQuery
 import media.sovereign.sovemu.core.graphql.CreateCollectionMutation
@@ -204,6 +207,23 @@ class SovEmuApi(private val settings: Settings) {
         mutate(SetPatchMutation(gameId, Optional.present(patchId)))
     }
     /** Adds a game to this user's favourites, or takes it out. */
+    /**
+     * Sends what went wrong here to the server's log; only while signed in, and never with a
+     * retry or a sign-in of its own (a report must not get in the player's way).
+     */
+    suspend fun reportClientEvents(client: String, events: List<media.sovereign.sovemu.core.ClientEvent>) {
+        if (!auth.signedIn.value) return
+        val inputs = events.map {
+            ClientEventInput(
+                kind = ClientEventKind.safeValueOf(it.kind),
+                message = it.message,
+                sessionId = Optional.presentIfNotNull(it.sessionId),
+                at = Optional.present(it.at),
+            )
+        }
+        apollo().mutation(ReportClientEventsMutation(client, inputs)).execute()
+    }
+
     suspend fun setFavourite(gameId: Int, favourite: Boolean) {
         mutate(SetFavouriteMutation(gameId, favourite))
     }

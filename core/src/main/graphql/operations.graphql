@@ -331,3 +331,7 @@ mutation SetCheatEnabled($gameId: Int!, $cheatId: Int!, $enabled: Boolean!) {
 mutation DeleteCheat($gameId: Int!, $cheatId: Int!) {
   deleteCheat(gameId: $gameId, cheatId: $cheatId)
 }
+
+mutation ReportClientEvents($client: String!, $events: [ClientEventInput!]!) {
+  reportClientEvents(client: $client, events: $events)
+}

@@ -38,7 +38,14 @@ class StreamView(context: Context, egl: EglBase.Context) : SurfaceView(context),
         holder.addCallback(renderer)
     }
 
-    override fun onFrame(frame: VideoFrame) = renderer.onFrame(frame)
+    /** Frames received so far: a count that stops moving during play is a stalled stream. */
+    @Volatile var frames = 0L
+        private set
+
+    override fun onFrame(frame: VideoFrame) {
+        frames++
+        renderer.onFrame(frame)
+    }
 
     fun release() = renderer.release()
 }
