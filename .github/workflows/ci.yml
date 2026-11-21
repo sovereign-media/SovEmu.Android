@@ -19,7 +19,7 @@ concurrency:
 # GitHub's runners.
 jobs:
   build:
-    runs-on: ${{ vars.LARGE_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ vars.MEDIUM_RUNNER || vars.LARGE_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v7
 
