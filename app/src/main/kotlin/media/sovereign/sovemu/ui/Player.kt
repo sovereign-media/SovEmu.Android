@@ -76,6 +76,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import media.sovereign.sovemu.Controller
+import media.sovereign.sovemu.LowLatencyWhilePlaying
 import media.sovereign.sovemu.SovEmuApi
 import media.sovereign.sovemu.Stream
 import media.sovereign.sovemu.StreamView
@@ -235,6 +236,9 @@ fun PlayerScreen(
             toast = null
         }
     }
+
+    // The TV's game picture mode and Wi-Fi without power saving, for as long as the player is open.
+    LowLatencyWhilePlaying()
 
     val ended by rememberUpdatedState(onEnded)
     DisposableEffect(Unit) {

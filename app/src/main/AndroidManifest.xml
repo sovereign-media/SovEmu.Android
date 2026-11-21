@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <!-- Identify rumbles a controller that has no lights to blink. -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- The low-latency Wi-Fi lock held while a game is on screen (LowLatency.kt). -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <!-- Gamepads are optional: the player has a touch controller. -->
     <uses-feature android:name="android.hardware.gamepad" android:required="false" />
