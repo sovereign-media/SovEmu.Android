@@ -27,7 +27,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import coil3.ImageLoader
@@ -43,6 +47,8 @@ import media.sovereign.sovemu.ui.LoginScreen
 import media.sovereign.sovemu.ui.Nav
 import media.sovereign.sovemu.ui.NavFrame
 import media.sovereign.sovemu.ui.PlayerScreen
+import media.sovereign.sovemu.ui.QuitConfirm
+import media.sovereign.sovemu.ui.QuitOnRootBack
 import media.sovereign.sovemu.ui.Section
 import media.sovereign.sovemu.ui.SovTheme
 import media.sovereign.sovemu.ui.Start
@@ -159,8 +165,10 @@ class MainActivity : ComponentActivity() {
             if (at >= 0) stack.removeRange(at, stack.size)
             stack.add(route)
         }
+        // Back on the home screen asks first: one press too many would leave for the launcher.
+        var confirmQuit by remember { mutableStateOf(false) }
         fun pop() {
-            if (stack.size > 1) stack.removeAt(stack.lastIndex) else finish()
+            if (stack.size > 1) stack.removeAt(stack.lastIndex)
         }
         var crt by remember { mutableStateOf(settings.scanlines) }
         var idleMinutes by remember { mutableIntStateOf(settings.screensaverMinutes) }
@@ -221,70 +229,80 @@ class MainActivity : ComponentActivity() {
 
         // Scan lines over the menus and the screensaver (over a paused game too); never over a
         // game being shown, whose stream is the console's own picture.
+        // The screen keeps its own focus while the quit question is up, and gets it back after.
+        val screenFocus = remember { FocusRequester() }
+        var askedToQuit by remember { mutableStateOf(false) }
+        LaunchedEffect(confirmQuit) {
+            if (confirmQuit) askedToQuit = true else if (askedToQuit) screenFocus.requestFocus()
+        }
+        QuitOnRootBack(atRoot = stack.size == 1 && !confirmQuit) { confirmQuit = true }
         Box(Modifier.fillMaxSize().scanlines(crt && (route !is Route.Play || screensaverOn))) {
-            NavDisplay(
-                backStack = stack,
-                onBack = ::pop,
-                // No animation: a transition composes two screens at once, which a TV pays for.
-                transitionSpec = { EnterTransition.None togetherWith ExitTransition.None },
-                popTransitionSpec = { EnterTransition.None togetherWith ExitTransition.None },
-                predictivePopTransitionSpec = { EnterTransition.None togetherWith ExitTransition.None },
-                entryProvider = entryProvider {
-                    entry<Route.Home>({ it.key }) {
-                        NavFrame(Section.Home, nav, user, systems) {
-                            val feed by store.home.collectAsStateWithLifecycle()
-                            HomeScreen(
-                                feed, systems,
-                                onPlay = { game, start -> systems.firstOrNull { it.id == game.system }?.let { push(Route.Play(it, game, start)) } },
-                                onSystem = { s, open -> push(Route.System(s, open)) },
-                                onSearch = nav.search,
+            Box(Modifier.fillMaxSize().focusRequester(screenFocus).focusRestorer().focusGroup()) {
+                NavDisplay(
+                    backStack = stack,
+                    onBack = ::pop,
+                    // No animation: a transition composes two screens at once, which a TV pays for.
+                    transitionSpec = { EnterTransition.None togetherWith ExitTransition.None },
+                    popTransitionSpec = { EnterTransition.None togetherWith ExitTransition.None },
+                    predictivePopTransitionSpec = { EnterTransition.None togetherWith ExitTransition.None },
+                    entryProvider = entryProvider {
+                        entry<Route.Home>({ it.key }) {
+                            NavFrame(Section.Home, nav, user, systems) {
+                                val feed by store.home.collectAsStateWithLifecycle()
+                                HomeScreen(
+                                    feed, systems,
+                                    onPlay = { game, start -> systems.firstOrNull { it.id == game.system }?.let { push(Route.Play(it, game, start)) } },
+                                    onSystem = { s, open -> push(Route.System(s, open)) },
+                                    onSearch = nav.search,
+                                )
+                            }
+                        }
+                        entry<Route.Search>({ it.key }) {
+                            NavFrame(Section.Search, nav, user, systems) {
+                                SearchScreen(api, systems, onOpen = { game ->
+                                    systems.firstOrNull { it.id == game.system }?.let { push(Route.System(it, game.id)) }
+                                })
+                            }
+                        }
+                        entry<Route.System>({ it.key }) { r ->
+                            NavFrame(Section.Systems, nav, user, systems, paintsBackground = true) {
+                                val index by remember(r.system.id) { store.games(r.system.id) }.collectAsStateWithLifecycle()
+                                var sort by remember { mutableStateOf(settings.sort) }
+                                SystemScreen(
+                                    api, r.system, index, r.open, sort,
+                                    onSort = { sort = it; settings.sort = it },
+                                    onPlay = { game, start -> push(Route.Play(r.system, game, start)) },
+                                    onFavourite = store::setFavourite,
+                                    onCollectionsChanged = store::collectionsChanged,
+                                    onPatch = store::setPatch,
+                                )
+                            }
+                        }
+                        entry<Route.Play>({ it.key }) { r ->
+                            val touchControls by presence.touchControls.collectAsStateWithLifecycle(presence.touchControlsNow)
+                            PlayerScreen(
+                                api, sessions, r.system, r.game, r.start, controller, touchControls,
+                                stats = statsOn,
+                                onStatsChange = {
+                                    statsOn = it
+                                    settings.stats = it
+                                },
+                                onEnded = { store.played(r.system.id) },
+                                onExit = {
+                                    gamePaused = false
+                                    controller.clear()
+                                    pop()
+                                },
+                                onPaused = { gamePaused = it },
                             )
                         }
-                    }
-                    entry<Route.Search>({ it.key }) {
-                        NavFrame(Section.Search, nav, user, systems) {
-                            SearchScreen(api, systems, onOpen = { game ->
-                                systems.firstOrNull { it.id == game.system }?.let { push(Route.System(it, game.id)) }
-                            })
-                        }
-                    }
-                    entry<Route.System>({ it.key }) { r ->
-                        NavFrame(Section.Systems, nav, user, systems, paintsBackground = true) {
-                            val index by remember(r.system.id) { store.games(r.system.id) }.collectAsStateWithLifecycle()
-                            var sort by remember { mutableStateOf(settings.sort) }
-                            SystemScreen(
-                                api, r.system, index, r.open, sort,
-                                onSort = { sort = it; settings.sort = it },
-                                onPlay = { game, start -> push(Route.Play(r.system, game, start)) },
-                                onFavourite = store::setFavourite,
-                                onCollectionsChanged = store::collectionsChanged,
-                                onPatch = store::setPatch,
-                            )
-                        }
-                    }
-                    entry<Route.Play>({ it.key }) { r ->
-                        val touchControls by presence.touchControls.collectAsStateWithLifecycle(presence.touchControlsNow)
-                        PlayerScreen(
-                            api, sessions, r.system, r.game, r.start, controller, touchControls,
-                            stats = statsOn,
-                            onStatsChange = {
-                                statsOn = it
-                                settings.stats = it
-                            },
-                            onEnded = { store.played(r.system.id) },
-                            onExit = {
-                                gamePaused = false
-                                controller.clear()
-                                pop()
-                            },
-                            onPaused = { gamePaused = it },
-                        )
-                    }
-                },
-            )
+                    },
+                )
+            }
             if (screensaverOn && canIdle) {
                 Screensaver(api, remember(systems) { systems.associateBy { it.id } }, store::randomVideoGame)
             }
+            if (confirmQuit) QuitConfirm(onStay = { confirmQuit = false }, onQuit = ::finish)
         }
     }
 
