@@ -48,6 +48,7 @@ import media.sovereign.sovemu.ui.Nav
 import media.sovereign.sovemu.ui.NavFrame
 import media.sovereign.sovemu.ui.PlayerScreen
 import media.sovereign.sovemu.ui.QuitConfirm
+import media.sovereign.sovemu.ui.QuitOnRootBack
 import media.sovereign.sovemu.ui.Section
 import media.sovereign.sovemu.ui.SovTheme
 import media.sovereign.sovemu.ui.Start
@@ -167,7 +168,7 @@ class MainActivity : ComponentActivity() {
         // Back on the home screen asks first: one press too many would leave for the launcher.
         var confirmQuit by remember { mutableStateOf(false) }
         fun pop() {
-            if (stack.size > 1) stack.removeAt(stack.lastIndex) else confirmQuit = true
+            if (stack.size > 1) stack.removeAt(stack.lastIndex)
         }
         var crt by remember { mutableStateOf(settings.scanlines) }
         var idleMinutes by remember { mutableIntStateOf(settings.screensaverMinutes) }
@@ -234,6 +235,7 @@ class MainActivity : ComponentActivity() {
         LaunchedEffect(confirmQuit) {
             if (confirmQuit) askedToQuit = true else if (askedToQuit) screenFocus.requestFocus()
         }
+        QuitOnRootBack(atRoot = stack.size == 1 && !confirmQuit) { confirmQuit = true }
         Box(Modifier.fillMaxSize().scanlines(crt && (route !is Route.Play || screensaverOn))) {
             Box(Modifier.fillMaxSize().focusRequester(screenFocus).focusRestorer().focusGroup()) {
                 NavDisplay(

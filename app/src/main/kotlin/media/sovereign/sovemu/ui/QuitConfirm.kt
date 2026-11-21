@@ -29,6 +29,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
+ * Back on the root screen asks to quit. Navigation 3's `NavDisplay` handles Back only while it has
+ * a screen to go back to; on the last one it lets Back through to the system, which finishes the
+ * activity, so the root needs a handler of its own.
+ */
+@Composable
+fun QuitOnRootBack(atRoot: Boolean, onAsk: () -> Unit) = BackHandler(enabled = atRoot, onBack = onAsk)
+
+/**
  * Asks before Back on the home screen leaves the app, since one press too many on a remote
  * otherwise drops back to the TV's launcher. Drawn in the activity's window like the in-game
  * menu (Back was lost in a `Dialog` window on a Mi TV); it holds the focus, starts on Stay so a

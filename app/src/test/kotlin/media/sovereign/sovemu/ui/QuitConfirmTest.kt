@@ -1,11 +1,15 @@
 package media.sovereign.sovemu.ui
 
 import androidx.activity.ComponentActivity
+import androidx.compose.material3.Text
+import androidx.navigation3.runtime.NavEntry
+import androidx.navigation3.ui.NavDisplay
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -39,6 +43,29 @@ class QuitConfirmTest {
         rule.waitForIdle()
         assertEquals(1, stayed)
         assertEquals(0, quit)
+    }
+
+    /**
+     * The bug this guards: NavDisplay lets Back through to the system on its last screen, which
+     * finished the activity before the question could be asked.
+     */
+    @Test
+    fun backOnTheLastScreenAsksInsteadOfFinishing() {
+        var asked = 0
+        rule.setContent {
+            TestApp {
+                QuitOnRootBack(atRoot = true) { asked++ }
+                NavDisplay(
+                    backStack = listOf("home"),
+                    onBack = {},
+                    entryProvider = { key -> NavEntry(key) { Text("Home") } },
+                )
+            }
+        }
+        rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
+        rule.waitForIdle()
+        assertEquals(1, asked)
+        assertFalse("the app is still open", rule.activity.isFinishing)
     }
 
     @Test
