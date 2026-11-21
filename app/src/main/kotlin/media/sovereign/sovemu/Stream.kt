@@ -249,6 +249,11 @@ class Stream(
         )
     }
 
+    /** The stats overlay's numbers, for the worker's log ([StreamStats.encode]). */
+    fun sendStats(bytes: ByteArray) {
+        if (!closed.get() && channel.state() == DataChannel.State.OPEN) send(bytes)
+    }
+
     private fun send(bytes: ByteArray) {
         channel.send(DataChannel.Buffer(ByteBuffer.wrap(bytes), true))
     }

@@ -59,4 +59,17 @@ class ProtocolTest {
         assertEquals(1 shl 3, Button.START.bit)
         assertEquals(1 shl 8, Button.A.bit)
     }
+
+    @Test
+    fun encodesStatsLikeTheRustReference() {
+        // `stats_are_json_after_the_header` in SovEmu.Protocol: only the known values, in order.
+        val encoded = Protocol.encodeStats(listOf("jitter_ms" to 1.5, "kbps" to null, "fps" to Double.NaN, "packets_lost" to 2L))
+        assertArrayEquals(bytes(0x04, 1) + """{"jitter_ms":1.5,"packets_lost":2}""".toByteArray(), encoded)
+    }
+
+    @Test
+    fun statsRoundToOneDecimalAndQuoteText() {
+        val encoded = Protocol.encodeStats(listOf("client" to "android \"tv\"", "fps" to 59.94, "estimate_ms" to 40.0, "game_mode" to true))
+        assertEquals("""{"client":"android \"tv\"","fps":59.9,"estimate_ms":40,"game_mode":true}""", String(encoded.copyOfRange(2, encoded.size)))
+    }
 }

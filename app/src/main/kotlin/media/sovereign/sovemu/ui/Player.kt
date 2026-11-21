@@ -17,6 +17,7 @@ import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.focus.focusProperties
@@ -218,17 +219,21 @@ fun PlayerScreen(
         paused(isPaused)
     }
     // The stats overlay: sampled once a second while it is on, as on the web, and each sample
-    // echoed to the log for debugging (`adb logcat -s SovEmu.Stats`). Off, neither runs.
+    // sent to the worker, which logs it beside its own health lines (`client stats` in the
+    // server's log), and echoed to logcat (`adb logcat -s SovEmu.Stats`). Off, none of it runs.
+    val currentGameMode by rememberUpdatedState(gameMode)
     LaunchedEffect(stats, stream) {
         readout = null
         val s = stream
         if (!stats || s == null) return@LaunchedEffect
         val sampler = StatsSampler()
+        val client = clientName(context)
         while (true) {
             delay(1000)
             val reading = s.readStats() ?: break
             val sample = sampler.sample(reading, s.inputRtts.toList())
             readout = sample
+            s.sendStats(sample.encode(client, currentGameMode))
             Log.i(STATS_TAG, sample.logfmt())
         }
     }
@@ -389,13 +394,18 @@ private fun InGameMenu(
             }
             when (page) {
                 MenuPage.Main -> {
-                    MenuItem("Resume", Lucide.Play, Modifier.focusRequester(first), onResume)
+                    MenuItem("Resume", Lucide.Play, Modifier.focusRequester(first), onClick = onResume)
                     MenuItem("Save state", Lucide.Check, onClick = { page = MenuPage.Save })
                     MenuItem("Load state", Lucide.History, onClick = { page = MenuPage.Load })
                     if (discs > 1) MenuItem("Change disc · disc $disc of $discs", Lucide.Disc3, onClick = { page = MenuPage.Disc })
                     MenuItem("Cheats", Lucide.Sparkles, onClick = { page = MenuPage.Cheats })
                     MenuItem("Controllers", Lucide.Gamepad2, onClick = onControllers)
-                    MenuItem(if (stats) "Hide stats" else "Show stats", Lucide.Activity, onClick = { onStatsChange(!stats) })
+                    MenuItem(
+                        if (stats) "Hide stats" else "Show stats",
+                        Lucide.Activity,
+                        detail = STATS_WARNING,
+                        onClick = { onStatsChange(!stats) },
+                    )
                     Box(Modifier.padding(vertical = 4.dp).fillMaxWidth().height(1.dp).background(Sov.Edge))
                     MenuItem("Quit game", Lucide.LogOut, onClick = onQuit)
                 }
@@ -495,6 +505,15 @@ private fun Splash(game: Game, system: SystemSummary, status: String, choice: Co
 
 private const val STATS_TAG = "SovEmu.Stats"
 
+/** Where stats are turned on, and on the overlay: they cost a little every second. */
+internal const val STATS_WARNING = "Stats are logged while shown, and can affect game performance."
+
+/** This app, its version and the device, for the worker's log: `android 0.1.0 (MiTV-AFMU1, Android 11)`. */
+private fun clientName(context: android.content.Context): String {
+    val version = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull()
+    return "android ${version ?: "?"} (${android.os.Build.MODEL}, Android ${android.os.Build.VERSION.RELEASE})"
+}
+
 /**
  * Latency and stream health over the game, as the web client's: a corner panel that never takes
  * focus, so the game keeps its controllers.
@@ -502,26 +521,35 @@ private const val STATS_TAG = "SovEmu.Stats"
 @Composable
 private fun StatsOverlay(stats: StreamStats, modifier: Modifier = Modifier) {
     val rows = stats.rows()
-    Row(
+    Column(
         modifier.clip(RoundedCornerShape(8.dp)).background(Color.Black.copy(alpha = 0.7f)).padding(horizontal = 12.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Column { for ((label, _) in rows) Text(label, color = Sov.Slate400, fontSize = 12.sp, fontFamily = FontFamily.Monospace) }
-        Column(horizontalAlignment = Alignment.End) {
-            for ((_, value) in rows) Text(value, color = Color.White, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Column { for ((label, _) in rows) Text(label, color = Sov.Slate400, fontSize = 12.sp, fontFamily = FontFamily.Monospace) }
+            Column(horizontalAlignment = Alignment.End) {
+                for ((_, value) in rows) Text(value, color = Color.White, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+            }
         }
+        Text(STATS_WARNING, Modifier.padding(top = 4.dp).widthIn(max = 260.dp), color = Sov.Slate400, fontSize = 10.sp)
     }
 }
 
 /** A row of the in-game menu: focusable, with a ring and fill when focused. */
 @Composable
-private fun MenuItem(label: String, icon: ImageVector, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun MenuItem(
+    label: String,
+    icon: ImageVector,
+    modifier: Modifier = Modifier,
+    /** A second, smaller line under the label (a trade-off worth knowing before choosing it). */
+    detail: String? = null,
+    onClick: () -> Unit,
+) {
     val source = remember { MutableInteractionSource() }
     val focused by source.collectIsFocusedAsState()
     Row(
         modifier
             .fillMaxWidth()
-            .height(44.dp)
+            .heightIn(min = 44.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(if (focused) Sov.Accent.copy(alpha = 0.45f) else Color.Transparent)
             .clickable(interactionSource = source, indication = null, onClick = onClick)
@@ -530,7 +558,10 @@ private fun MenuItem(label: String, icon: ImageVector, modifier: Modifier = Modi
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         LucideIcon(icon, tint = if (focused) Color.White else Sov.Slate400, size = 18.dp)
-        Text(label, color = Color.White, fontSize = 16.sp)
+        Column(Modifier.padding(vertical = if (detail != null) 6.dp else 0.dp)) {
+            Text(label, color = Color.White, fontSize = 16.sp)
+            if (detail != null) Text(detail, color = Sov.Slate400, fontSize = 12.sp)
+        }
     }
 }
 
