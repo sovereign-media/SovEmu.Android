@@ -1,5 +1,8 @@
 package media.sovereign.sovemu.core
 
+import com.apollographql.apollo.api.json.JsonReader
+import com.apollographql.apollo.api.json.jsonReader
+import okio.Buffer
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -18,6 +21,10 @@ object Protocol {
     private const val TYPE_ANALOG: Byte = 0x03
     private const val TYPE_STATS: Byte = 0x04
     private const val TYPE_ACK: Byte = 0x81.toByte()
+    private const val TYPE_PIPELINE: Byte = 0x82.toByte()
+
+    /** The longest pipeline message the worker sends (and the longest decoded). */
+    const val MAX_PIPELINE_BYTES = 4096
 
     /**
      * The stats overlay's numbers for the worker's log (`client stats`): `0x04`, the version,
@@ -99,6 +106,100 @@ object Protocol {
         val buf = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
         fun u32(at: Int) = buf.getInt(at).toLong() and 0xffff_ffffL
         return Ack(u32(2), u32(6), u32(10))
+    }
+
+    /** An encoder the worker tried before the one it streams with, and why it gave up on it. */
+    data class Fallback(val encoder: String = "", val reason: String = "")
+
+    data class PipelineVideo(
+        /** `h264` or `vp8`. */
+        val codec: String = "",
+        /** `vaapi`, `nvenc`, `x264` or `libvpx`. */
+        val encoder: String = "",
+        val hardware: Boolean = false,
+        val fallbacks: List<Fallback> = emptyList(),
+        val width: Int = 0,
+        val height: Int = 0,
+        val fps: Double = 0.0,
+    )
+
+    data class PipelineAudio(val codec: String = "", val sourceHz: Double = 0.0, val kbps: Int = 0)
+
+    /**
+     * How the worker makes the stream (`0x82`, the version, then JSON): what draws the picture,
+     * the video codec and encoder (and any it fell back from), the audio and run-ahead. Sent
+     * when the channel opens, on any change and every 2 s; every key may be missing.
+     */
+    data class Pipeline(
+        /** The OpenGL renderer a 3D core draws with; null for a core that draws on the CPU. */
+        val renderer: String? = null,
+        /** The renderer is the software one (llvmpipe). */
+        val rendererSoftware: Boolean = false,
+        val video: PipelineVideo = PipelineVideo(),
+        val audio: PipelineAudio = PipelineAudio(),
+        val runAhead: Int = 0,
+    )
+
+    /** Decodes a pipeline message, or returns null for anything else. */
+    fun decodePipeline(bytes: ByteArray): Pipeline? {
+        if (bytes.size < 3 || bytes.size > MAX_PIPELINE_BYTES) return null
+        if (bytes[0] != TYPE_PIPELINE || bytes[1] != INPUT_VERSION) return null
+        val p = try {
+            val reader = Buffer().write(bytes, 2, bytes.size - 2).jsonReader()
+            readJson(reader).also { if (reader.peek() != JsonReader.Token.END_DOCUMENT) return null }
+        } catch (_: Exception) {
+            return null
+        } as? Map<*, *> ?: return null
+        val video = p["video"].obj()
+        val audio = p["audio"].obj()
+        return Pipeline(
+            renderer = p["renderer"] as? String,
+            rendererSoftware = p["renderer_software"] == true,
+            video = PipelineVideo(
+                codec = video["codec"].str(),
+                encoder = video["encoder"].str(),
+                hardware = video["hardware"] == true,
+                fallbacks = (video["fallbacks"] as? List<*>).orEmpty().map {
+                    Fallback(it.obj()["encoder"].str(), it.obj()["reason"].str())
+                },
+                width = video["width"].num().toInt(),
+                height = video["height"].num().toInt(),
+                fps = video["fps"].num(),
+            ),
+            audio = PipelineAudio(
+                codec = audio["codec"].str(),
+                sourceHz = audio["source_hz"].num(),
+                kbps = audio["kbps"].num().toInt(),
+            ),
+            runAhead = p["run_ahead"].num().toInt(),
+        )
+    }
+
+    private fun Any?.str() = this as? String ?: ""
+    private fun Any?.num() = (this as? Double)?.takeIf { it.isFinite() } ?: 0.0
+    private fun Any?.obj(): Map<*, *> = this as? Map<*, *> ?: emptyMap<String, Any?>()
+
+    /** Any JSON value: objects as maps, arrays as lists, every number as a Double. */
+    private fun readJson(reader: JsonReader): Any? = when (reader.peek()) {
+        JsonReader.Token.BEGIN_OBJECT -> {
+            val members = HashMap<String, Any?>()
+            reader.beginObject()
+            while (reader.hasNext()) members[reader.nextName()] = readJson(reader)
+            reader.endObject()
+            members
+        }
+        JsonReader.Token.BEGIN_ARRAY -> {
+            val items = ArrayList<Any?>()
+            reader.beginArray()
+            while (reader.hasNext()) items.add(readJson(reader))
+            reader.endArray()
+            items
+        }
+        JsonReader.Token.STRING -> reader.nextString()
+        JsonReader.Token.NUMBER, JsonReader.Token.LONG -> reader.nextDouble()
+        JsonReader.Token.BOOLEAN -> reader.nextBoolean()
+        JsonReader.Token.NULL -> reader.nextNull()
+        else -> throw IllegalArgumentException("unexpected JSON token ${reader.peek()}")
     }
 }
 

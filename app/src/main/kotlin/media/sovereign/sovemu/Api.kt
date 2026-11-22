@@ -241,8 +241,9 @@ class SovEmuApi(private val settings: Settings) {
     suspend fun games(system: String): List<Game> =
         query(SystemGamesQuery(system)).system?.games?.map { it.gameFields } ?: throw ApiException("NOT_FOUND", "No such system")
     suspend fun startSession(gameId: Int): SessionInfo = mutate(StartSessionMutation(gameId)).startSession.sessionFields
-    /** Sends the complete offer SDP; returns the answer SDP. */
-    suspend fun offer(sessionId: String, sdp: String): String = mutate(SessionOfferMutation(sessionId, sdp)).sessionOffer
+    /** Sends the complete offer SDP, naming this app ([client]); returns the answer SDP. */
+    suspend fun offer(sessionId: String, sdp: String, client: String): String =
+        mutate(SessionOfferMutation(sessionId, sdp, Optional.present(client))).sessionOffer
     suspend fun stopSession(sessionId: String) {
         mutate(StopSessionMutation(sessionId))
     }

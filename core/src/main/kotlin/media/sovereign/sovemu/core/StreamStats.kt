@@ -2,6 +2,7 @@ package media.sovereign.sovemu.core
 
 import java.util.Locale
 import kotlin.math.ceil
+import kotlin.math.roundToLong
 
 /**
  * One reading of a peer connection's stats (WebRTC `getStats()`): the inbound video's counters,
@@ -22,7 +23,23 @@ data class StatsReading(
     /** Video and audio together. */
     val packetsLost: Long,
     val networkRttMs: Double?,
+    /** The inbound video's decoder (`decoderImplementation`, `powerEfficientDecoder`). */
+    val decoder: VideoDecoder? = null,
 )
+
+/**
+ * The app's own video decoder, as WebRTC names it: [implementation] (`MediaCodecVideoDecoder`,
+ * `libvpx`…) and whether it is a power-efficient (hardware) one, when the stats say.
+ */
+data class VideoDecoder(val implementation: String, val powerEfficient: Boolean?) {
+    /** `MediaCodecVideoDecoder (hardware)`, or just the name when power efficiency is unknown. */
+    val label: String
+        get() = when (powerEfficient) {
+            true -> "$implementation (hardware)"
+            false -> "$implementation (software)"
+            null -> implementation
+        }
+}
 
 /** What the stats overlay shows, and the log line it echoes. Null: not known yet. */
 data class StreamStats(
@@ -37,6 +54,7 @@ data class StreamStats(
     val fps: Double?,
     val kbps: Double?,
     val packetsLost: Long,
+    val decoder: VideoDecoder? = null,
 ) {
     /**
      * Button to pixel, roughly, as the web client estimates it: the input round trip (the
@@ -134,8 +152,58 @@ class StatsSampler {
             fps = now.framesPerSecond,
             kbps = seconds?.let { (now.bytesReceived - prev!!.bytesReceived) * 8 / 1000 / it },
             packetsLost = now.packetsLost,
+            decoder = now.decoder,
         )
     }
+}
+
+/**
+ * The overlay's rows on how the stream is made, after [StreamStats.rows]: the worker's
+ * [pipeline] (none from a server that predates it, so no rows) and this app's [decoder]. The
+ * labels and formats are the web client's.
+ */
+fun pipelineRows(pipeline: Protocol.Pipeline?, decoder: VideoDecoder?): List<Pair<String, String>> {
+    pipeline ?: return emptyList()
+    val video = pipeline.video
+    return buildList {
+        add("Stream" to "${codecName(video.codec)} · ${encoderName(video.encoder)} (${if (video.hardware) "GPU" else "CPU"})")
+        if (video.fallbacks.isNotEmpty()) {
+            add("Fell back from" to video.fallbacks.joinToString("; ") { "${encoderName(it.encoder)}: ${it.reason}" })
+        }
+        add(
+            "Rendering" to when {
+                pipeline.renderer == null -> "CPU"
+                pipeline.rendererSoftware -> "Software · ${pipeline.renderer}"
+                else -> "GPU · ${pipeline.renderer}"
+            },
+        )
+        val audio = pipeline.audio
+        val hz = String.format(Locale.ROOT, "%,d", audio.sourceHz.roundToLong())
+        add("Audio" to "${codecName(audio.codec)} ${audio.kbps} kbps · from $hz Hz")
+        add(
+            "Run-ahead" to when (pipeline.runAhead) {
+                0 -> "Off"
+                1 -> "1 frame"
+                else -> "${pipeline.runAhead} frames"
+            },
+        )
+        decoder?.let { add("Decoder" to it.label) }
+    }
+}
+
+/** A codec's display name; one this app does not know shows as the worker names it. */
+private fun codecName(codec: String) = when (codec) {
+    "h264" -> "H.264"
+    "vp8" -> "VP8"
+    "opus" -> "Opus"
+    else -> codec
+}
+
+/** An encoder's display name; one this app does not know shows as the worker names it. */
+private fun encoderName(encoder: String) = when (encoder) {
+    "vaapi" -> "VA-API"
+    "nvenc" -> "NVENC"
+    else -> encoder
 }
 
 /** Nearest-rank percentile of an ascending list; null when it is empty. */

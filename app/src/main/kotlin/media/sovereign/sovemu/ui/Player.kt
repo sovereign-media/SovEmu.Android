@@ -4,7 +4,7 @@ import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.text.font.FontFamily
 import media.sovereign.sovemu.core.StatsSampler
-import media.sovereign.sovemu.core.StreamStats
+import media.sovereign.sovemu.core.pipelineRows
 import media.sovereign.sovemu.core.formatAgo
 import media.sovereign.sovemu.core.slotRows
 import media.sovereign.sovemu.core.SlotRow
@@ -144,7 +144,8 @@ fun PlayerScreen(
     var stream by remember { mutableStateOf<Stream?>(null) }
     var toast by remember { mutableStateOf<String?>(null) }
     var controllersOpen by remember { mutableStateOf(false) }
-    var readout by remember { mutableStateOf<StreamStats?>(null) }
+    /** The stats overlay's rows, label and value; null while it is off or has no sample yet. */
+    var readout by remember { mutableStateOf<List<Pair<String, String>>?>(null) }
     /** The stream has connected once: a failure after that is a lost connection. */
     var everConnected by remember { mutableStateOf(false) }
     /** The disc in the tray (1-based), for a multi-disc game. */
@@ -187,7 +188,7 @@ fun PlayerScreen(
             // WebRTC's factory and peer connection are slow to build: not on the main thread.
             // Built whatever happens, so it is closed whatever happens.
             val s = withContext(NonCancellable + Dispatchers.Default) {
-                Stream(context, api, session.id, ice.await(), controller, renderer) { state ->
+                Stream(context, api, session.id, ClientEvents.clientName(context), ice.await(), controller, renderer) { state ->
                     if (state == PeerConnection.PeerConnectionState.FAILED) status = "Connection failed"
                     when (state) {
                         PeerConnection.PeerConnectionState.CONNECTED -> everConnected = true
@@ -243,7 +244,8 @@ fun PlayerScreen(
             delay(1000)
             val reading = s.readStats() ?: break
             val sample = sampler.sample(reading, s.inputRtts.toList())
-            readout = sample
+            // How the worker makes the stream follows, once it has said (old servers never do).
+            readout = sample.rows() + pipelineRows(s.pipeline.value, sample.decoder)
             s.sendStats(sample.encode(client, currentGameMode))
             Log.i(STATS_TAG, sample.logfmt())
         }
@@ -544,8 +546,7 @@ internal const val STATS_WARNING = "Stats are logged while shown, and can affect
  * focus, so the game keeps its controllers.
  */
 @Composable
-private fun StatsOverlay(stats: StreamStats, modifier: Modifier = Modifier) {
-    val rows = stats.rows()
+private fun StatsOverlay(rows: List<Pair<String, String>>, modifier: Modifier = Modifier) {
     Column(
         modifier.clip(RoundedCornerShape(8.dp)).background(Color.Black.copy(alpha = 0.7f)).padding(horizontal = 12.dp, vertical = 8.dp),
     ) {

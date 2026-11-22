@@ -71,7 +71,9 @@ checkout this is a submodule of, and the build tells you which operations no lon
 - **In-game menu:** Back, or Select+Start.
 - **Stats** (in-game menu, "Show stats"; remembered): latency and stream health in a corner, as
   on the web client: estimated button→pixel, input round trip (p50 and p95), network RTT, jitter
-  buffer, decode, resolution and fps, bitrate, packets lost. While it is on, each once-a-second
+  buffer, decode, resolution and fps, bitrate, packets lost; then, from a server that says how it
+  makes the stream, the codec and encoder (GPU or CPU, and any it fell back from), what renders
+  the picture, the audio, run-ahead and this device's video decoder. While it is on, each once-a-second
   sample is also logged as logfmt (`adb logcat -s SovEmu.Stats`); off, nothing is sampled.
 - **Fast-forward:** hold Select+R.
 - **Rewind:** hold Select+L.

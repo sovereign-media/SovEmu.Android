@@ -1,3 +1,44 @@
+type ActiveSession {
+	id: ID!
+	userId: Int!
+	"""
+	The player; null if the account has been deleted since.
+	"""
+	username: String
+	"""
+	The app and device playing it, as the client named itself (null until it connects, or
+	for a client that predates naming itself).
+	"""
+	client: String
+	gameId: Int!
+	title: String!
+	system: String!
+	"""
+	The core's name.
+	"""
+	core: String!
+	"""
+	When it started, as a Unix time in seconds.
+	"""
+	startedAt: Float!
+	"""
+	A client is streaming it (else it waits, for a client to come back or its idle timeout).
+	"""
+	connected: Boolean!
+	"""
+	How the stream is made; null until the first frame is encoded.
+	"""
+	pipeline: StreamPipeline
+	"""
+	The worker's last health interval (every 10 s while a client is connected).
+	"""
+	health: StreamHealth
+	"""
+	What the player's stats panel shows; only while it is open.
+	"""
+	clientStats: ClientStreamStats
+}
+
 """
 Box art being downloaded after a lookup, for the games that have no local thumb.
 """
@@ -241,6 +282,27 @@ enum ClientEventKind {
 	OTHER
 }
 
+"""
+What a player's stats panel shows (times in ms, rates in kbit/s); null where the client has
+no value.
+"""
+type ClientStreamStats {
+	"""
+	Button to pixel, as the client estimates it.
+	"""
+	estimateMs: Float
+	inputRttMs: Float
+	netRttMs: Float
+	jitterMs: Float
+	decodeMs: Float
+	fps: Float
+	kbps: Float
+	"""
+	Packets lost since the stream began.
+	"""
+	packetsLost: Float
+}
+
 type Collection {
 	id: Int!
 	name: String!
@@ -390,6 +452,14 @@ type EmulatorSettings {
 	"""
 	environment: [String!]!
 	runAhead: RunAheadSetting!
+}
+
+"""
+An encoder a session gave up, and why.
+"""
+type EncoderFallback {
+	encoder: String!
+	reason: String!
 }
 
 type Game {
@@ -916,8 +986,10 @@ type Mutation {
 	stopSession(id: ID!): Boolean!
 	"""
 	Answers a client's WebRTC offer (SDP) for a session with the worker's answer (SDP).
+	`client` names the app and device (`web`, `android 1.4.0 (Mi TV)`), as its stats do,
+	for the admin's sessions page.
 	"""
-	sessionOffer(id: ID!, sdp: String!): String!
+	sessionOffer(id: ID!, sdp: String!, client: String): String!
 	"""
 	Presses the console's reset button.
 	"""
@@ -1133,6 +1205,10 @@ type Query {
 	Admins: the accounts.
 	"""
 	users: [User!]!
+	"""
+	Admins: every game being played now, oldest first, with how each stream is made.
+	"""
+	activeSessions: [ActiveSession!]!
 	"""
 	Admins: where 3D systems render, and every device the startup probe tried.
 	"""
@@ -1426,6 +1502,82 @@ type StartStatus {
 	"""
 	phaseMs: Float!
 	error: String
+}
+
+"""
+A session's last `session health` interval.
+"""
+type StreamHealth {
+	"""
+	Frames shown per second.
+	"""
+	fps: Float!
+	"""
+	The share of frames that took longer than a frame period, 0 to 1.
+	"""
+	overran: Float!
+	"""
+	The share of the interval the game was paused (the player's menu open), 0 to 1.
+	"""
+	paused: Float!
+	tickMeanMs: Float!
+	encodeMeanMs: Float!
+	"""
+	What the encoder produced, and what it aimed for, kbit/s.
+	"""
+	videoKbps: Float!
+	videoKbpsTarget: Int!
+	"""
+	The send-bandwidth estimate, kbit/s.
+	"""
+	estimateKbps: Float
+}
+
+"""
+How a session's stream is made: what draws the picture, the video codec and encoder (and
+any encoder it fell back from), the audio, and run-ahead.
+"""
+type StreamPipeline {
+	"""
+	The OpenGL renderer a 3D core draws with; null for a core that draws on the CPU.
+	"""
+	renderer: String
+	"""
+	The renderer is the software one (llvmpipe), not a GPU.
+	"""
+	rendererSoftware: Boolean!
+	"""
+	`h264` or `vp8`.
+	"""
+	videoCodec: String!
+	"""
+	`vaapi`, `nvenc`, `x264` or `libvpx`.
+	"""
+	videoEncoder: String!
+	"""
+	The encoder runs on a GPU.
+	"""
+	videoHardware: Boolean!
+	"""
+	Encoders given up before this one, in order, with why.
+	"""
+	fallbacks: [EncoderFallback!]!
+	width: Int!
+	height: Int!
+	fps: Float!
+	"""
+	`opus`.
+	"""
+	audioCodec: String!
+	"""
+	The core's own sample rate, resampled to 48 kHz.
+	"""
+	audioSourceHz: Float!
+	audioKbps: Int!
+	"""
+	Frames the picture runs ahead of the game (0: off).
+	"""
+	runAhead: Int!
 }
 
 type System {

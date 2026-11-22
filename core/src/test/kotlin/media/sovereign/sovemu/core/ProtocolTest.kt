@@ -72,4 +72,55 @@ class ProtocolTest {
         val encoded = Protocol.encodeStats(listOf("client" to "android \"tv\"", "fps" to 59.94, "estimate_ms" to 40.0, "game_mode" to true))
         assertEquals("""{"client":"android \"tv\"","fps":59.9,"estimate_ms":40,"game_mode":true}""", String(encoded.copyOfRange(2, encoded.size)))
     }
+
+    private fun pipeline(json: String) = byteArrayOf(0x82.toByte(), 1) + json.toByteArray(Charsets.UTF_8)
+
+    /** The same message as `pipeline_layout_is_stable` in SovEmu.Protocol and protocol.test.ts. */
+    @Test
+    fun decodesTheRustReferencePipeline() {
+        val json = """{"renderer":"llvmpipe","renderer_software":true,"video":{"codec":"h264",""" +
+            """"encoder":"x264","hardware":false,"fallbacks":[{"encoder":"vaapi","reason":"no device"}],""" +
+            """"width":256,"height":224,"fps":60.0},"audio":{"codec":"opus","source_hz":32040.0,"kbps":128},""" +
+            """"run_ahead":1}"""
+        assertEquals(
+            Protocol.Pipeline(
+                renderer = "llvmpipe",
+                rendererSoftware = true,
+                video = Protocol.PipelineVideo(
+                    codec = "h264",
+                    encoder = "x264",
+                    hardware = false,
+                    fallbacks = listOf(Protocol.Fallback("vaapi", "no device")),
+                    width = 256,
+                    height = 224,
+                    fps = 60.0,
+                ),
+                audio = Protocol.PipelineAudio(codec = "opus", sourceHz = 32040.0, kbps = 128),
+                runAhead = 1,
+            ),
+            Protocol.decodePipeline(pipeline(json)),
+        )
+    }
+
+    @Test
+    fun pipelineToleratesMissingAndUnknownKeys() {
+        assertEquals(Protocol.Pipeline(), Protocol.decodePipeline(pipeline("{}")))
+        val decoded = Protocol.decodePipeline(
+            pipeline("""{"future":{"a":[1,2,null]},"renderer":null,"video":{"codec":"vp8","extra":true},"run_ahead":"two"}"""),
+        )
+        assertEquals(Protocol.Pipeline(video = Protocol.PipelineVideo(codec = "vp8")), decoded)
+    }
+
+    @Test
+    fun rejectsWhatIsNotAPipeline() {
+        assertNull(Protocol.decodePipeline(bytes(0x82, 1)))
+        assertNull(Protocol.decodePipeline(byteArrayOf(0x81.toByte(), 1) + "{}".toByteArray()))
+        assertNull(Protocol.decodePipeline(byteArrayOf(0x82.toByte(), 2) + "{}".toByteArray()))
+        assertNull(Protocol.decodePipeline(pipeline("[]")))
+        assertNull(Protocol.decodePipeline(pipeline("\"h264\"")))
+        assertNull(Protocol.decodePipeline(pipeline("{\"renderer\":")))
+        assertNull(Protocol.decodePipeline(pipeline("{\"a\":\"" + "x".repeat(Protocol.MAX_PIPELINE_BYTES) + "\"}")))
+        // An ack's decoder leaves a pipeline alone, so the app can try each in turn.
+        assertNull(Protocol.decodeAck(pipeline("{\"renderer\":\"llvmpipe\",\"run_ahead\":0}")))
+    }
 }

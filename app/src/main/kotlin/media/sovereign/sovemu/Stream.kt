@@ -15,10 +15,14 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.cancel
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import media.sovereign.sovemu.core.IceServer
 import media.sovereign.sovemu.core.InputMixer
 import media.sovereign.sovemu.core.Protocol
 import media.sovereign.sovemu.core.StatsReading
+import media.sovereign.sovemu.core.VideoDecoder
 import org.webrtc.DataChannel
 import org.webrtc.DefaultVideoDecoderFactory
 import org.webrtc.EglBase
@@ -65,6 +69,8 @@ class Stream(
     context: Context,
     private val api: SovEmuApi,
     private val sessionId: String,
+    /** This app, named in the offer for the server's sessions page ([ClientEvents.clientName]). */
+    private val client: String,
     iceServers: List<IceServer>,
     private val controller: Controller,
     private val videoSink: VideoSink,
@@ -77,6 +83,14 @@ class Stream(
 
     /** Recent input round trips in ms (input → applied on a frame → ack). */
     val inputRtts = ConcurrentLinkedDeque<Long>()
+
+    private val _pipeline = MutableStateFlow<Protocol.Pipeline?>(null)
+
+    /**
+     * How the worker makes the stream, once it has said (`0x82`); null from a server that does
+     * not. Re-sent every 2 s, but an equal message changes nothing.
+     */
+    val pipeline: StateFlow<Protocol.Pipeline?> = _pipeline.asStateFlow()
 
     private val observer = object : PeerConnection.Observer {
         override fun onIceGatheringChange(state: PeerConnection.IceGatheringState) {
@@ -129,9 +143,14 @@ class Stream(
             }
             override fun onMessage(buffer: DataChannel.Buffer) {
                 val bytes = ByteArray(buffer.data.remaining()).also { buffer.data.get(it) }
-                val ack = Protocol.decodeAck(bytes) ?: return
-                inputRtts.addLast((now32() - ack.clientTimeMs) and 0xffff_ffffL)
-                while (inputRtts.size > 60) inputRtts.pollFirst()
+                val ack = Protocol.decodeAck(bytes)
+                if (ack != null) {
+                    inputRtts.addLast((now32() - ack.clientTimeMs) and 0xffff_ffffL)
+                    while (inputRtts.size > 60) inputRtts.pollFirst()
+                    return
+                }
+                // Anything else this app does not know is ignored, for newer workers' sake.
+                Protocol.decodePipeline(bytes)?.let { _pipeline.value = it }
             }
         })
     }
@@ -152,7 +171,7 @@ class Stream(
         setLocal(offer)
         withTimeoutOrNull(1500) { iceGathered.await() }
         val local = pc.localDescription ?: offer
-        val answer = api.offer(sessionId, local.description)
+        val answer = api.offer(sessionId, local.description, client)
         setRemote(SessionDescription(SessionDescription.Type.ANSWER, answer))
         pump = scope.launch { pumpInput() }
     }
@@ -246,6 +265,9 @@ class Stream(
             height = video.num("frameHeight")?.toInt(),
             packetsLost = ((video.num("packetsLost") ?: 0.0) + (audio.num("packetsLost") ?: 0.0)).toLong(),
             networkRttMs = pair.num("currentRoundTripTime")?.let { it * 1000 },
+            decoder = (video["decoderImplementation"] as? String)?.let {
+                VideoDecoder(it, video["powerEfficientDecoder"] as? Boolean)
+            },
         )
     }
 
