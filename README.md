@@ -69,12 +69,18 @@ checkout this is a submodule of, and the build tells you which operations no lon
   systems, else the server's default (set by an admin), else the built-in one; "Reset to
   defaults" removes yours in that scope and goes back to the next.
 - **In-game menu:** Back, or Select+Start.
-- **Stats** (in-game menu, "Show stats"; remembered): latency and stream health in a corner, as
-  on the web client: estimated button→pixel, input round trip (p50 and p95), network RTT, jitter
-  buffer, decode, resolution and fps, bitrate, packets lost; then, from a server that says how it
-  makes the stream, the codec and encoder (GPU or CPU, and any it fell back from), what renders
-  the picture, the audio, run-ahead and this device's video decoder. While it is on, each once-a-second
-  sample is also logged as logfmt (`adb logcat -s SovEmu.Stats`); off, nothing is sampled.
+- **Stats** (in-game menu, "Show stats"; remembered): latency and stream health in a top-left
+  panel of two columns, as on the web client: estimated button→pixel, measured button→frame,
+  input round trip (p50 and p95), network RTT, jitter buffer, decode, resolution and fps,
+  bitrate, packets lost; then, from a server that says how it makes the stream, the codec and
+  encoder (GPU or CPU, and any it fell back from), what renders the picture, the audio, run-ahead
+  and this device's video decoder. Under them, a graph of the last minute's measured and
+  estimated latency. *Measured button→frame* is the median time from sending an input to the
+  first frame reaching the renderer after the worker acknowledged it (the worker sends the ack
+  just before that frame's video); it leaves out the display's scan-out and the TV's own
+  processing. While it is on, each once-a-second sample is also logged as logfmt
+  (`adb logcat -s SovEmu.Stats`, with one `decoder=…` line per stream naming the video decoder
+  and its low-latency keys); off, nothing is sampled.
 - **Fast-forward:** hold Select+R.
 - **Rewind:** hold Select+L.
 - **Touch controller:** shown by default; hide it from the menu.
@@ -87,3 +93,7 @@ checkout this is a submodule of, and the build tells you which operations no lon
   games' video snaps play with their name, system, release date and players along the bottom.
   Any button ends it. The app keeps the screen on while it is open.
 - **Scan lines:** a CRT look over the menus (account menu).
+- **Low-latency decoding** (account menu, on by default): asks the hardware video decoder to
+  output each frame as soon as it is decoded: `KEY_LOW_LATENCY` where the decoder advertises
+  `FEATURE_LowLatency` (Android 11+), else a vendor key the decoder itself lists (Android 12+).
+  Applies from the next game; switch it off to compare the measured latency.

@@ -141,4 +141,28 @@ class StreamStatsTest {
         assertEquals("libvpx (software)", VideoDecoder("libvpx", false).label)
         assertEquals("ExternalDecoder", VideoDecoder("ExternalDecoder", null).label)
     }
+
+    @Test
+    fun `the measured row follows the estimate and shows a dash until a sample`() {
+        val none = StatsSampler().sample(reading(0), emptyList())
+        assertEquals(listOf("Estimated button→pixel", "Measured button→frame"), none.rows().take(2).map { it.first })
+        assertEquals("–", none.rows().toMap()["Measured button→frame"])
+        val some = StatsSampler().sample(reading(0), emptyList(), inputToFrameMs = 39)
+        assertEquals("39 ms", some.rows().toMap()["Measured button→frame"])
+        assertEquals(true, some.logfmt().contains("input_to_frame_ms=39"))
+    }
+
+    @Test
+    fun `the stats message carries the measurement and the decoder setting only when known`() {
+        fun json(stats: StreamStats, lowLatency: Boolean?) = String(stats.encode("app", true, lowLatency).let { it.copyOfRange(2, it.size) })
+        val unknown = StatsSampler().sample(reading(0), emptyList())
+        assertEquals(false, json(unknown, null).contains("input_to_frame_ms"))
+        assertEquals(false, json(unknown, null).contains("low_latency_decode"))
+        val known = StatsSampler().sample(reading(0), emptyList(), inputToFrameMs = 41)
+        assertEquals(
+            """{"client":"app","input_to_frame_ms":41,"net_rtt_ms":4.3,"width":256,"height":240,""" +
+                """"fps":60,"packets_lost":3,"game_mode":true,"low_latency_decode":false}""",
+            json(known, false),
+        )
+    }
 }

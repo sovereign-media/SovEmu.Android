@@ -18,15 +18,16 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import media.sovereign.sovemu.core.FrameLatency
 import media.sovereign.sovemu.core.IceServer
 import media.sovereign.sovemu.core.InputMixer
 import media.sovereign.sovemu.core.Protocol
 import media.sovereign.sovemu.core.StatsReading
 import media.sovereign.sovemu.core.VideoDecoder
 import org.webrtc.DataChannel
-import org.webrtc.DefaultVideoDecoderFactory
 import org.webrtc.EglBase
 import org.webrtc.IceCandidate
+import org.webrtc.LowLatencyVideoDecoderFactory
 import org.webrtc.MediaConstraints
 import org.webrtc.MediaStream
 import org.webrtc.MediaStreamTrack
@@ -49,15 +50,32 @@ object WebRtc {
     val egl: EglBase by lazy { EglBase.create() }
     private var factory: PeerConnectionFactory? = null
 
+    /**
+     * Ask the hardware video decoder for low latency (the "Low-latency decoding" setting). The
+     * factory is process-wide, so each [Stream] sets this before its decoder is made.
+     */
+    @Volatile var lowLatencyDecode = true
+
     fun factory(context: Context): PeerConnectionFactory = factory ?: run {
         PeerConnectionFactory.initialize(
             PeerConnectionFactory.InitializationOptions.builder(context.applicationContext).createInitializationOptions(),
         )
         PeerConnectionFactory.builder()
-            .setVideoDecoderFactory(DefaultVideoDecoderFactory(egl.eglBaseContext))
+            .setVideoDecoderFactory(
+                LowLatencyVideoDecoderFactory(egl.eglBaseContext, { lowLatencyDecode }) { setup ->
+                    // Once per stream, beside the stats lines: which decoder, and what it was asked.
+                    Log.i(
+                        STATS_TAG,
+                        "decoder=${setup.codec} mime=${setup.mime} low_latency_requested=${setup.requested} " +
+                            "low_latency_supported=${setup.keys.isNotEmpty()} low_latency_keys=${setup.keys.joinToString(",").ifEmpty { "none" }}",
+                    )
+                },
+            )
             .createPeerConnectionFactory()
             .also { factory = it }
     }
+
+    private const val STATS_TAG = "SovEmu.Stats"
 }
 
 /**
@@ -74,6 +92,8 @@ class Stream(
     iceServers: List<IceServer>,
     private val controller: Controller,
     private val videoSink: VideoSink,
+    /** Ask the hardware decoder for low latency ([WebRtc.lowLatencyDecode]). */
+    lowLatencyDecode: Boolean,
     private val onState: (PeerConnection.PeerConnectionState) -> Unit,
 ) {
     private val scope = CoroutineScope(Dispatchers.Default)
@@ -83,6 +103,15 @@ class Stream(
 
     /** Recent input round trips in ms (input → applied on a frame → ack). */
     val inputRtts = ConcurrentLinkedDeque<Long>()
+
+    /** Button to frame, measured: acks against the frames that follow them. */
+    val frameLatency = FrameLatency()
+
+    /** Every decoded frame passes here on its way to [videoSink]: the measurement's frame side. */
+    private val measuringSink = VideoSink { frame ->
+        frameLatency.frameDelivered(now32())
+        videoSink.onFrame(frame)
+    }
 
     private val _pipeline = MutableStateFlow<Protocol.Pipeline?>(null)
 
@@ -101,7 +130,7 @@ class Stream(
             onState(state)
         }
         override fun onTrack(transceiver: RtpTransceiver) {
-            (transceiver.receiver.track() as? VideoTrack)?.addSink(videoSink)
+            (transceiver.receiver.track() as? VideoTrack)?.addSink(measuringSink)
         }
         override fun onAddTrack(receiver: RtpReceiver, streams: Array<out MediaStream>) {}
         override fun onSignalingChange(state: PeerConnection.SignalingState) {}
@@ -115,7 +144,7 @@ class Stream(
         override fun onRenegotiationNeeded() {}
     }
 
-    private val pc: PeerConnection = WebRtc.factory(context).createPeerConnection(
+    private val pc: PeerConnection = WebRtc.also { it.lowLatencyDecode = lowLatencyDecode }.factory(context).createPeerConnection(
         PeerConnection.RTCConfiguration(iceServers.map(::toIceServer)).apply {
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
         },
@@ -145,6 +174,7 @@ class Stream(
                 val bytes = ByteArray(buffer.data.remaining()).also { buffer.data.get(it) }
                 val ack = Protocol.decodeAck(bytes)
                 if (ack != null) {
+                    frameLatency.ackArrived(ack.clientTimeMs)
                     inputRtts.addLast((now32() - ack.clientTimeMs) and 0xffff_ffffL)
                     while (inputRtts.size > 60) inputRtts.pollFirst()
                     return
