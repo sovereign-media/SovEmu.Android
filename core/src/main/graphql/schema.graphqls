@@ -1419,6 +1419,13 @@ type Mutation {
 	while `SOVEMU_BACKGROUND` sets it; `NOT_FOUND` for a background that is not there.
 	"""
 	setBackground(id: String!): Boolean!
+	"""
+	Admins: tests this browser's connection to the game streams. Give an offer (SDP) with a
+	data channel; the answer (SDP) comes from a peer on a free game port, answered as a game
+	is, which echoes whatever the data channel carries for `testSeconds`. The browser reads
+	the round trip and the path (direct, or through a relay) from its own end.
+	"""
+	testConnection(sdp: String!): String!
 }
 
 """
@@ -1748,6 +1755,11 @@ type Query {
 	Admins: every background, and the one chosen.
 	"""
 	appearance: AppearanceSettings!
+	"""
+	Admins: the settings that shape every game's stream (bitrates, codec and encoder,
+	keyframes, fast-forward, rewind).
+	"""
+	streaming: StreamingReport!
 }
 
 enum Rendering {
@@ -2171,6 +2183,20 @@ type StreamPipeline {
 	Frames the picture runs ahead of the game (0: off).
 	"""
 	runAhead: Int!
+}
+
+"""
+What the Streaming page shows.
+"""
+type StreamingReport {
+	"""
+	The settings that shape a game's stream, as the Configuration page shows them.
+	"""
+	settings: [ConfigSetting!]!
+	"""
+	How long a connection test stays up, connected or not.
+	"""
+	testSeconds: Int!
 }
 
 type System {
