@@ -25,7 +25,8 @@ fun game(
 
 fun system(): SystemSummary = SystemSummary(
     id = "nes", name = "Nintendo Entertainment System", short = "NES", manufacturer = "Nintendo", year = 1983,
-    color = "#c0392b", gameCount = 1, playable = true, needsGpu = false, rendering = null, biosMissing = false,
+    color = "#c0392b", photoUrl = null, gameCount = 1, playable = true, needsGpu = false, rendering = null,
+    biosMissing = false,
 )
 
 /**

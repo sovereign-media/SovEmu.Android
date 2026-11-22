@@ -52,6 +52,7 @@ fragment SystemFields on System {
   manufacturer
   year
   color
+  photoUrl
   gameCount
   playable
   needsGpu
@@ -345,4 +346,12 @@ mutation DeleteCheat($gameId: Int!, $cheatId: Int!) {
 
 mutation ReportClientEvents($client: String!, $events: [ClientEventInput!]!) {
   reportClientEvents(client: $client, events: $events)
+}
+
+# The background behind every screen, the server's (the admin's choice); null for none.
+query Background {
+  background {
+    id
+    url
+  }
 }

@@ -49,11 +49,18 @@ class Store(
     private val _user = MutableStateFlow<User?>(null)
     private val _systems = MutableStateFlow<Load<List<SystemSummary>>>(Load.Loading)
     private val _home = MutableStateFlow<Load<HomeFeed>>(Load.Loading)
+    private val _background = MutableStateFlow<String?>(null)
     private val _signedOut = MutableStateFlow(false)
 
     val user: StateFlow<User?> = _user.asStateFlow()
     val systems: StateFlow<Load<List<SystemSummary>>> = _systems.asStateFlow()
     val home: StateFlow<Load<HomeFeed>> = _home.asStateFlow()
+    /**
+     * The server's background behind every screen (the admin's choice), or null for none. Read
+     * once per sign-in: with `random` that is one per visit, as on the web, and Coil keeps the
+     * picture by its path, so it outlives the URL's signature.
+     */
+    val background: StateFlow<String?> = _background.asStateFlow()
     /** Set when the server says the sign-in has expired: the app goes back to sign-in. */
     val signedOut: StateFlow<Boolean> = _signedOut.asStateFlow()
 
@@ -67,6 +74,7 @@ class Store(
         launch { _user.value = attempt { api.status().user }.onFailure(::note).getOrNull() }
         launch { load(_systems) { api.systems() } }
         launch { load(_home) { api.home() } }
+        launch { _background.value = attempt { api.background() }.onFailure(::note).getOrNull() }
         keepFresh()
     }
 
@@ -165,6 +173,7 @@ class Store(
         _user.value = null
         _systems.value = Load.Loading
         _home.value = Load.Loading
+        _background.value = null
         games.clear()
         _signedOut.value = false
     }
