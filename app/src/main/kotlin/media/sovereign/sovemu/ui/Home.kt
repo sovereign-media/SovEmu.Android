@@ -373,7 +373,17 @@ private fun SystemCard(s: SystemSummary, memory: FocusMemory, onOpen: () -> Unit
     Column(Modifier.width(224.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         FocusCard(onOpen, Modifier.fillMaxWidth().height(128.dp).remembersFocus(memory, "system:${s.id}"), shape = RoundedCornerShape(16.dp)) {
             Box(Modifier.fillMaxSize().background(brush).border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(16.dp)), contentAlignment = Alignment.Center) {
-                Text(s.short, color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.Black)
+                val photo = s.photoUrl
+                if (photo == null) {
+                    Text(s.short, color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.Black)
+                } else {
+                    // The server's photo of the hardware on the right, the short name on the left,
+                    // as on the web.
+                    Text(s.short, color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.Black,
+                        modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp))
+                    Art(photo, Modifier.align(Alignment.BottomEnd).padding(8.dp).fillMaxWidth(0.58f).fillMaxHeight(0.76f),
+                        scale = ContentScale.Fit)
+                }
                 s.badge()?.let {
                     Text(it, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp, 8.dp).clip(RoundedCornerShape(4.dp))

@@ -36,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.layout
@@ -109,6 +110,9 @@ fun NavFrame(
 ) {
     val wide = LocalForm.current.wide
     Box(Modifier.fillMaxSize().then(if (paintsBackground) Modifier else Modifier.background(Sov.Surface))) {
+        // The server's background over the surface colour, as on the web: a transparent image,
+        // cropped to cover the screen.
+        if (!paintsBackground) LocalBackground.current?.let { Art(it, Modifier.fillMaxSize(), ContentScale.Crop) }
         Box(Modifier.fillMaxSize().padding(start = if (wide) 64.dp else 0.dp, bottom = if (wide) 0.dp else 56.dp)) { content() }
         if (wide) {
             Brand(Modifier.statusBarsPadding().padding(16.dp).clickable(onClick = nav.home))

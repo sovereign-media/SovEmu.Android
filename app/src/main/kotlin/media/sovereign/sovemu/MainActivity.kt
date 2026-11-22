@@ -43,6 +43,7 @@ import media.sovereign.sovemu.core.GameSort
 import media.sovereign.sovemu.core.SystemSummary
 import media.sovereign.sovemu.ui.HomeScreen
 import media.sovereign.sovemu.ui.LocalApi
+import media.sovereign.sovemu.ui.LocalBackground
 import media.sovereign.sovemu.ui.LoginScreen
 import media.sovereign.sovemu.ui.Nav
 import media.sovereign.sovemu.ui.NavFrame
@@ -246,8 +247,10 @@ class MainActivity : ComponentActivity() {
             if (confirmQuit) askedToQuit = true else if (askedToQuit) screenFocus.requestFocus()
         }
         QuitOnRootBack(atRoot = stack.size == 1 && !confirmQuit) { confirmQuit = true }
+        val background by store.background.collectAsStateWithLifecycle()
         Box(Modifier.fillMaxSize().scanlines(crt && (route !is Route.Play || screensaverOn))) {
             Box(Modifier.fillMaxSize().focusRequester(screenFocus).focusRestorer().focusGroup()) {
+              CompositionLocalProvider(LocalBackground provides background) {
                 NavDisplay(
                     backStack = stack,
                     onBack = ::pop,
@@ -310,6 +313,7 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                 )
+              }
             }
             if (screensaverOn && canIdle) {
                 Screensaver(api, remember(systems) { systems.associateBy { it.id } }, store::randomVideoGame)

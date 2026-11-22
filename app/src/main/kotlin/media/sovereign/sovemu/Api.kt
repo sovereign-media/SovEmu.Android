@@ -34,6 +34,7 @@ import media.sovereign.sovemu.core.graphql.AddCheatMutation
 import media.sovereign.sovemu.core.graphql.ReportClientEventsMutation
 import media.sovereign.sovemu.core.graphql.type.ClientEventInput
 import media.sovereign.sovemu.core.graphql.type.ClientEventKind
+import media.sovereign.sovemu.core.graphql.BackgroundQuery
 import media.sovereign.sovemu.core.graphql.CheatsQuery
 import media.sovereign.sovemu.core.graphql.CollectionChoicesQuery
 import media.sovereign.sovemu.core.graphql.CreateCollectionMutation
@@ -190,6 +191,8 @@ class SovEmuApi(private val settings: Settings) {
     suspend fun signOut() = auth.signOut()
     suspend fun iceServers(): List<IceServer> = iceServers(query(ClientConfigQuery()).clientConfig.iceServers)
     suspend fun systems(): List<SystemSummary> = query(SystemsQuery()).systems.map { it.systemFields }
+    /** The background behind every screen (a signed `/media/backgrounds/…` path), or null for none. */
+    suspend fun background(): String? = query(BackgroundQuery()).background?.url
     suspend fun home(): HomeFeed = query(HomeQuery()).let { d ->
         val h = d.home
         HomeFeed(

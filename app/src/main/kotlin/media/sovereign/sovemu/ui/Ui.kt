@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -107,6 +108,9 @@ data class Form(val tv: Boolean, val wide: Boolean)
 
 val LocalForm = staticCompositionLocalOf { Form(tv = false, wide = true) }
 val LocalApi = staticCompositionLocalOf<SovEmuApi> { error("no API") }
+
+/** The server's background behind every screen (a `/media/backgrounds/…` path), or null for none. */
+val LocalBackground = compositionLocalOf<String?> { null }
 
 @Composable
 fun SovTheme(content: @Composable () -> Unit) {
