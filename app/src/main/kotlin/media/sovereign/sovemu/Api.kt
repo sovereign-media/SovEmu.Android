@@ -57,6 +57,9 @@ import media.sovereign.sovemu.core.graphql.SetFavouriteMutation
 import media.sovereign.sovemu.core.graphql.SetInCollectionMutation
 import media.sovereign.sovemu.core.graphql.SetPatchMutation
 import media.sovereign.sovemu.core.graphql.StartSessionMutation
+import media.sovereign.sovemu.core.graphql.StartProgressQuery
+import media.sovereign.sovemu.core.StartStatus
+import media.sovereign.sovemu.core.toStartStatus
 import media.sovereign.sovemu.core.graphql.StopSessionMutation
 import media.sovereign.sovemu.core.graphql.SystemGamesQuery
 import media.sovereign.sovemu.core.graphql.SystemsQuery
@@ -243,7 +246,11 @@ class SovEmuApi(private val settings: Settings) {
     }
     suspend fun games(system: String): List<Game> =
         query(SystemGamesQuery(system)).system?.games?.map { it.gameFields } ?: throw ApiException("NOT_FOUND", "No such system")
-    suspend fun startSession(gameId: Int): SessionInfo = mutate(StartSessionMutation(gameId)).startSession.sessionFields
+    /** Starts [gameId]; [startId] names the start, for [startProgress] meanwhile. */
+    suspend fun startSession(gameId: Int, startId: String): SessionInfo =
+        mutate(StartSessionMutation(gameId, Optional.present(startId))).startSession.sessionFields
+    /** How far the start [startId] has got. */
+    suspend fun startProgress(startId: String): StartStatus = query(StartProgressQuery(startId)).startProgress.toStartStatus()
     /** Sends the complete offer SDP, naming this app ([client]); returns the answer SDP. */
     suspend fun offer(sessionId: String, sdp: String, client: String): String =
         mutate(SessionOfferMutation(sessionId, sdp, Optional.present(client))).sessionOffer

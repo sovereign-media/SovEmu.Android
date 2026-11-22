@@ -18,6 +18,16 @@ import androidx.compose.ui.text.font.FontFamily
 import media.sovereign.sovemu.core.StatsSampler
 import media.sovereign.sovemu.core.GameStart
 import media.sovereign.sovemu.core.StartScreen
+import media.sovereign.sovemu.core.StartStatus
+import media.sovereign.sovemu.core.ForwardOnly
+import media.sovereign.sovemu.core.describeStart
+import media.sovereign.sovemu.core.newStartId
+import android.os.SystemClock
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.runtime.mutableDoubleStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.flowOf
 import media.sovereign.sovemu.core.pipelineRows
@@ -61,7 +71,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -157,8 +166,11 @@ fun PlayerScreen(
     var info by remember { mutableStateOf<SessionInfo?>(null) }
     /** A failure to start, or a lost connection, shown in place of the game. */
     var error by remember { mutableStateOf<String?>(null) }
-    /** Still no picture NO_PICTURE_HINT_MS after the session was ready. */
-    var slowStart by remember { mutableStateOf(false) }
+    /** The server's word on how far the start has got (null until it has said), and the bar. */
+    var progress by remember { mutableStateOf<StartStatus?>(null) }
+    var bar by remember { mutableDoubleStateOf(0.0) }
+    /** How long the ready session has waited for its first picture. */
+    var waitedMs by remember { mutableLongStateOf(0L) }
     var menuOpen by remember { mutableStateOf(false) }
     var stream by remember { mutableStateOf<Stream?>(null) }
     var toast by remember { mutableStateOf<String?>(null) }
@@ -177,7 +189,8 @@ fun PlayerScreen(
     /** Waiting for Continue or Start over (there is an auto save and the player was not asked yet). */
     var choice by remember { mutableStateOf<CompletableDeferred<Start>?>(null) }
     // Started at once, and owned by the app: leaving now still stops it once it exists.
-    val starting = remember(game.id) { sessions.start(game.id) }
+    val startId = remember(game.id) { newStartId() }
+    val starting = remember(game.id) { sessions.start(game.id, startId) }
 
     // The whole frame, scaled into the box below: never cropped (StreamView).
     val renderer = remember { StreamView(context, WebRtc.egl.eglBaseContext) }
@@ -288,8 +301,23 @@ fun PlayerScreen(
     val pictureShown by remember(stream) { stream?.firstFrame ?: flowOf(false) }.collectAsStateWithLifecycle(false)
     LaunchedEffect(info, pictureShown) {
         if (info == null || pictureShown) return@LaunchedEffect
-        delay(GameStart.NO_PICTURE_HINT_MS)
-        slowStart = true
+        val since = SystemClock.uptimeMillis()
+        while (true) {
+            waitedMs = SystemClock.uptimeMillis() - since
+            delay(1000)
+        }
+    }
+    // The start's progress, polled while the session starts (as the web does). A failed poll
+    // keeps the last word; the bar only moves forward.
+    LaunchedEffect(starting) {
+        val forward = ForwardOnly()
+        while (!starting.isCompleted) {
+            attempt { api.startProgress(startId) }.onSuccess {
+                progress = it
+                bar = forward.next(describeStart(it).fraction)
+            }
+            delay(250)
+        }
     }
     // A picture that stops while playing (not paused in the menu) is reported once it has been
     // still for STALL_SECONDS. Before the first picture, the game is still starting.
@@ -341,7 +369,7 @@ fun PlayerScreen(
         }
         // Input goes to the game while it starts too (some wait for a button), and Back opens the
         // menu over this screen, to quit a game that never draws.
-        GameStart.screen(game.title, error, ready = info != null, pictureShown, slowStart)?.let { Splash(game, system, it, choice) }
+        GameStart.screen(game.title, error, progress, bar, ready = info != null, pictureShown, waitedMs)?.let { Splash(game, system, it, choice) }
         if (touchControls && !menuOpen && !controllersOpen && info != null && error == null) {
             TouchController(controller, Modifier.fillMaxSize().safeDrawingPadding())
         }
@@ -577,12 +605,25 @@ private fun Splash(game: Game, system: SystemSummary, screen: StartScreen, choic
                     SovButton("Start over", { choice.complete(Start.New) }, variant = Variant.Outline, icon = Lucide.RotateCcw)
                 }
             } else {
-                if (screen.busy) CircularProgressIndicator(color = Sov.Accent, strokeWidth = 3.dp, modifier = Modifier.size(32.dp))
-                Text(screen.label, color = Sov.Slate300, fontSize = 14.sp, textAlign = TextAlign.Center)
-                screen.hint?.let { Text(it, color = Sov.Slate400, fontSize = 13.sp, textAlign = TextAlign.Center) }
+                screen.fraction?.let { StartBar(it, Modifier.width(400.dp)) }
+                Text(screen.label, color = Sov.Slate100, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
+                if (screen.detail.isNotEmpty()) Text(screen.detail, color = Sov.Slate400, fontSize = 16.sp, textAlign = TextAlign.Center)
             }
         }
     }
+}
+
+/** The start's bar, gliding to each new [fraction] (polled four times a second). */
+@Composable
+private fun StartBar(fraction: Double, modifier: Modifier = Modifier) {
+    val shown by animateFloatAsState(fraction.toFloat(), tween(250), label = "start")
+    LinearProgressIndicator(
+        progress = { shown },
+        modifier = modifier.height(6.dp).clip(RoundedCornerShape(3.dp)),
+        color = Sov.Accent,
+        trackColor = Color.White.copy(alpha = 0.15f),
+        drawStopIndicator = {},
+    )
 }
 
 private const val STATS_TAG = "SovEmu.Stats"

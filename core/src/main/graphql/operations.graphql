@@ -241,9 +241,20 @@ query Saves($id: Int!) {
   }
 }
 
-mutation StartSession($gameId: Int!) {
-  startSession(gameId: $gameId) {
+mutation StartSession($gameId: Int!, $startId: String) {
+  startSession(gameId: $gameId, startId: $startId) {
     ...SessionFields
+  }
+}
+
+query StartProgress($startId: String!) {
+  startProgress(startId: $startId) {
+    phase
+    read
+    total
+    elapsedMs
+    phaseMs
+    error
   }
 }
 
