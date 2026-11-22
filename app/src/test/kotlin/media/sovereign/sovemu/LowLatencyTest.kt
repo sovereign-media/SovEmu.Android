@@ -16,7 +16,10 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 
-/** The TV's game mode and the Wi-Fi lock follow the player: on while it is open, off after. */
+/**
+ * The TV's game mode is the whole app's while its setting is on (each switch blinks some TVs), so
+ * entering and leaving a game no longer toggles it; the Wi-Fi lock still follows the player.
+ */
 @RunWith(RobolectricTestRunner::class)
 class LowLatencyTest {
     @get:Rule
@@ -30,26 +33,50 @@ class LowLatencyTest {
         ).activeLockCount
 
     @Test
-    fun onlyWhilePlaying() {
+    fun gameModeIsAskedForOutsideAGame() {
+        rule.setContent { TvGameMode(enabled = true) }
+        rule.waitForIdle()
+        assertTrue("the menus ask the TV for its game mode too", prefersMinimalPostProcessing)
+        assertEquals("but Wi-Fi may save power", 0, wifiLocks)
+    }
+
+    @Test
+    fun gameModeOffLeavesTheTvAlone() {
+        var enabled by mutableStateOf(true)
+        rule.setContent { TvGameMode(enabled) }
+        rule.waitForIdle()
+        enabled = false
+        rule.waitForIdle()
+        assertFalse("turning the setting off gives the picture back", prefersMinimalPostProcessing)
+    }
+
+    @Test
+    fun enteringAndLeavingAGameKeepsGameModeAndTogglesOnlyWifi() {
         var playing by mutableStateOf(false)
-        rule.setContent { if (playing) LowLatencyWhilePlaying(gameMode = true) }
-        assertFalse("the menus keep the TV's own picture", prefersMinimalPostProcessing)
+        rule.setContent {
+            TvGameMode(enabled = true)
+            if (playing) LowLatencyWhilePlaying()
+        }
+        rule.waitForIdle()
         assertEquals(0, wifiLocks)
 
         playing = true
         rule.waitForIdle()
-        assertTrue("a game asks the TV for its game mode", prefersMinimalPostProcessing)
-        assertEquals("and keeps Wi-Fi out of power saving", 1, wifiLocks)
+        assertTrue(prefersMinimalPostProcessing)
+        assertEquals("a game keeps Wi-Fi out of power saving", 1, wifiLocks)
 
         playing = false
         rule.waitForIdle()
-        assertFalse("leaving the game gives the picture back", prefersMinimalPostProcessing)
-        assertEquals("and lets Wi-Fi save power again", 0, wifiLocks)
+        assertTrue("leaving the game does not switch the TV back", prefersMinimalPostProcessing)
+        assertEquals("but lets Wi-Fi save power again", 0, wifiLocks)
     }
 
     @Test
-    fun gameModeOffLeavesTheTvAloneButKeepsWifiQuick() {
-        rule.setContent { LowLatencyWhilePlaying(gameMode = false) }
+    fun theWifiLockDoesNotNeedGameMode() {
+        rule.setContent {
+            TvGameMode(enabled = false)
+            LowLatencyWhilePlaying()
+        }
         rule.waitForIdle()
         assertFalse("no picture mode switch, so no blink", prefersMinimalPostProcessing)
         assertEquals("Wi-Fi still out of power saving", 1, wifiLocks)

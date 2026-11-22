@@ -307,7 +307,7 @@ private fun Menu(expanded: Boolean, onDismiss: () -> Unit, heading: String, cont
 }
 
 /** What the TV game mode setting trades, shown under it. */
-internal const val GAME_MODE_DETAIL = "Less input lag. Some TVs blink entering and leaving a game."
+internal const val GAME_MODE_DETAIL = "Less input lag, for the whole app. Some TVs blink once as it switches."
 
 /** A menu row; a [detail] goes on a second, smaller line (a setting's trade-off). */
 @Composable

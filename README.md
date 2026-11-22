@@ -106,3 +106,10 @@ checkout this is a submodule of, and the build tells you which operations no lon
   games' video snaps play with their name, system, release date and players along the bottom.
   Any button ends it. The app keeps the screen on while it is open.
 - **Scan lines:** a CRT look over the menus (account menu).
+- **TV game mode** (account menu, on by default): asks the TV for its game picture mode (ALLM,
+  minimal post-processing) for as long as the app is on screen, not per game, since some TVs
+  blink at each switch. Off, the TV keeps its own picture mode. The low-latency Wi-Fi lock is
+  separate and held only while a game plays.
+- **Continue playing** (Home): a card opens the game's panel on its system's page, to Continue
+  from the auto save or Start over; Back from the panel returns to Home on the same card. The
+  hero's Play starts at once.

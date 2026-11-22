@@ -140,6 +140,9 @@ class MainActivity : ComponentActivity() {
         // (invalid_grant), clears it and comes back here to the sign-in screen.
         val signedIn by api.auth.signedIn.collectAsStateWithLifecycle()
         val expired by store.signedOut.collectAsStateWithLifecycle()
+        var gameMode by remember { mutableStateOf(settings.gameMode) }
+        // The TV's game mode for the whole app, not per game: each switch blinks some TVs.
+        TvGameMode(gameMode)
         LaunchedEffect(expired) {
             if (expired) api.auth.forget()
         }
@@ -175,7 +178,6 @@ class MainActivity : ComponentActivity() {
         var crt by remember { mutableStateOf(settings.scanlines) }
         var idleMinutes by remember { mutableIntStateOf(settings.screensaverMinutes) }
         var statsOn by remember { mutableStateOf(settings.stats) }
-        var gameMode by remember { mutableStateOf(settings.gameMode) }
         val nav = remember {
             Nav(
                 home = { stack.removeRange(1, stack.size) },
@@ -283,6 +285,7 @@ class MainActivity : ComponentActivity() {
                                     onFavourite = store::setFavourite,
                                     onCollectionsChanged = store::collectionsChanged,
                                     onPatch = store::setPatch,
+                                    onLeave = ::pop,
                                 )
                             }
                         }
@@ -416,7 +419,7 @@ var Settings.scanlines: Boolean
     set(value) = prefs.edit().putBoolean("scanlines", value).apply()
 
 /**
- * Ask the TV for its game picture mode (ALLM) while a game is on screen (on by default): less
+ * Ask the TV for its game picture mode (ALLM) while the app is on screen (on by default): less
  * input lag, though some TVs blank the screen for a moment as they switch.
  */
 var Settings.gameMode: Boolean

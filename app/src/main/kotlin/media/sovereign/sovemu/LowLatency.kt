@@ -11,33 +11,39 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalContext
 
 /**
- * While a game is on screen, asks the device for its lowest-latency path from the network to the
- * glass; both are released when the player closes.
- *
- * - **The display**, when [gameMode] is on (the "TV game mode" setting): minimal post-processing.
- *   Over HDMI this is ALLM, which switches the TV to its game picture mode; a TV's own processing
- *   otherwise adds 50-100 ms or more after the frame has arrived. Some TVs blank the screen for a
- *   moment as they switch, entering and leaving a game, hence the setting. Android 11+; ignored by
- *   displays that cannot.
- * - **Wi-Fi:** a low-latency lock, which turns off power saving that batches incoming packets. A
- *   batched stream arrives in bursts, and the jitter buffer then holds frames back to smooth them.
- *   Android 10+ (high-performance before); it has no effect on Ethernet.
+ * The TV's game mode for as long as the app is on screen, when [enabled] (the "TV game mode"
+ * setting): minimal post-processing. Over HDMI this is ALLM, which switches the TV to its game
+ * picture mode; a TV's own processing otherwise adds 50-100 ms or more after the frame has
+ * arrived. Asked for once, not per game: some TVs (a Mi TV among them) blank the screen for a
+ * moment at every switch. Released only when the setting is turned off; the system drops it by
+ * itself while the app is not in the foreground. Android 11+; ignored by displays that cannot.
  */
 @Composable
-fun LowLatencyWhilePlaying(gameMode: Boolean) {
+fun TvGameMode(enabled: Boolean) {
     val context = LocalContext.current
-    DisposableEffect(context, gameMode) {
-        val window = context.findActivity()?.window?.takeIf { gameMode }
+    DisposableEffect(context, enabled) {
+        val window = context.findActivity()?.window?.takeIf { enabled }
         window?.preferMinimalPostProcessing(true)
+        onDispose { window?.preferMinimalPostProcessing(false) }
+    }
+}
+
+/**
+ * While a game is on screen, a low-latency Wi-Fi lock, released when the player closes: it turns
+ * off power saving that batches incoming packets. A batched stream arrives in bursts, and the
+ * jitter buffer then holds frames back to smooth them. Android 10+ (high-performance before); it
+ * has no effect on Ethernet.
+ */
+@Composable
+fun LowLatencyWhilePlaying() {
+    val context = LocalContext.current
+    DisposableEffect(context) {
         val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
         val lock = wifi?.createWifiLock(WIFI_LOCK_MODE, "SovEmu:game")?.apply {
             setReferenceCounted(false)
             acquire()
         }
-        onDispose {
-            lock?.release()
-            window?.preferMinimalPostProcessing(false)
-        }
+        onDispose { lock?.release() }
     }
 }
 
