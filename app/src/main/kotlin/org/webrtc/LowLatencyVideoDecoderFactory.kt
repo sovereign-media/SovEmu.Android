@@ -21,10 +21,16 @@ import java.util.concurrent.atomic.AtomicBoolean
  * falling back to software if it fails), except that the hardware decoder's MediaFormat gets
  * the low-latency keys the decoder supports ([DecoderLatency]), whenever it supports one.
  * [onConfigured] hears once per decoder how it went (on WebRTC's decoder thread).
+ *
+ * Every decoder whose frames pass through Java (MediaCodec ones, hardware or software) also
+ * tells [onFrameEntered] of each encoded frame it is given, with the render time WebRTC planned
+ * for it and its capture time: the measured latency matches frames across the decoder by them.
+ * Decoders WebRTC runs in native code (libvpx) can't be watched; they are left as they are.
  */
 class LowLatencyVideoDecoderFactory(
     private val egl: EglBase.Context?,
     private val onConfigured: (DecoderSetup) -> Unit,
+    private val onFrameEntered: (renderTimeMs: Long, captureTimeNs: Long) -> Unit,
 ) : VideoDecoderFactory {
     private val defaults = DefaultVideoDecoderFactory(egl)
     private val hardware = HardwareVideoDecoderFactory(egl)
@@ -35,8 +41,8 @@ class LowLatencyVideoDecoderFactory(
 
     override fun createDecoder(info: VideoCodecInfo): VideoDecoder? {
         // As DefaultVideoDecoderFactory.createDecoder.
-        val sw = software.createDecoder(info) ?: platformSoftware.createDecoder(info)
-        val hw = hardware.createDecoder(info)?.let { configurable(info, it) }
+        val sw = (software.createDecoder(info) ?: platformSoftware.createDecoder(info))?.let(::watched)
+        val hw = hardware.createDecoder(info)?.let { watched(configurable(info, it)) }
         return if (hw != null && sw != null) VideoDecoderFallback(sw, hw) else hw ?: sw
     }
 
@@ -56,6 +62,10 @@ class LowLatencyVideoDecoderFactory(
             caps.isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_LowLatency)
         return AndroidVideoDecoder(Codecs(type.mimeType(), feature), name, type, colour, egl)
     }
+
+    /** [decoder], telling [onFrameEntered] of each frame it is given; a native one as it is. */
+    private fun watched(decoder: VideoDecoder): VideoDecoder =
+        if (decoder is WrappedNativeVideoDecoder) decoder else Watched(decoder, onFrameEntered)
 
     private fun capabilities(codec: MediaCodecInfo, mime: String): MediaCodecInfo.CodecCapabilities? = try {
         codec.getCapabilitiesForType(mime)
@@ -106,4 +116,19 @@ private class Codec(
     override fun createInputSurface(): Surface = codec.createInputSurface()
     override fun setParameters(params: Bundle) = codec.setParameters(params)
     override fun getCodecInfo(): MediaCodecInfo = codec.codecInfo
+}
+
+/** A Java decoder that reports each encoded frame on its way in, then decodes it as before. */
+private class Watched(
+    private val decoder: VideoDecoder,
+    private val onFrameEntered: (renderTimeMs: Long, captureTimeNs: Long) -> Unit,
+) : VideoDecoder {
+    override fun initDecode(settings: VideoDecoder.Settings, callback: VideoDecoder.Callback): VideoCodecStatus =
+        decoder.initDecode(settings, callback)
+    override fun release(): VideoCodecStatus = decoder.release()
+    override fun decode(frame: EncodedImage, info: VideoDecoder.DecodeInfo): VideoCodecStatus {
+        onFrameEntered(info.renderTimeMs, frame.captureTimeNs)
+        return decoder.decode(frame, info)
+    }
+    override fun getImplementationName(): String = decoder.implementationName
 }

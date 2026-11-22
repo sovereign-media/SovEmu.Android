@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
+import media.sovereign.sovemu.core.FrameLatency
 import media.sovereign.sovemu.core.LatencyHistory
 import kotlin.math.roundToInt
 import androidx.activity.compose.BackHandler
@@ -261,6 +262,7 @@ fun PlayerScreen(
         val s = stream
         if (!stats || s == null) return@LaunchedEffect
         val sampler = StatsSampler()
+        var loggedMatch: FrameLatency.Match? = null
         val client = ClientEvents.clientName(context)
         while (true) {
             delay(1000)
@@ -273,6 +275,12 @@ fun PlayerScreen(
             latencySamples++
             s.sendStats(sample.encode(client, currentGameMode, setup))
             Log.i(STATS_TAG, sample.logfmt())
+            // How the measurement matches frames across the decoder, once it has learned it.
+            val match = s.frameLatency.match
+            if (match != loggedMatch) {
+                Log.i(STATS_TAG, "frame_match=${match.name.lowercase()}")
+                loggedMatch = match
+            }
         }
     }
     // The loading screen stays until the game's first picture: a console's BIOS can boot for

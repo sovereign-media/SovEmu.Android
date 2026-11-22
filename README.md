@@ -82,8 +82,10 @@ checkout this is a submodule of, and the build tells you which operations no lon
   and this device's video decoder, with whether it decodes in low-latency mode ("low latency:
   on" or "not supported"). Under them, a graph of the last minute's measured and
   estimated latency. *Measured button→frame* is the median time from sending an input to the
-  first frame reaching the renderer after the worker acknowledged it (the worker sends the ack
-  just before that frame's video); it leaves out the display's scan-out and the TV's own
+  renderer getting the frame that shows it: the first frame to enter the decoder after the
+  worker's ack (the worker sends the ack just before that frame's video), matched across the
+  decoder by its timestamp (or by counting frames in and out), so a decoder slower than a frame
+  cannot make it read low. It leaves out the display's scan-out and the TV's own
   processing. While it is on, each once-a-second sample is also logged as logfmt
   (`adb logcat -s SovEmu.Stats`, with one `decoder=…` line per stream naming the video decoder
   and its low-latency key); off, nothing is sampled.
