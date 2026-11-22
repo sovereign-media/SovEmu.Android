@@ -412,7 +412,6 @@ input ClientEventInput {
 }
 
 """
-Where a 3D system renders on this server.
 What went wrong on a client (`reportClientEvents`).
 """
 enum ClientEventKind {
@@ -1334,7 +1333,9 @@ type Mutation {
 	"""
 	startSession(gameId: Int!, startId: String): GameSession!
 	"""
-	Ends a session; the worker writes the battery save and the auto save first.
+	Ends a session; the worker writes the battery save and the auto save first. A player
+	ends their own; an admin may end anyone's (the player's stream then ends, as after an
+	idle timeout).
 	"""
 	stopSession(id: ID!): Boolean!
 	"""
@@ -1639,6 +1640,12 @@ type Query {
 	"""
 	activeSessions: [ActiveSession!]!
 	"""
+	Admins: the last game sessions that went wrong, newest first: starts refused or that
+	failed to load, crashes, and workers that had to be killed (`SOVEMU_SESSION_FAILURES`
+	are kept, in memory).
+	"""
+	sessionFailures: [SessionFailure!]!
+	"""
 	Admins: how the library is played (direct, cache or mirror), its size, and the mirror's
 	sync. Its errors can name the share's paths.
 	"""
@@ -1890,6 +1897,99 @@ type ServerResources {
 	read (outside a container, or on macOS).
 	"""
 	usageNote: String
+}
+
+"""
+Why a game's worker ended.
+"""
+enum SessionEndReason {
+	"""
+	Asked to (a player quit, an admin stopped it, the server stopping).
+	"""
+	STOPPED
+	"""
+	No client for its idle timeout.
+	"""
+	IDLE
+	"""
+	The server stopped talking to it.
+	"""
+	CONTROLLER_GONE
+	"""
+	It failed and said so, or exited with an error.
+	"""
+	ERROR
+	"""
+	Killed by a signal the server did not send: most often a crash in the core.
+	"""
+	CRASHED
+	"""
+	Killed by the server: it did not stop when asked, or took too long to load.
+	"""
+	KILLED
+	"""
+	Exited without saying why.
+	"""
+	EXITED
+}
+
+type SessionFailure {
+	"""
+	When, as a Unix time in seconds.
+	"""
+	at: Float!
+	userId: Int!
+	"""
+	The player; null if the account has been deleted since.
+	"""
+	username: String
+	gameId: Int!
+	title: String!
+	system: String!
+	"""
+	The core's file name without its extension; null if the server found none.
+	"""
+	core: String
+	phase: SessionFailurePhase!
+	"""
+	Why its worker ended; null for a start the server refused.
+	"""
+	reason: SessionEndReason
+	"""
+	What went wrong, in words: why the server refused it, or why its start failed.
+	"""
+	message: String
+	"""
+	The worker's exit code, if it exited.
+	"""
+	exitCode: Int
+	"""
+	The signal that ended the worker, if one did (11 is a segfault).
+	"""
+	signal: Int
+	"""
+	The worker's last lines on stderr (its log and its core's), oldest first.
+	"""
+	lastLines: [String!]!
+}
+
+"""
+How far a failed session got.
+"""
+enum SessionFailurePhase {
+	"""
+	The server refused it before any worker ran (no core, a missing file, no 3D rendering,
+	every port in use).
+	"""
+	STARTING
+	"""
+	Its worker ended before the game had loaded.
+	"""
+	LOADING
+	"""
+	It had been playing.
+	"""
+	RUNNING
 }
 
 """
