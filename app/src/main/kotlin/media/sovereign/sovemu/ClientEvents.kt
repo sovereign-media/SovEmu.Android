@@ -63,8 +63,12 @@ object ClientEvents {
     }
 
     /** `android 0.1.0 (MiTV-AFMU1, Android 11)`. */
-    fun clientName(context: Context): String {
-        val version = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull()
-        return "android ${version ?: "?"} (${Build.MODEL}, Android ${Build.VERSION.RELEASE})"
-    }
+    fun clientName(context: Context): String =
+        "android ${version(context)} (${Build.MODEL}, Android ${Build.VERSION.RELEASE})"
+
+    /** `SovEmu for Android 0.1.0 · MiTV-AFMU1`: this sign-in, on the admin's Devices page. */
+    fun deviceName(context: Context): String = "SovEmu for Android ${version(context)} · ${Build.MODEL}"
+
+    private fun version(context: Context): String =
+        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "?"
 }

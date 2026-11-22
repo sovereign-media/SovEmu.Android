@@ -46,6 +46,7 @@ import media.sovereign.sovemu.core.graphql.ControlsQuery
 import media.sovereign.sovemu.core.graphql.GameDecorationQuery
 import media.sovereign.sovemu.core.graphql.HomeQuery
 import media.sovereign.sovemu.core.graphql.LoadStateMutation
+import media.sovereign.sovemu.core.graphql.NameDeviceMutation
 import media.sovereign.sovemu.core.graphql.ResetControllerMappingMutation
 import media.sovereign.sovemu.core.graphql.SaveControllerMappingMutation
 import media.sovereign.sovemu.core.graphql.PatchesQuery
@@ -98,6 +99,11 @@ class Settings(context: Context) : TokenStore {
         get() = prefs.getString("refresh_token", null)
         set(value) = prefs.edit().putString("refresh_token", value).apply()
 
+    /** The device name last given to this sign-in (`nameDevice`); null after signing in anew. */
+    var namedDevice: String?
+        get() = prefs.getString("named_device", null)
+        set(value) = prefs.edit().putString("named_device", value).apply()
+
     /** The sign-in details last fetched from [serverUrl]; null for another address, or none yet. */
     var signInConfig: SignInConfig?
         get() {
@@ -129,7 +135,11 @@ class Settings(context: Context) : TokenStore {
  * operations and their models are generated in `core` from the server's schema. Requests run
  * and parse off the main thread (Apollo's own dispatcher).
  */
-class SovEmuApi(private val settings: Settings) {
+class SovEmuApi(
+    private val settings: Settings,
+    /** What this app calls its device on the server ([ClientEvents.deviceName]). */
+    private val device: String = "SovEmu for Android",
+) {
     /** The sign-in's token client: plain HTTP, without the bearer interceptor. */
     private val plain: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
@@ -186,7 +196,21 @@ class SovEmuApi(private val settings: Settings) {
 
     suspend fun status(): Viewer = query(ViewerQuery()).viewer.let { Viewer(it.setupRequired, it.user?.userFields) }
     /** Signs in with a username and password (after [bootstrap]); a refusal is an `OAuthException` with the server's reason. */
-    suspend fun signIn(username: String, password: String) = auth.signIn(username, password)
+    suspend fun signIn(username: String, password: String) {
+        auth.signIn(username, password)
+        // A new sign-in on the server: it has no name yet.
+        settings.namedDevice = null
+    }
+
+    /**
+     * Names this sign-in's device on the server, for the admin's Devices page, when it has not
+     * been named so yet (after signing in, and after an update changes the app's version).
+     */
+    suspend fun nameDevice() {
+        if (settings.namedDevice == device) return
+        mutate(NameDeviceMutation(device))
+        settings.namedDevice = device
+    }
     /** Revokes the sign-in on the server, and forgets it here even when that fails. */
     suspend fun signOut() = auth.signOut()
     suspend fun iceServers(): List<IceServer> = iceServers(query(ClientConfigQuery()).clientConfig.iceServers)
