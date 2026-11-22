@@ -25,6 +25,8 @@ data class StatsReading(
     val networkRttMs: Double?,
     /** The inbound video's decoder (`decoderImplementation`, `powerEfficientDecoder`). */
     val decoder: VideoDecoder? = null,
+    /** Video frames dropped since the stream began (`framesDropped`). */
+    val framesDropped: Long? = null,
 )
 
 /**
@@ -41,7 +43,10 @@ data class VideoDecoder(val implementation: String, val powerEfficient: Boolean?
         }
 }
 
-/** What the stats overlay shows, and the log line it echoes. Null: not known yet. */
+/**
+ * This client's view of the stream: what the stats overlay shows, the log line it echoes, and
+ * what the worker is sent every second to adapt the video bitrate by. Null: not known yet.
+ */
 data class StreamStats(
     val inputRttP50Ms: Long?,
     val inputRttP95Ms: Long?,
@@ -60,6 +65,8 @@ data class StreamStats(
      * frame reaching the renderer. Leaves out the display's scan-out and the TV's processing.
      */
     val inputToFrameMs: Long? = null,
+    /** Video frames dropped since the stream began. */
+    val framesDropped: Long? = null,
 ) {
     /**
      * Button to pixel, roughly, as the web client estimates it: the input round trip (the
@@ -103,7 +110,8 @@ data class StreamStats(
     ).joinToString(" ")
 
     /**
-     * The worker's `client stats` message: these values, the client ([client], `android 0.1.0
+     * The worker's `client stats` message, sent every second while playing (the worker lowers
+     * the bitrate for a client that is not keeping up, and logs it): these values, the client ([client], `android 0.1.0
      * (Pixel 7, Android 14)`), whether TV game mode was asked for, and once the hardware decoder
      * is configured, its name and whether it decodes in low-latency mode ([decoder]).
      */
@@ -122,6 +130,7 @@ data class StreamStats(
             "fps" to fps,
             "kbps" to kbps,
             "packets_lost" to packetsLost,
+            "frames_dropped" to framesDropped,
             "game_mode" to gameMode,
             "decoder" to decoder?.codec,
             "low_latency_decode" to decoder?.lowLatency,
@@ -168,7 +177,40 @@ class StatsSampler {
             packetsLost = now.packetsLost,
             decoder = now.decoder,
             inputToFrameMs = inputToFrameMs,
+            framesDropped = now.framesDropped,
         )
+    }
+}
+
+/**
+ * A change in the stream's quality, as the player is told of it: one [line], and the glyph
+ * before it ([icon]: `wifi-alert` and `wifi-up`, Sovereign's own, or `gauge` for a device that
+ * fell behind).
+ */
+data class QualityNotice(val line: String, val icon: String)
+
+/**
+ * The notice for a change in the stream's quality between two pipeline messages, worded and
+ * marked as Sovereign's step-down and step-up notices and the web client's: the bitrate the
+ * worker tells the player of moved (it only does in steps worth telling). Null when it has not,
+ * or when either side does not know it (the first message, an older server).
+ */
+fun qualityNotice(before: Protocol.Pipeline?, now: Protocol.Pipeline): QualityNotice? {
+    val was = before?.video?.kbps ?: 0
+    val current = now.video.kbps
+    if (was == 0 || current == 0 || was == current) return null
+    if (current < was) {
+        return if (now.video.limitedBy == "client") {
+            QualityNotice("This device is falling behind. Playing at a lower quality.", "gauge")
+        } else {
+            QualityNotice("Slow connection. Playing at a lower quality.", "wifi-alert")
+        }
+    }
+    // Back up from a fall that was the device's: the connection had nothing to do with it.
+    return if (before?.video?.limitedBy == "client") {
+        QualityNotice("Playing at a higher quality.", "gauge")
+    } else {
+        QualityNotice("Connection improved. Playing at a higher quality.", "wifi-up")
     }
 }
 
