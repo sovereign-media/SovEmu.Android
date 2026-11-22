@@ -556,6 +556,113 @@ A scalar that can represent any JSON value.
 scalar JSON
 
 """
+A background job (`jobs.rs`).
+"""
+enum JobName {
+	"""
+	Rescans the library.
+	"""
+	SCAN
+	"""
+	`MIRROR` mode: copies the source into the local mirror, then rescans it.
+	"""
+	MIRROR_SYNC
+	"""
+	Looks up game information for games without it.
+	"""
+	METADATA
+	"""
+	Database upkeep: expired sign-ins and old job history deleted.
+	"""
+	MAINTENANCE
+}
+
+"""
+How a job's run ended.
+"""
+enum JobOutcome {
+	RUNNING
+	SUCCEEDED
+	FAILED
+	"""
+	Stopped by the server shutting down.
+	"""
+	CANCELLED
+	"""
+	The server stopped without finishing it.
+	"""
+	INTERRUPTED
+}
+
+"""
+One run of a background job.
+"""
+type JobRun {
+	id: ID!
+	job: JobName!
+	trigger: JobTrigger!
+	outcome: JobOutcome!
+	"""
+	Unix seconds.
+	"""
+	startedAt: Float!
+	"""
+	Unix seconds; none while it runs.
+	"""
+	finishedAt: Float
+	seconds: Float
+	"""
+	What it did ("1,204 games: 3 added, 0 removed"), or why it failed.
+	"""
+	message: String
+}
+
+"""
+A background job this server has, and its state now.
+"""
+type JobState {
+	name: JobName!
+	description: String!
+	"""
+	How often it runs on its own, in minutes; none if it does not (it follows another job,
+	or its interval is 0).
+	"""
+	intervalMinutes: Float
+	"""
+	When it next runs on its own (Unix seconds); none while it runs or if it does not.
+	"""
+	nextRunAt: Float
+	running: Boolean!
+	"""
+	What started the run under way.
+	"""
+	runningTrigger: JobTrigger
+	"""
+	When the run under way started (Unix seconds).
+	"""
+	runningSince: Float
+	"""
+	Its latest run (the one under way, if it is running).
+	"""
+	lastRun: JobRun
+}
+
+"""
+What started a job's run.
+"""
+enum JobTrigger {
+	STARTUP
+	"""
+	Its interval (`SOVEMU_*_INTERVAL_MINUTES`).
+	"""
+	SCHEDULE
+	"""
+	An admin.
+	"""
+	ADMIN
+}
+
+"""
 How the library is read.
 """
 enum LibraryMode {
@@ -691,6 +798,12 @@ type Mutation {
 	"""
 	scanLibrary: ScanReport!
 	"""
+	Admins: starts a background job now, as its schedule would (`METADATA`: games without
+	game information). `CONFLICT` if it is running; `BAD_REQUEST` if this server does not
+	have it (`MIRROR_SYNC` outside `MIRROR` mode).
+	"""
+	runJob(job: JobName!): [JobState!]!
+	"""
 	Admins: starts a mirror sync in the background (`MIRROR` mode only).
 	"""
 	syncLibrary: Boolean!
@@ -713,7 +826,7 @@ type Mutation {
 	reportClientEvents(client: String!, events: [ClientEventInput!]!): Int!
 	"""
 	Admins: how many frames a system's pictures run ahead of its games (0: off), or with no
-	`frames` back to off. Applies to the next game started. Refused while
+	`frames` back to SovEmu's default (1 frame on the systems that support it). Applies to the next game started. Refused while
 	`SOVEMU_SYSTEMS__<id>__RUN_AHEAD` sets it.
 	"""
 	setRunAhead(system: ID!, frames: Int): EmulatorSettings!
@@ -951,6 +1064,14 @@ type Query {
 	"""
 	gpu: GpuStatus!
 	"""
+	Admins: the background jobs (scans, syncs, lookups, upkeep), and how each last ran.
+	"""
+	jobs: [JobState!]!
+	"""
+	Admins: the latest runs of background jobs, newest first: of one job, or of all.
+	"""
+	jobRuns(job: JobName, limit: Int! = 50): [JobRun!]!
+	"""
 	Admins: a system's emulator settings.
 	"""
 	emulatorSettings(system: ID!): EmulatorSettings!
@@ -1007,7 +1128,7 @@ type RunAheadSetting {
 	"""
 	max: Int!
 	"""
-	`SOVEMU` when nothing sets it (off); `ENVIRONMENT` is
+	`SOVEMU` when nothing sets it (1 frame on the systems that support it); `ENVIRONMENT` is
 	`SOVEMU_SYSTEMS__<id>__RUN_AHEAD`, which always wins (locked).
 	"""
 	source: SettingSource!
