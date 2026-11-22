@@ -118,16 +118,23 @@ private class Codec(
     override fun getCodecInfo(): MediaCodecInfo = codec.codecInfo
 }
 
+/** The render time reported for a frame that came without a `DecodeInfo`. */
+internal const val NO_RENDER_TIME = -1L
+
 /** A Java decoder that reports each encoded frame on its way in, then decodes it as before. */
-private class Watched(
+internal class Watched(
     private val decoder: VideoDecoder,
     private val onFrameEntered: (renderTimeMs: Long, captureTimeNs: Long) -> Unit,
 ) : VideoDecoder {
     override fun initDecode(settings: VideoDecoder.Settings, callback: VideoDecoder.Callback): VideoCodecStatus =
         decoder.initDecode(settings, callback)
     override fun release(): VideoCodecStatus = decoder.release()
-    override fun decode(frame: EncodedImage, info: VideoDecoder.DecodeInfo): VideoCodecStatus {
-        onFrameEntered(info.renderTimeMs, frame.captureTimeNs)
+    // WebRTC's native side passes a null DecodeInfo (it is `@Nullable` there in practice): a
+    // non-null parameter here threw on the first frame, and an exception on the decoding thread
+    // aborts the whole process. Without it the render time is unknown (-1, which matches no
+    // frame), and frames are matched by capture time or by counting.
+    override fun decode(frame: EncodedImage, info: VideoDecoder.DecodeInfo?): VideoCodecStatus {
+        onFrameEntered(info?.renderTimeMs ?: NO_RENDER_TIME, frame.captureTimeNs)
         return decoder.decode(frame, info)
     }
     override fun getImplementationName(): String = decoder.implementationName
