@@ -412,7 +412,6 @@ input ClientEventInput {
 }
 
 """
-Where a 3D system renders on this server.
 What went wrong on a client (`reportClientEvents`).
 """
 enum ClientEventKind {
@@ -1334,7 +1333,8 @@ type Mutation {
 	"""
 	startSession(gameId: Int!, startId: String): GameSession!
 	"""
-	Ends a session; the worker writes the battery save and the auto save first.
+	Ends a session, the player's own or (admins) anyone's; the worker writes the battery save
+	and the auto save first.
 	"""
 	stopSession(id: ID!): Boolean!
 	"""
@@ -1639,6 +1639,10 @@ type Query {
 	"""
 	activeSessions: [ActiveSession!]!
 	"""
+	Admins: the games that failed most recently, newest first, with the core's last lines.
+	"""
+	sessionFailures: [SessionFailure!]!
+	"""
 	Admins: how the library is played (direct, cache or mirror), its size, and the mirror's
 	sync. Its errors can name the share's paths.
 	"""
@@ -1890,6 +1894,55 @@ type ServerResources {
 	read (outside a container, or on macOS).
 	"""
 	usageNote: String
+}
+
+"""
+A game that failed: the server refused to start it, it failed to start, or it crashed,
+errored or had to be killed while playing. The newest the server keeps
+(`SOVEMU_SESSION_FAILURES`).
+"""
+type SessionFailure {
+	"""
+	When it ended (Unix seconds).
+	"""
+	at: Float!
+	"""
+	Null for an account since deleted.
+	"""
+	username: String
+	gameId: Int!
+	title: String!
+	system: String!
+	"""
+	The core's file name without its extension (`pcsx2_libretro`); null for a start refused
+	before a core was found.
+	"""
+	core: String
+	"""
+	It had loaded: it failed while playing; else while starting.
+	"""
+	whilePlaying: Boolean!
+	"""
+	`refused` (the server would not start it: no core, a missing file, no 3D rendering, every
+	port in use), `error`, `crashed` (a signal: in the core, most often), `killed` (it would
+	not stop, or its start timed out) or `exited` (it left while loading without saying why).
+	"""
+	reason: String!
+	"""
+	What went wrong, in words: why the server refused it, or why its start failed; null for
+	a failure while playing (its last lines say what there is).
+	"""
+	message: String
+	exitCode: Int
+	signal: Int
+	"""
+	The worker's last log lines (the core's own, most often), oldest first.
+	"""
+	lastLines: [String!]!
+	"""
+	How long it ran, seconds.
+	"""
+	ranSeconds: Float!
 }
 
 """
