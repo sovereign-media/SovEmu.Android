@@ -55,6 +55,11 @@ data class StreamStats(
     val kbps: Double?,
     val packetsLost: Long,
     val decoder: VideoDecoder? = null,
+    /**
+     * Button to frame, measured ([FrameLatency]): the median ms from sending an input to its
+     * frame reaching the renderer. Leaves out the display's scan-out and the TV's processing.
+     */
+    val inputToFrameMs: Long? = null,
 ) {
     /**
      * Button to pixel, roughly, as the web client estimates it: the input round trip (the
@@ -67,6 +72,7 @@ data class StreamStats(
     /** Label and value, in the order the overlay shows them. */
     fun rows(): List<Pair<String, String>> = listOf(
         "Estimated button→pixel" to ms(estimateMs, 0),
+        "Measured button→frame" to ms(inputToFrameMs?.toDouble(), 0),
         "Input round trip" to (inputRttP50Ms?.let { p50 -> "$p50 ms · p95 ${inputRttP95Ms ?: "–"}" } ?: "–"),
         "Network RTT" to ms(networkRttMs, 1),
         "Jitter buffer" to ms(jitterBufferMs, 1),
@@ -82,6 +88,7 @@ data class StreamStats(
      */
     fun logfmt(): String = listOfNotNull(
         estimateMs?.let { "estimate_ms=${num(it, 0)}" },
+        inputToFrameMs?.let { "input_to_frame_ms=$it" },
         inputRttP50Ms?.let { "input_rtt_p50_ms=$it" },
         inputRttP95Ms?.let { "input_rtt_p95_ms=$it" },
         "input_samples=$inputSamples",
@@ -97,12 +104,14 @@ data class StreamStats(
 
     /**
      * The worker's `client stats` message: these values, the client ([client], `android 0.1.0
-     * (Pixel 7, Android 14)`) and whether TV game mode was asked for.
+     * (Pixel 7, Android 14)`), whether TV game mode was asked for and whether low-latency
+     * decoding was (the setting, whatever the decoder made of it).
      */
-    fun encode(client: String, gameMode: Boolean?): ByteArray = Protocol.encodeStats(
+    fun encode(client: String, gameMode: Boolean?, lowLatencyDecode: Boolean? = null): ByteArray = Protocol.encodeStats(
         listOf(
             "client" to client,
             "estimate_ms" to estimateMs,
+            "input_to_frame_ms" to inputToFrameMs,
             "input_rtt_p50_ms" to inputRttP50Ms,
             "input_rtt_p95_ms" to inputRttP95Ms,
             "net_rtt_ms" to networkRttMs,
@@ -114,6 +123,7 @@ data class StreamStats(
             "kbps" to kbps,
             "packets_lost" to packetsLost,
             "game_mode" to gameMode,
+            "low_latency_decode" to lowLatencyDecode,
         ),
     )
 
@@ -129,8 +139,11 @@ data class StreamStats(
 class StatsSampler {
     private var last: StatsReading? = null
 
-    /** [inputRtts]: the recent input round trips in ms, in any order. */
-    fun sample(now: StatsReading, inputRtts: List<Long>): StreamStats {
+    /**
+     * [inputRtts]: the recent input round trips in ms, in any order; [inputToFrameMs]: the
+     * measured button→frame ([FrameLatency.medianMs]).
+     */
+    fun sample(now: StatsReading, inputRtts: List<Long>, inputToFrameMs: Long? = null): StreamStats {
         val prev = last
         last = now
         val sorted = inputRtts.sorted()
@@ -153,6 +166,7 @@ class StatsSampler {
             kbps = seconds?.let { (now.bytesReceived - prev!!.bytesReceived) * 8 / 1000 / it },
             packetsLost = now.packetsLost,
             decoder = now.decoder,
+            inputToFrameMs = inputToFrameMs,
         )
     }
 }

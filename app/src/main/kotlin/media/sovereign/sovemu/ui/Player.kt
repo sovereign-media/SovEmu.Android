@@ -1,6 +1,17 @@
 package media.sovereign.sovemu.ui
 
 import android.util.Log
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
+import media.sovereign.sovemu.core.LatencyHistory
+import kotlin.math.roundToInt
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.text.font.FontFamily
 import media.sovereign.sovemu.core.StatsSampler
@@ -130,6 +141,8 @@ fun PlayerScreen(
     onStatsChange: (Boolean) -> Unit,
     /** Ask the TV for its game picture mode while playing (a setting). */
     gameMode: Boolean,
+    /** Ask the hardware video decoder for low latency (a setting; read when the stream starts). */
+    lowLatencyDecode: Boolean,
     onEnded: () -> Unit,
     onExit: () -> Unit,
     /** Paused (the in-game menu or the controllers screen is open): the screensaver may start. */
@@ -146,6 +159,9 @@ fun PlayerScreen(
     var controllersOpen by remember { mutableStateOf(false) }
     /** The stats overlay's rows, label and value; null while it is off or has no sample yet. */
     var readout by remember { mutableStateOf<List<Pair<String, String>>?>(null) }
+    /** The overlay's latency graph, and a count of its samples that redraws it once a second. */
+    val latencyHistory = remember { LatencyHistory() }
+    var latencySamples by remember { mutableIntStateOf(0) }
     /** The stream has connected once: a failure after that is a lost connection. */
     var everConnected by remember { mutableStateOf(false) }
     /** The disc in the tray (1-based), for a multi-disc game. */
@@ -188,7 +204,7 @@ fun PlayerScreen(
             // WebRTC's factory and peer connection are slow to build: not on the main thread.
             // Built whatever happens, so it is closed whatever happens.
             val s = withContext(NonCancellable + Dispatchers.Default) {
-                Stream(context, api, session.id, ClientEvents.clientName(context), ice.await(), controller, renderer) { state ->
+                Stream(context, api, session.id, ClientEvents.clientName(context), ice.await(), controller, renderer, lowLatencyDecode) { state ->
                     if (state == PeerConnection.PeerConnectionState.FAILED) status = "Connection failed"
                     when (state) {
                         PeerConnection.PeerConnectionState.CONNECTED -> everConnected = true
@@ -236,6 +252,8 @@ fun PlayerScreen(
     val currentGameMode by rememberUpdatedState(gameMode)
     LaunchedEffect(stats, stream) {
         readout = null
+        latencyHistory.clear()
+        latencySamples = 0
         val s = stream
         if (!stats || s == null) return@LaunchedEffect
         val sampler = StatsSampler()
@@ -243,10 +261,12 @@ fun PlayerScreen(
         while (true) {
             delay(1000)
             val reading = s.readStats() ?: break
-            val sample = sampler.sample(reading, s.inputRtts.toList())
+            val sample = sampler.sample(reading, s.inputRtts.toList(), s.frameLatency.medianMs())
             // How the worker makes the stream follows, once it has said (old servers never do).
             readout = sample.rows() + pipelineRows(s.pipeline.value, sample.decoder)
-            s.sendStats(sample.encode(client, currentGameMode))
+            latencyHistory.add(sample.inputToFrameMs?.toDouble(), sample.estimateMs)
+            latencySamples++
+            s.sendStats(sample.encode(client, currentGameMode, lowLatencyDecode))
             Log.i(STATS_TAG, sample.logfmt())
         }
     }
@@ -300,7 +320,14 @@ fun PlayerScreen(
         if (touchControls && !menuOpen && !controllersOpen && status.isEmpty()) {
             TouchController(controller, Modifier.fillMaxSize().safeDrawingPadding())
         }
-        readout?.let { StatsOverlay(it, Modifier.align(Alignment.TopStart).safeDrawingPadding().padding(16.dp)) }
+        readout?.let {
+            StatsOverlay(
+                it,
+                latencyHistory,
+                { latencySamples },
+                Modifier.align(Alignment.TopStart).safeDrawingPadding().padding(16.dp),
+            )
+        }
         toast?.let {
             Text(it, color = Color.White, modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp)
                 .clip(RoundedCornerShape(20.dp)).background(Color.Black.copy(alpha = 0.8f)).padding(horizontal = 16.dp, vertical = 8.dp))
@@ -542,21 +569,94 @@ internal const val STATS_WARNING = "Stats are logged while shown, and can affect
 
 
 /**
- * Latency and stream health over the game, as the web client's: a corner panel that never takes
- * focus, so the game keeps its controllers.
+ * Latency and stream health over the game, as the web client's: a panel in the top-left corner,
+ * its rows in two columns (the first filled top to bottom, then the second) above a graph of the
+ * last minute's latency. It never takes focus, so the game keeps its controllers.
  */
 @Composable
-private fun StatsOverlay(rows: List<Pair<String, String>>, modifier: Modifier = Modifier) {
+private fun StatsOverlay(
+    rows: List<Pair<String, String>>,
+    history: LatencyHistory,
+    /** Samples so far: read only by the graph's draw, which it redraws on each. */
+    samples: () -> Int,
+    modifier: Modifier = Modifier,
+) {
     Column(
-        modifier.clip(RoundedCornerShape(8.dp)).background(Color.Black.copy(alpha = 0.7f)).padding(horizontal = 12.dp, vertical = 8.dp),
+        modifier
+            .width(IntrinsicSize.Max)
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.Black.copy(alpha = 0.7f))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Column { for ((label, _) in rows) Text(label, color = Sov.Slate400, fontSize = 12.sp, fontFamily = FontFamily.Monospace) }
-            Column(horizontalAlignment = Alignment.End) {
-                for ((_, value) in rows) Text(value, color = Color.White, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+        val half = (rows.size + 1) / 2
+        Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            StatsColumn(rows.subList(0, half))
+            StatsColumn(rows.subList(half, rows.size))
+        }
+        LatencyGraph(history, samples, Modifier.padding(top = 8.dp).fillMaxWidth().height(64.dp))
+        Text(STATS_WARNING, Modifier.padding(top = 4.dp), color = Sov.Slate400, fontSize = 10.sp)
+    }
+}
+
+/** Label and value pairs: labels muted on the left, values right-aligned. */
+@Composable
+private fun StatsColumn(rows: List<Pair<String, String>>, modifier: Modifier = Modifier) {
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column { for ((label, _) in rows) Text(label, color = Sov.Slate400, fontSize = 12.sp, fontFamily = FontFamily.Monospace) }
+        Column(horizontalAlignment = Alignment.End) {
+            for ((_, value) in rows) Text(value, color = Color.White, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+        }
+    }
+}
+
+/**
+ * The last minute of "Measured button→frame" (solid, accent) and "Estimated button→pixel"
+ * (thin, muted), from 0 to [LatencyHistory.scaleMaxMs], with the scale's gridlines and the latest
+ * measurement at the right. Everything is read while drawing, so a new sample only redraws.
+ */
+@Composable
+private fun LatencyGraph(history: LatencyHistory, samples: () -> Int, modifier: Modifier = Modifier) {
+    val measurer = rememberTextMeasurer()
+    val label = remember { TextStyle(color = Sov.Slate500, fontSize = 9.sp, fontFamily = FontFamily.Monospace) }
+    val latest = remember { TextStyle(color = Sov.Accent, fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold) }
+    val measuredPath = remember { Path() }
+    val estimatedPath = remember { Path() }
+    Canvas(modifier) {
+        samples()
+        val top = history.scaleMaxMs()
+        val latestText = history.latestMeasured?.let { measurer.measure("${it.roundToInt()} ms", latest) }
+        val right = size.width - (latestText?.size?.width ?: 0) - 4.dp.toPx()
+        fun y(ms: Double) = (size.height * (1 - ms / top)).toFloat()
+        for (ms in doubleArrayOf(top, top / 2)) {
+            drawLine(Sov.Edge, Offset(0f, y(ms)), Offset(right, y(ms)), strokeWidth = 1f)
+            drawText(measurer.measure("${ms.roundToInt()}", label), topLeft = Offset(0f, y(ms)))
+        }
+        val step = right / (history.capacity - 1)
+        // Newest at the right edge; a minute's worth fills the width.
+        val first = history.capacity - history.size
+        fun Path.trace(value: (Int) -> Double) {
+            reset()
+            var pen = false
+            for (i in 0 until history.size) {
+                val v = value(i)
+                if (v.isNaN()) {
+                    pen = false
+                    continue
+                }
+                val x = (first + i) * step
+                if (pen) lineTo(x, y(v)) else moveTo(x, y(v))
+                pen = true
             }
         }
-        Text(STATS_WARNING, Modifier.padding(top = 4.dp).widthIn(max = 260.dp), color = Sov.Slate400, fontSize = 10.sp)
+        estimatedPath.trace(history::estimated)
+        drawPath(estimatedPath, Sov.Slate400, style = Stroke(width = 1.dp.toPx()))
+        measuredPath.trace(history::measured)
+        drawPath(measuredPath, Sov.Accent, style = Stroke(width = 2.dp.toPx()))
+        latestText?.let {
+            val v = history.latestMeasured ?: 0.0
+            val at = (y(v) - it.size.height / 2).coerceIn(0f, size.height - it.size.height)
+            drawText(it, topLeft = Offset(size.width - it.size.width, at))
+        }
     }
 }
 
