@@ -1516,6 +1516,10 @@ type StreamHealth {
 	The share of frames that took longer than a frame period, 0 to 1.
 	"""
 	overran: Float!
+	"""
+	The share of the interval the game was paused (the player's menu open), 0 to 1.
+	"""
+	paused: Float!
 	tickMeanMs: Float!
 	encodeMeanMs: Float!
 	"""
