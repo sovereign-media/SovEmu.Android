@@ -31,6 +31,9 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.flowOf
 import media.sovereign.sovemu.core.pipelineRows
+import media.sovereign.sovemu.core.Protocol
+import media.sovereign.sovemu.core.qualityNotice
+import media.sovereign.sovemu.core.QualityNotice
 import media.sovereign.sovemu.core.formatAgo
 import media.sovereign.sovemu.core.slotRows
 import media.sovereign.sovemu.core.SlotRow
@@ -177,6 +180,8 @@ fun PlayerScreen(
     var controllersOpen by remember { mutableStateOf(false) }
     /** The stats overlay's rows, label and value; null while it is off or has no sample yet. */
     var readout by remember { mutableStateOf<List<Pair<String, String>>?>(null) }
+    /** The stream's quality changed: the notice at the top of the screen, for a moment. */
+    var quality by remember { mutableStateOf<QualityNotice?>(null) }
     /** The overlay's latency graph, and a count of its samples that redraws it once a second. */
     val latencyHistory = remember { LatencyHistory() }
     var latencySamples by remember { mutableIntStateOf(0) }
@@ -264,16 +269,16 @@ fun PlayerScreen(
         controller.toGame = !isPaused
         paused(isPaused)
     }
-    // The stats overlay: sampled once a second while it is on, as on the web, and each sample
-    // sent to the worker, which logs it beside its own health lines (`client stats` in the
-    // server's log), and echoed to logcat (`adb logcat -s SovEmu.Stats`). Off, none of it runs.
+    // The stream's stats: sampled once a second while playing, as on the web, and each sample
+    // sent to the worker, which adapts the video bitrate to how this device keeps up and logs
+    // it beside its own health lines (`client stats` in the server's log). With the overlay on
+    // they are also shown, and echoed to logcat (`adb logcat -s SovEmu.Stats`).
     val currentGameMode by rememberUpdatedState(gameMode)
     LaunchedEffect(stats, stream) {
         readout = null
         latencyHistory.clear()
         latencySamples = 0
-        val s = stream
-        if (!stats || s == null) return@LaunchedEffect
+        val s = stream ?: return@LaunchedEffect
         val sampler = StatsSampler()
         var loggedMatch: FrameLatency.Match? = null
         val client = ClientEvents.clientName(context)
@@ -283,10 +288,11 @@ fun PlayerScreen(
             val sample = sampler.sample(reading, s.inputRtts.toList(), s.frameLatency.medianMs())
             // How the worker makes the stream follows, once it has said (old servers never do).
             val setup = s.decoder.value
+            s.sendStats(sample.encode(client, currentGameMode, setup))
+            if (!stats) continue
             readout = sample.rows() + pipelineRows(s.pipeline.value, sample.decoder, setup)
             latencyHistory.add(sample.inputToFrameMs?.toDouble(), sample.estimateMs)
             latencySamples++
-            s.sendStats(sample.encode(client, currentGameMode, setup))
             Log.i(STATS_TAG, sample.logfmt())
             // How the measurement matches frames across the decoder, once it has learned it.
             val match = s.frameLatency.match
@@ -294,6 +300,22 @@ fun PlayerScreen(
                 Log.i(STATS_TAG, "frame_match=${match.name.lowercase()}")
                 loggedMatch = match
             }
+        }
+    }
+    // The worker changed the stream's quality (its pipeline says so): a notice for a moment.
+    LaunchedEffect(stream) {
+        val s = stream ?: return@LaunchedEffect
+        var before: Protocol.Pipeline? = null
+        s.pipeline.collect { now ->
+            now ?: return@collect
+            qualityNotice(before, now)?.let { quality = it }
+            before = now
+        }
+    }
+    LaunchedEffect(quality) {
+        if (quality != null) {
+            delay(QUALITY_NOTICE_MS)
+            quality = null
         }
     }
     // The loading screen stays until the game's first picture: a console's BIOS can boot for
@@ -379,6 +401,12 @@ fun PlayerScreen(
                 latencyHistory,
                 { latencySamples },
                 Modifier.align(Alignment.TopStart).safeDrawingPadding().padding(16.dp),
+            )
+        }
+        quality?.let {
+            QualityChip(
+                it,
+                Modifier.align(Alignment.TopCenter).safeDrawingPadding().padding(top = 8.dp, start = 16.dp, end = 16.dp),
             )
         }
         toast?.let {
@@ -632,7 +660,10 @@ private const val STATS_TAG = "SovEmu.Stats"
 private const val STALL_SECONDS = 3
 
 /** Where stats are turned on, and on the overlay: they cost a little every second. */
-internal const val STATS_WARNING = "Stats are logged while shown, and can affect game performance."
+/** How long a notice of a change in quality stays at the top of the screen (Sovereign's 5 s). */
+private const val QUALITY_NOTICE_MS = 5000L
+
+internal const val STATS_WARNING = "Showing stats can affect game performance."
 
 
 /**

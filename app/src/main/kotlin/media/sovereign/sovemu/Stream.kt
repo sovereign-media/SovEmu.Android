@@ -295,9 +295,9 @@ class Stream(
     }
 
     /**
-     * The connection's stats now (for the stats overlay); null once the stream is closed. Call
-     * it from the main thread, as [close] is: getStats on a disposed connection crashes in
-     * native code.
+     * The connection's stats now (for the worker and the stats overlay); null once the stream
+     * is closed. Call it from the main thread, as [close] is: getStats on a disposed connection
+     * crashes in native code.
      */
     suspend fun readStats(): StatsReading? {
         if (closed.get()) return null
@@ -327,10 +327,11 @@ class Stream(
             decoder = (video["decoderImplementation"] as? String)?.let {
                 VideoDecoder(it, video["powerEfficientDecoder"] as? Boolean)
             },
+            framesDropped = video.num("framesDropped")?.toLong(),
         )
     }
 
-    /** The stats overlay's numbers, for the worker's log ([StreamStats.encode]). */
+    /** This client's view of the stream, for the worker ([StreamStats.encode]). */
     fun sendStats(bytes: ByteArray) {
         if (!closed.get() && channel.state() == DataChannel.State.OPEN) send(bytes)
     }

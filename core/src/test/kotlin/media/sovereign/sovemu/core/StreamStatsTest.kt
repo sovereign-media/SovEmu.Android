@@ -93,6 +93,38 @@ class StreamStatsTest {
         audio = Protocol.PipelineAudio(codec = "opus", sourceHz = 32040.0, kbps = 128),
     )
 
+    private fun at(kbps: Int, limitedBy: String = "") =
+        pipeline.copy(video = pipeline.video.copy(kbps = kbps, limitedBy = limitedBy))
+
+    @Test
+    fun `a change in quality is said as Sovereign words it, with why it fell`() {
+        assertEquals(
+            QualityNotice("Connection improved. Playing at a higher quality.", "wifi-up"),
+            qualityNotice(at(5000), at(8400)),
+        )
+        assertEquals(
+            QualityNotice("Slow connection. Playing at a lower quality.", "wifi-alert"),
+            qualityNotice(at(5000), at(3300, "connection")),
+        )
+        assertEquals(
+            QualityNotice("This device is falling behind. Playing at a lower quality.", "gauge"),
+            qualityNotice(at(5000), at(800, "client")),
+        )
+        // Up again after the device fell behind: the connection did not improve.
+        assertEquals(
+            QualityNotice("Playing at a higher quality.", "gauge"),
+            qualityNotice(at(800, "client"), at(5000)),
+        )
+    }
+
+    @Test
+    fun `nothing is said of the first message, an unchanged one, or a server that does not tell`() {
+        assertEquals(null, qualityNotice(null, at(5000)))
+        assertEquals(null, qualityNotice(at(5000), at(5000)))
+        assertEquals(null, qualityNotice(at(0), at(5000)))
+        assertEquals(null, qualityNotice(at(5000), at(0)))
+    }
+
     @Test
     fun `without a pipeline there are no stream rows`() {
         assertEquals(emptyList<Pair<String, String>>(), pipelineRows(null, VideoDecoder("libvpx", false)))

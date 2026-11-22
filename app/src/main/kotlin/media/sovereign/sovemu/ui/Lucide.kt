@@ -362,4 +362,36 @@ object Lucide {
     val Activity: ImageVector by lazy {
         icon("M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2")
     }
+
+    val Gauge: ImageVector by lazy {
+        icon(
+            "m12 14 4-4",
+            "M3.34 19a10 10 0 1 1 17.32 0",
+        )
+    }
+
+    // Not Lucide's: Sovereign.Design's own (`icons/own/wifi-alert.svg`, `wifi-up.svg`), drawn in
+    // Lucide's style, for the notice of a change in the stream's quality.
+    val WifiAlert: ImageVector by lazy {
+        icon(
+            "M7.5 15.5h.01",
+            "M1.5 8.8a9 9 0 0 1 12 0",
+            "M3.3 11.2a6 6 0 0 1 8.4 0",
+            "M5.4 13.4a3 3 0 0 1 4.2 0",
+            "M16.75 9.5l6.25 12h-12.5z",
+            "M16.75 13.75v3",
+            "M16.75 19.25h.01",
+        )
+    }
+
+    val WifiUp: ImageVector by lazy {
+        icon(
+            "M7.5 15.5h.01",
+            "M1.5 8.8a9 9 0 0 1 12 0",
+            "M3.3 11.2a6 6 0 0 1 8.4 0",
+            "M5.4 13.4a3 3 0 0 1 4.2 0",
+            "M17 21.5v-11",
+            "M13 14.5l4-4 4 4",
+        )
+    }
 }

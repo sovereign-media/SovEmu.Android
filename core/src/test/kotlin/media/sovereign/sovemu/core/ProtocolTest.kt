@@ -63,8 +63,17 @@ class ProtocolTest {
     @Test
     fun encodesStatsLikeTheRustReference() {
         // `stats_are_json_after_the_header` in SovEmu.Protocol: only the known values, in order.
-        val encoded = Protocol.encodeStats(listOf("jitter_ms" to 1.5, "kbps" to null, "fps" to Double.NaN, "packets_lost" to 2L))
-        assertArrayEquals(bytes(0x04, 1) + """{"jitter_ms":1.5,"packets_lost":2}""".toByteArray(), encoded)
+        val encoded = Protocol.encodeStats(
+            listOf(
+                "jitter_ms" to 1.5,
+                "kbps" to null,
+                "fps" to Double.NaN,
+                "packets_lost" to 2L,
+                "frames_dropped" to 3L,
+            ),
+        )
+        val json = """{"jitter_ms":1.5,"packets_lost":2,"frames_dropped":3}"""
+        assertArrayEquals(bytes(0x04, 1) + json.toByteArray(), encoded)
     }
 
     @Test
@@ -80,7 +89,8 @@ class ProtocolTest {
     fun decodesTheRustReferencePipeline() {
         val json = """{"renderer":"llvmpipe","renderer_software":true,"video":{"codec":"h264",""" +
             """"encoder":"x264","hardware":false,"fallbacks":[{"encoder":"vaapi","reason":"no device"}],""" +
-            """"width":256,"height":224,"fps":60.0},"audio":{"codec":"opus","source_hz":32040.0,"kbps":128},""" +
+            """"width":256,"height":224,"fps":60.0,"kbps":3500,"limited_by":"client"},""" +
+            """"audio":{"codec":"opus","source_hz":32040.0,"kbps":128},""" +
             """"run_ahead":1}"""
         assertEquals(
             Protocol.Pipeline(
@@ -94,6 +104,8 @@ class ProtocolTest {
                     width = 256,
                     height = 224,
                     fps = 60.0,
+                    kbps = 3500,
+                    limitedBy = "client",
                 ),
                 audio = Protocol.PipelineAudio(codec = "opus", sourceHz = 32040.0, kbps = 128),
                 runAhead = 1,

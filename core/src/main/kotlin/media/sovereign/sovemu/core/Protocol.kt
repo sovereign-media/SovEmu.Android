@@ -27,7 +27,7 @@ object Protocol {
     const val MAX_PIPELINE_BYTES = 4096
 
     /**
-     * The stats overlay's numbers for the worker's log (`client stats`): `0x04`, the version,
+     * This client's view of the stream for the worker (`client stats`): `0x04`, the version,
      * then a JSON object of the known values. [fields] are `ClientStats`'s keys in its order;
      * nulls and non-finite numbers are left out, numbers rounded to one decimal.
      */
@@ -121,6 +121,14 @@ object Protocol {
         val width: Int = 0,
         val height: Int = 0,
         val fps: Double = 0.0,
+        /**
+         * The video bitrate as last told to the player, kbit/s: it moves in steps worth a
+         * notice, so a change from the one before is shown ([qualityNotice]). 0: unknown (an
+         * older server).
+         */
+        val kbps: Int = 0,
+        /** What held it down when it last fell: `connection`, `client`, or empty. */
+        val limitedBy: String = "",
     )
 
     data class PipelineAudio(val codec: String = "", val sourceHz: Double = 0.0, val kbps: Int = 0)
@@ -165,6 +173,8 @@ object Protocol {
                 width = video["width"].num().toInt(),
                 height = video["height"].num().toInt(),
                 fps = video["fps"].num(),
+                kbps = video["kbps"].num().toInt(),
+                limitedBy = video["limited_by"].str(),
             ),
             audio = PipelineAudio(
                 codec = audio["codec"].str(),
