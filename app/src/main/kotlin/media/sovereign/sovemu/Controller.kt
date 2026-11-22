@@ -128,21 +128,26 @@ class Controller {
         publish()
     }
 
-    private fun connectPad(id: Int, d: InputDevice?) {
-        val name = d?.name ?: "Controller"
-        val model = Controllers.identify(d?.vendorId ?: 0, d?.productId ?: 0, name)
-        val port = mixer.connect(id, name, model, physical = d?.descriptor)
+    private fun connectPad(id: Int, d: InputDevice) {
+        val name = d.name ?: "Controller"
+        val model = Controllers.identify(d.vendorId, d.productId, name)
+        val port = mixer.connect(id, name, model, physical = d.descriptor)
         Log.i(TAG, "controller $id ($name, ${model.id}) connected as player ${port?.plus(1)}")
         // A model docs/CONTROLLERS.md does not know yet: worth adding.
         if (model.id.startsWith("pad:")) ClientEvents.report("CONTROLLER_UNKNOWN", "$name → ${model.id}")
     }
 
-    /** A device we did not see connect (or that hides its gamepad source) sends a pad button. */
+    /**
+     * A device we did not see connect (or that hides its gamepad source) sends a pad button. One
+     * Android no longer knows is not a controller: a pad that reconnects (Bluetooth) comes back
+     * under a new ID, and the last events of its old one would otherwise add a nameless
+     * "Controller" that nothing ever removes, in a player's seat.
+     */
     private fun padDevice(id: Int, keyCode: Int): Boolean {
         if (mixer.isPad(id)) return true
         if (!KeyEvent.isGamepadButton(keyCode)) return false
-        val d = InputDevice.getDevice(id)
-        if (d != null && !isPad(d)) return false
+        val d = InputDevice.getDevice(id) ?: return false
+        if (!isPad(d)) return false
         connectPad(id, d)
         publish()
         return true
@@ -234,8 +239,8 @@ class Controller {
         if (!event.isFromSource(InputDevice.SOURCE_JOYSTICK)) return false
         val id = event.deviceId
         if (!mixer.isPad(id)) {
-            val d = InputDevice.getDevice(id)
-            if (d != null && !isPad(d)) return false
+            val d = InputDevice.getDevice(id) ?: return false
+            if (!isPad(d)) return false
             connectPad(id, d)
             publish()
         }
