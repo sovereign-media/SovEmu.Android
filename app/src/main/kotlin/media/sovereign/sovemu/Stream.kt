@@ -57,17 +57,24 @@ object WebRtc {
      */
     @Volatile var onDecoder: ((DecoderSetup) -> Unit)? = null
 
+    /** Hears each encoded frame going into a decoder (render time ms, capture time ns); as [onDecoder]. */
+    @Volatile var onFrameEntered: ((Long, Long) -> Unit)? = null
+
     fun factory(context: Context): PeerConnectionFactory = factory ?: run {
         PeerConnectionFactory.initialize(
             PeerConnectionFactory.InitializationOptions.builder(context.applicationContext).createInitializationOptions(),
         )
         PeerConnectionFactory.builder()
             .setVideoDecoderFactory(
-                LowLatencyVideoDecoderFactory(egl.eglBaseContext) { setup ->
-                    // Once per stream, beside the stats lines: which decoder, and in which mode.
-                    Log.i(STATS_TAG, setup.logfmt())
-                    onDecoder?.invoke(setup)
-                },
+                LowLatencyVideoDecoderFactory(
+                    egl.eglBaseContext,
+                    onConfigured = { setup ->
+                        // Once per stream, beside the stats lines: which decoder, and in which mode.
+                        Log.i(STATS_TAG, setup.logfmt())
+                        onDecoder?.invoke(setup)
+                    },
+                    onFrameEntered = { renderTimeMs, captureTimeNs -> onFrameEntered?.invoke(renderTimeMs, captureTimeNs) },
+                ),
             )
             .createPeerConnectionFactory()
             .also { factory = it }
@@ -114,8 +121,12 @@ class Stream(
     val frameLatency = FrameLatency()
 
     /** Every decoded frame passes here on its way to [videoSink]: the measurement's frame side. */
+    private val frameEntered: (Long, Long) -> Unit = { renderTimeMs, captureTimeNs ->
+        frameLatency.frameEntered(renderTimeMs, captureTimeNs, now32())
+    }
+
     private val measuringSink = VideoSink { frame ->
-        frameLatency.frameDelivered(now32())
+        frameLatency.frameDelivered(frame.timestampNs, now32())
         videoSink.onFrame(frame)
     }
 
@@ -161,6 +172,7 @@ class Stream(
 
     init {
         WebRtc.onDecoder = decoderListener
+        WebRtc.onFrameEntered = frameEntered
         val recvOnly = RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.RECV_ONLY)
         pc.addTransceiver(MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO, recvOnly)
         pc.addTransceiver(MediaStreamTrack.MediaType.MEDIA_TYPE_AUDIO, recvOnly)
@@ -181,7 +193,7 @@ class Stream(
                 val bytes = ByteArray(buffer.data.remaining()).also { buffer.data.get(it) }
                 val ack = Protocol.decodeAck(bytes)
                 if (ack != null) {
-                    frameLatency.ackArrived(ack.clientTimeMs)
+                    frameLatency.ackArrived(ack.clientTimeMs, now32())
                     inputRtts.addLast((now32() - ack.clientTimeMs) and 0xffff_ffffL)
                     while (inputRtts.size > 60) inputRtts.pollFirst()
                     return
@@ -326,6 +338,7 @@ class Stream(
     fun close() {
         if (!closed.compareAndSet(false, true)) return
         if (WebRtc.onDecoder === decoderListener) WebRtc.onDecoder = null
+        if (WebRtc.onFrameEntered === frameEntered) WebRtc.onFrameEntered = null
         // The pump sends on the channel from another thread: it must have stopped before the
         // channel goes (sending on a disposed one crashes in native code). One loop is ~4 ms.
         runBlocking { pump?.cancelAndJoin() }
