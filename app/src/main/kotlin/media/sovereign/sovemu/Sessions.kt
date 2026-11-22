@@ -12,8 +12,8 @@ import media.sovereign.sovemu.core.SessionInfo
  * on until the server's idle timeout. Stopping asks the worker to write its saves first.
  */
 class Sessions(private val api: SovEmuApi, private val scope: CoroutineScope) {
-    /** Starts [gameId] now; the player awaits it. */
-    fun start(gameId: Int): Deferred<SessionInfo> = scope.async { api.startSession(gameId) }
+    /** Starts [gameId] now, named [startId] (its progress: [SovEmuApi.startProgress]); the player awaits it. */
+    fun start(gameId: Int, startId: String): Deferred<SessionInfo> = scope.async { api.startSession(gameId, startId) }
 
     /** Stops [session] once it has started (if it does), then runs [after]. */
     fun stop(session: Deferred<SessionInfo>, after: () -> Unit) {
