@@ -144,7 +144,7 @@ fun PlayerScreen(
     /** The stats overlay is on (a setting, kept across games). */
     stats: Boolean,
     onStatsChange: (Boolean) -> Unit,
-    /** Ask the TV for its game picture mode while playing (a setting). */
+    /** The TV game mode setting (asked for app-wide, TvGameMode), for the stats. */
     gameMode: Boolean,
     onEnded: () -> Unit,
     onExit: () -> Unit,
@@ -315,8 +315,9 @@ fun PlayerScreen(
         }
     }
 
-    // The TV's game picture mode and Wi-Fi without power saving, for as long as the player is open.
-    LowLatencyWhilePlaying(gameMode)
+    // Wi-Fi without power saving, for as long as the player is open (the TV's game mode is the
+    // whole app's: TvGameMode).
+    LowLatencyWhilePlaying()
 
     val ended by rememberUpdatedState(onEnded)
     DisposableEffect(Unit) {

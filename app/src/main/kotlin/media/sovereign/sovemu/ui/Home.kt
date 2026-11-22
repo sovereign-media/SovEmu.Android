@@ -80,7 +80,8 @@ private const val ADVANCE_MS = 9000L
 /**
  * Home, as the web client's: a hero of featured games over rows of games to continue, systems
  * and recently added games. The D-pad moves between rows and along them; on the hero, left and
- * right change game and A plays. X searches every system.
+ * right change game and A plays. A game card opens its panel on its system's page (Continue or
+ * Start over from there). X searches every system.
  */
 @Composable
 fun HomeScreen(
@@ -128,7 +129,8 @@ private fun HomeContent(
                     HomeRow("Continue playing", Lucide.History) {
                         itemsIndexed(feed.recent, key = { _, g -> g.id }) { _, g ->
                             GameCard(g, byId[g.system], wide = true, memory = memory, key = "recent:${g.id}") {
-                                onPlay(g, if (g.autoSave != null) Start.Continue else Start.New)
+                                // The game's panel, to Continue or Start over (Back comes back here).
+                                byId[g.system]?.let { onSystem(it, g.id) }
                             }
                         }
                     }

@@ -119,6 +119,9 @@ private val FiltersSaver: Saver<GameFilters, Any> = listSaver(
  * Filters, Jump), a grid of covers, and a side panel with the chosen game's details. With the
  * panel open the D-pad still moves through the grid and the panel follows; A plays (continues
  * from the auto save if there is one), X starts over, B closes it. Start opens the filters.
+ *
+ * Opened on a game from another screen ([openFirst]: Home, Search), closing that game's panel
+ * goes back there ([onLeave]) rather than to this grid: the panel was what was asked for.
  */
 @Composable
 fun SystemScreen(
@@ -132,6 +135,7 @@ fun SystemScreen(
     onFavourite: suspend (Game, Boolean) -> String?,
     onCollectionsChanged: () -> Unit,
     onPatch: suspend (Game, GamePatch?) -> String?,
+    onLeave: () -> Unit = {},
 ) {
     val colour = system.colour()
     // The page's tint: the system's colour from the top-left corner, as on the web. It is the
@@ -144,7 +148,7 @@ fun SystemScreen(
         when (index) {
             Load.Loading -> Header(system, null, null, sort, onSort, 0, {}, null, Modifier.padding(32.dp).statusBarsPadding())
             is Load.Failed -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(index.message, color = Sov.Red300) }
-            is Load.Ready -> Games(api, system, index.value, openFirst, sort, onSort, onPlay, onFavourite, onCollectionsChanged, onPatch)
+            is Load.Ready -> Games(api, system, index.value, openFirst, sort, onSort, onPlay, onFavourite, onCollectionsChanged, onPatch, onLeave)
         }
     }
 }
@@ -162,6 +166,7 @@ private fun Games(
     onFavourite: suspend (Game, Boolean) -> String?,
     onCollectionsChanged: () -> Unit,
     onPatch: suspend (Game, GamePatch?) -> String?,
+    onLeave: () -> Unit,
 ) {
     val form = LocalForm.current
     val scope = rememberCoroutineScope()
@@ -235,6 +240,11 @@ private fun Games(
 
     fun closePanel() {
         val id = openId ?: return
+        // Still the game this screen was opened on: back to where it was opened from.
+        if (id == openFirst) {
+            onLeave()
+            return
+        }
         openId = null
         scope.launch {
             withFrameNanos { }
