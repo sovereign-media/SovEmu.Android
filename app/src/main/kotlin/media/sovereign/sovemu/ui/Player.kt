@@ -15,6 +15,10 @@ import kotlin.math.roundToInt
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.text.font.FontFamily
 import media.sovereign.sovemu.core.StatsSampler
+import media.sovereign.sovemu.core.GameStart
+import media.sovereign.sovemu.core.StartScreen
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.flowOf
 import media.sovereign.sovemu.core.pipelineRows
 import media.sovereign.sovemu.core.formatAgo
 import media.sovereign.sovemu.core.slotRows
@@ -150,7 +154,10 @@ fun PlayerScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var info by remember { mutableStateOf<SessionInfo?>(null) }
-    var status by remember { mutableStateOf("Starting ${game.title}…") }
+    /** A failure to start, or a lost connection, shown in place of the game. */
+    var error by remember { mutableStateOf<String?>(null) }
+    /** Still no picture NO_PICTURE_HINT_MS after the session was ready. */
+    var slowStart by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
     var stream by remember { mutableStateOf<Stream?>(null) }
     var toast by remember { mutableStateOf<String?>(null) }
@@ -198,12 +205,11 @@ fun PlayerScreen(
             val session = starting.await()
             if (how is Start.FromSlot) attempt { api.loadState(session.id, how.slot) }.onFailure { e -> toast = "Could not load: ${e.message}" }
             info = session
-            status = ""
             // WebRTC's factory and peer connection are slow to build: not on the main thread.
             // Built whatever happens, so it is closed whatever happens.
             val s = withContext(NonCancellable + Dispatchers.Default) {
                 Stream(context, api, session.id, ClientEvents.clientName(context), ice.await(), controller, renderer) { state ->
-                    if (state == PeerConnection.PeerConnectionState.FAILED) status = "Connection failed"
+                    if (state == PeerConnection.PeerConnectionState.FAILED) error = "Connection failed"
                     when (state) {
                         PeerConnection.PeerConnectionState.CONNECTED -> everConnected = true
                         PeerConnection.PeerConnectionState.FAILED, PeerConnection.PeerConnectionState.DISCONNECTED -> {
@@ -223,7 +229,7 @@ fun PlayerScreen(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            status = "Could not start: ${e.message}"
+            error = "Could not start: ${e.message}"
         }
     }
 
@@ -269,16 +275,25 @@ fun PlayerScreen(
             Log.i(STATS_TAG, sample.logfmt())
         }
     }
+    // The loading screen stays until the game's first picture: a console's BIOS can boot for
+    // seconds after the session is ready. A long wait adds a hint.
+    val pictureShown by remember(stream) { stream?.firstFrame ?: flowOf(false) }.collectAsStateWithLifecycle(false)
+    LaunchedEffect(info, pictureShown) {
+        if (info == null || pictureShown) return@LaunchedEffect
+        delay(GameStart.NO_PICTURE_HINT_MS)
+        slowStart = true
+    }
     // A picture that stops while playing (not paused in the menu) is reported once it has been
-    // still for STALL_SECONDS.
+    // still for STALL_SECONDS. Before the first picture, the game is still starting.
     LaunchedEffect(stream) {
-        if (stream == null) return@LaunchedEffect
+        val s = stream ?: return@LaunchedEffect
         var last = renderer.frames
         var still = 0
         while (true) {
             delay(1000)
             val frames = renderer.frames
-            still = if (everConnected && !menuOpen && !controllersOpen && frames == last) still + 1 else 0
+            val playing = everConnected && s.firstFrame.value && !menuOpen && !controllersOpen
+            still = if (playing && frames == last) still + 1 else 0
             last = frames
             if (still == STALL_SECONDS) {
                 ClientEvents.report("STREAM_STALLED", "no new picture for $STALL_SECONDS s", info?.id)
@@ -315,8 +330,10 @@ fun PlayerScreen(
         Decorated(decoration, aspect) {
             AndroidView({ renderer }, Modifier.fillMaxSize())
         }
-        if (status.isNotEmpty()) Splash(game, system, status, choice)
-        if (touchControls && !menuOpen && !controllersOpen && status.isEmpty()) {
+        // Input goes to the game while it starts too (some wait for a button), and Back opens the
+        // menu over this screen, to quit a game that never draws.
+        GameStart.screen(game.title, error, ready = info != null, pictureShown, slowStart)?.let { Splash(game, system, it, choice) }
+        if (touchControls && !menuOpen && !controllersOpen && info != null && error == null) {
             TouchController(controller, Modifier.fillMaxSize().safeDrawingPadding())
         }
         readout?.let {
@@ -530,7 +547,7 @@ private fun SlotItem(row: SlotRow, modifier: Modifier = Modifier, onClick: () ->
 
 /** While the game loads: its artwork, title and what is happening, and Continue / Start over when asked. */
 @Composable
-private fun Splash(game: Game, system: SystemSummary, status: String, choice: CompletableDeferred<Start>?) {
+private fun Splash(game: Game, system: SystemSummary, screen: StartScreen, choice: CompletableDeferred<Start>?) {
     val colour = system.colour()
     val brush = remember(colour) { tile(colour, 0.25f) }
     Box(Modifier.fillMaxSize().background(Sov.Surface)) {
@@ -551,8 +568,9 @@ private fun Splash(game: Game, system: SystemSummary, status: String, choice: Co
                     SovButton("Start over", { choice.complete(Start.New) }, variant = Variant.Outline, icon = Lucide.RotateCcw)
                 }
             } else {
-                if (status.startsWith("Starting")) CircularProgressIndicator(color = Sov.Accent, strokeWidth = 3.dp, modifier = Modifier.size(32.dp))
-                Text(status, color = Sov.Slate300, fontSize = 14.sp, textAlign = TextAlign.Center)
+                if (screen.busy) CircularProgressIndicator(color = Sov.Accent, strokeWidth = 3.dp, modifier = Modifier.size(32.dp))
+                Text(screen.label, color = Sov.Slate300, fontSize = 14.sp, textAlign = TextAlign.Center)
+                screen.hint?.let { Text(it, color = Sov.Slate400, fontSize = 13.sp, textAlign = TextAlign.Center) }
             }
         }
     }
