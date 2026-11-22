@@ -75,6 +75,8 @@ class Store(
         launch { load(_systems) { api.systems() } }
         launch { load(_home) { api.home() } }
         launch { _background.value = attempt { api.background() }.onFailure(::note).getOrNull() }
+        // Best effort: an unnamed sign-in is only shown as "App".
+        launch { attempt { api.nameDevice() }.onFailure(::note) }
         keepFresh()
     }
 

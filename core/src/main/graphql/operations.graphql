@@ -211,6 +211,10 @@ query CollectionChoices($id: Int!) {
   }
 }
 
+mutation NameDevice($name: String!) {
+  nameDevice(name: $name)
+}
+
 mutation SetFavourite($gameId: Int!, $favourite: Boolean!) {
   setFavourite(gameId: $gameId, favourite: $favourite)
 }

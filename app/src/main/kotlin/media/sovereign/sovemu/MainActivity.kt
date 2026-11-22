@@ -110,7 +110,7 @@ class MainActivity : ComponentActivity() {
         // fill on every frame (fill rate is what a TV's GPU runs out of first).
         window.setBackgroundDrawable(null)
         settings = Settings(this)
-        api = SovEmuApi(settings)
+        api = SovEmuApi(settings, ClientEvents.deviceName(this))
         ClientEvents.recordCrashes(this)
         ClientEvents.attach(this, api, lifecycleScope)
         store = Store(api, lifecycleScope)

@@ -40,6 +40,95 @@ type ActiveSession {
 }
 
 """
+What kind of thing happened, for the page's filter.
+"""
+enum ActivityCategory {
+	"""
+	Signing in, and refusals.
+	"""
+	SIGN_IN
+	"""
+	Games started and ended.
+	"""
+	PLAY
+	"""
+	What admins changed.
+	"""
+	ADMIN
+}
+
+"""
+One thing that happened.
+"""
+type ActivityEntry {
+	"""
+	When (Unix seconds).
+	"""
+	at: Float!
+	"""
+	The account that did it; null for a refused sign-in.
+	"""
+	userId: Int
+	"""
+	Its name now, else the name it had (an account since deleted), or for a refused sign-in
+	the name that was tried.
+	"""
+	username: String
+	kind: ActivityKind!
+	category: ActivityCategory!
+	"""
+	What it was about: a game, an account, a job, a system's settings.
+	"""
+	subject: String
+	"""
+	More: a new role, how a game ended.
+	"""
+	detail: String
+	"""
+	The client's address, where there was a request.
+	"""
+	address: String
+}
+
+"""
+What happened.
+"""
+enum ActivityKind {
+	SIGNED_IN
+	SIGN_IN_FAILED
+	"""
+	Refused without checking: too many failed attempts already.
+	"""
+	SIGN_IN_LOCKED_OUT
+	GAME_STARTED
+	GAME_ENDED
+	USER_ADDED
+	ROLE_CHANGED
+	PASSWORD_SET
+	USER_REMOVED
+	SIGNED_OUT_EVERYWHERE
+	"""
+	One browser or app signed out.
+	"""
+	SIGN_IN_ENDED
+	SESSION_STOPPED
+	SETTINGS_CHANGED
+	JOB_RUN
+	CACHE_CLEARED
+}
+
+"""
+A page of the activity log, newest first.
+"""
+type ActivityPage {
+	entries: [ActivityEntry!]!
+	"""
+	Give as `after` for the next page; null when this was the last.
+	"""
+	next: String
+}
+
+"""
 A soft patch in the library, as the admin sees it.
 """
 type AdminPatch {
@@ -114,6 +203,71 @@ type ArtworkStatus {
 }
 
 """
+How many of a kind a system has.
+"""
+type AttentionCount {
+	kind: AttentionKind!
+	"""
+	Empty for a folder no system uses.
+	"""
+	system: String!
+	count: Int!
+}
+
+"""
+A game (or file) needing attention.
+"""
+type AttentionItem {
+	"""
+	Null for a file that is not a game.
+	"""
+	gameId: Int
+	"""
+	Empty for a file in a folder no system uses.
+	"""
+	system: String!
+	"""
+	Empty for a file that is not a game.
+	"""
+	title: String!
+	"""
+	Relative to the library.
+	"""
+	path: String!
+	"""
+	Why it has no information, the tags it shares, the parts missing, or why a file was
+	skipped.
+	"""
+	detail: String!
+}
+
+"""
+What needs attention.
+"""
+enum AttentionKind {
+	"""
+	No game information: never looked up, or not found.
+	"""
+	NO_INFORMATION
+	"""
+	No box art, beside it or downloaded.
+	"""
+	NO_BOX_ART
+	"""
+	The same title and tags in two or more files of a system.
+	"""
+	DUPLICATE
+	"""
+	A multi-part game with a part missing.
+	"""
+	MISSING_PARTS
+	"""
+	A file the last scan could not place as a game.
+	"""
+	UNRECOGNISED
+}
+
+"""
 A service SovEmu looks games up in.
 """
 type AttributedService {
@@ -167,6 +321,48 @@ type Background {
 	One SovEmu ships, rather than the admin's own.
 	"""
 	builtin: Boolean!
+}
+
+"""
+A backup kept.
+"""
+type BackupFile {
+	name: String!
+	bytes: Float!
+	"""
+	When it was made (Unix seconds).
+	"""
+	created: Float!
+	"""
+	Its download: a signed URL, for this admin only.
+	"""
+	url: String!
+}
+
+"""
+The backups, and how they are made.
+"""
+type Backups {
+	"""
+	Where they are kept (`SOVEMU_BACKUP_DIR`).
+	"""
+	dir: String!
+	"""
+	A backup every this many hours (`SOVEMU_BACKUP_INTERVAL_HOURS`; 0: none on a schedule).
+	"""
+	intervalHours: Float!
+	"""
+	How many are kept (`SOVEMU_BACKUP_KEEP`; 0: every one).
+	"""
+	keep: Int!
+	"""
+	The backup restored at startup, if `SOVEMU_RESTORE_FROM` is set.
+	"""
+	restoreFrom: String
+	"""
+	Newest first.
+	"""
+	files: [BackupFile!]!
 }
 
 """
@@ -393,6 +589,59 @@ type ClientConfig {
 }
 
 """
+One client error.
+"""
+type ClientEvent {
+	"""
+	When the server received it (Unix seconds).
+	"""
+	at: Float!
+	"""
+	When it happened, on the client's clock (Unix seconds), if it said.
+	"""
+	clientAt: Float
+	"""
+	The player; null for an account since deleted.
+	"""
+	username: String
+	client: String!
+	kind: ClientEventKind!
+	message: String!
+	"""
+	The game session it happened in, if any.
+	"""
+	sessionId: String
+	"""
+	That session's game, when the server could tell (the session was still running).
+	"""
+	gameId: Int
+	title: String
+	system: String
+}
+
+"""
+Client errors of one kind from one client (app and version) in a window: how many, from how
+many players, and the latest.
+"""
+type ClientEventGroup {
+	kind: ClientEventKind!
+	"""
+	The app and its version, as it named itself (`android 1.4.0 (Mi TV, Android 11)`).
+	"""
+	client: String!
+	count: Int!
+	"""
+	How many accounts reported it.
+	"""
+	users: Int!
+	"""
+	The latest one's time (Unix seconds) and message.
+	"""
+	lastAt: Float!
+	lastMessage: String!
+}
+
+"""
 One thing that went wrong on a client.
 """
 input ClientEventInput {
@@ -412,7 +661,7 @@ input ClientEventInput {
 }
 
 """
-What went wrong on a client (`reportClientEvents`).
+What went wrong on a client.
 """
 enum ClientEventKind {
 	"""
@@ -475,6 +724,14 @@ type Collection {
 	id: Int!
 	name: String!
 	gameCount: Int!
+	"""
+	Kept by an admin for everyone: everyone sees it, only an admin changes it.
+	"""
+	shared: Boolean!
+	"""
+	Declared in the server's environment (`SOVEMU_COLLECTIONS__…`): changed only there.
+	"""
+	declared: Boolean!
 	"""
 	Its games, most recently added first.
 	"""
@@ -791,6 +1048,16 @@ type ExportResult {
 	failures: Float!
 }
 
+"""
+A game, and how many accounts keep it as a favourite.
+"""
+type FavouriteGame {
+	gameId: Int!
+	title: String!
+	system: String!
+	users: Int!
+}
+
 type Game {
 	id: Int!
 	"""
@@ -854,6 +1121,10 @@ type Game {
 	"""
 	collectionIds: [Int!]!
 	"""
+	The ids of the shared collections that hold it.
+	"""
+	sharedCollectionIds: [Int!]!
+	"""
 	How many discs (1 for most games): a multi-disc game is one entry, its discs changed in play.
 	"""
 	discs: Int!
@@ -894,6 +1165,21 @@ type Game {
 	This user's cheats for it.
 	"""
 	cheats: [Cheat!]!
+}
+
+"""
+A game's plays in the window.
+"""
+type GamePlays {
+	"""
+	Null for a game since gone from the library.
+	"""
+	gameId: Int
+	title: String!
+	system: String!
+	sessions: Int!
+	seconds: Float!
+	players: Int!
 }
 
 type GameSession {
@@ -1072,6 +1358,10 @@ enum JobName {
 	Database upkeep: expired sign-ins and old job history deleted.
 	"""
 	MAINTENANCE
+	"""
+	A backup of the database, the signing keys and the saves.
+	"""
+	BACKUP
 }
 
 """
@@ -1119,6 +1409,10 @@ A background job this server has, and its state now.
 """
 type JobState {
 	name: JobName!
+	"""
+	Its name for people ("Library scan").
+	"""
+	label: String!
 	description: String!
 	"""
 	How often it runs on its own, in minutes; none if it does not (it follows another job,
@@ -1188,6 +1482,68 @@ type LibraryStatus {
 	`MIRROR` mode: the current or last sync.
 	"""
 	mirror: MirrorSync
+}
+
+"""
+One of a line's fields.
+"""
+type LogField {
+	key: String!
+	value: String!
+}
+
+"""
+How much a line says.
+"""
+enum LogLevel {
+	TRACE
+	DEBUG
+	INFO
+	WARN
+	ERROR
+}
+
+"""
+One line of the log.
+"""
+type LogLineNode {
+	"""
+	Its place in the buffer.
+	"""
+	id: Float!
+	"""
+	When (Unix seconds).
+	"""
+	at: Float!
+	level: LogLevel!
+	"""
+	The module that logged it, or `worker` for a game session's worker.
+	"""
+	target: String!
+	message: String!
+	fields: [LogField!]!
+	"""
+	The game session it belongs to, if any.
+	"""
+	session: String
+}
+
+"""
+Lines of the log, and where to read on from.
+"""
+type LogPage {
+	"""
+	Whether the server keeps its log for this view (`SOVEMU_LOG_BUFFER_LINES` above 0).
+	"""
+	enabled: Boolean!
+	"""
+	Oldest first.
+	"""
+	lines: [LogLineNode!]!
+	"""
+	Give as `after` to read only what comes next.
+	"""
+	cursor: Float!
 }
 
 """
@@ -1291,6 +1647,38 @@ type Mutation {
 	"""
 	addUser(input: NewUserInput!): User!
 	"""
+	Admins: makes an account an admin or a viewer. Not the last admin, and not an account the
+	environment declares.
+	"""
+	setUserRole(userId: Int!, role: Role!): User!
+	"""
+	Admins: sets an account's password (at least 8 characters), which signs that user out
+	everywhere. Not an account the environment declares.
+	"""
+	setUserPassword(userId: Int!, password: String!): Boolean!
+	"""
+	Admins: removes an account and signs it out everywhere; everything of theirs in the
+	database goes with it, and their saves stay on disk. Not their own, not the last admin,
+	and not an account the environment declares.
+	"""
+	removeUser(userId: Int!): Boolean!
+	"""
+	Admins: signs one browser or app out (`id` from `signIns` or `user`); it must sign in
+	again. The account's other sign-ins stand.
+	"""
+	endSignIn(id: ID!): Boolean!
+	"""
+	Names this sign-in's device, as the app describes itself ("SovEmu for Android 1.4.0 ·
+	Mi TV Stick"), for the admin's lists of sign-ins. An app calls it once signed in, and
+	again when its version changes. `BAD_REQUEST` for an empty name or one over 80
+	characters.
+	"""
+	nameDevice(name: String!): Boolean!
+	"""
+	Admins: signs an account out of every browser and app.
+	"""
+	signOutEverywhere(userId: Int!): Boolean!
+	"""
 	Adds a game to this user's favourites, or takes it out.
 	"""
 	setFavourite(gameId: Int!, favourite: Boolean!): Boolean!
@@ -1318,14 +1706,6 @@ type Mutation {
 	"""
 	setCheatEnabled(gameId: Int!, cheatId: Int!, enabled: Boolean!): [Cheat!]!
 	deleteCheat(gameId: Int!, cheatId: Int!): Boolean!
-	"""
-	Signed-in users: what went wrong on this client (a connection that failed, a stalled
-	picture, a screen that crashed), for the server's log beside the session's own lines.
-	`client` names it and its version (`android 0.1.0 (MiTV-AFMU1, Android 11)`). At most
-	20 events a call and 60 a minute per user; the rest are dropped. Returns how many were
-	logged (0 when `SOVEMU_CLIENT_EVENTS` is off). Nothing is stored.
-	"""
-	reportClientEvents(client: String!, events: [ClientEventInput!]!): Int!
 	"""
 	Starts a game (ending this user's running one first) and returns once it is ready to
 	stream. Give a `startId` (8–64 letters, digits, `-` or `_`) to follow its progress with
@@ -1426,6 +1806,40 @@ type Mutation {
 	the round trip and the path (direct, or through a relay) from its own end.
 	"""
 	testConnection(sdp: String!): String!
+	"""
+	Signed-in users: what went wrong on this client (a connection that failed, a stalled
+	picture, a screen that crashed), for the server's log beside the session's own lines and
+	the admin's Client errors page. `client` names it and its version (`android 0.1.0
+	(MiTV-AFMU1, Android 11)`). At most 20 events a call and 60 a minute per user; the rest
+	are dropped. Returns how many were taken (0 when `SOVEMU_CLIENT_EVENTS` is off).
+	"""
+	reportClientEvents(client: String!, events: [ClientEventInput!]!): Int!
+	"""
+	Admins: looks one game up again (its game information and box art), as a background
+	job (`METADATA`), whether or not it has information already. `CONFLICT` while a lookup
+	runs.
+	"""
+	lookUpGame(gameId: Int!): MetadataStatus!
+	"""
+	Admins: deletes a backup (`NOT_FOUND` if there is none by that name).
+	"""
+	deleteBackup(name: String!): Boolean!
+	"""
+	Admins: makes a collection everyone sees (`CONFLICT` if one has that name).
+	"""
+	createSharedCollection(name: String!): Collection!
+	"""
+	Admins: renames a shared collection.
+	"""
+	renameSharedCollection(id: Int!, name: String!): Boolean!
+	"""
+	Admins: deletes a shared collection (its games stay in the library).
+	"""
+	deleteSharedCollection(id: Int!): Boolean!
+	"""
+	Admins: puts a game in a shared collection, or takes it out.
+	"""
+	setInSharedCollection(collectionId: Int!, gameId: Int!, member: Boolean!): Boolean!
 }
 
 """
@@ -1593,6 +2007,77 @@ type Patch {
 	isDefault: Boolean!
 }
 
+"""
+One UTC day's plays.
+"""
+type PlayDay {
+	"""
+	The day's start (UTC midnight), Unix seconds.
+	"""
+	day: Float!
+	sessions: Int!
+	seconds: Float!
+}
+
+"""
+What was played over a window.
+"""
+type PlayStatistics {
+	"""
+	The window, Unix seconds: from its start up to now.
+	"""
+	from: Float!
+	to: Float!
+	totals: PlayTotals!
+	"""
+	Days with plays, oldest first (days without are left out).
+	"""
+	days: [PlayDay!]!
+	"""
+	The most played games first, by time played (the top 10).
+	"""
+	games: [GamePlays!]!
+	"""
+	Every account that played, the most time first.
+	"""
+	players: [PlayerPlays!]!
+	"""
+	Every system played, the most time first.
+	"""
+	systems: [SystemPlays!]!
+	"""
+	The most favourited games, of all time (the top 10).
+	"""
+	favourites: [FavouriteGame!]!
+}
+
+"""
+Plays and time played, totalled.
+"""
+type PlayTotals {
+	sessions: Int!
+	"""
+	Seconds played (a Float: a year of a busy server can pass 2^31).
+	"""
+	seconds: Float!
+	players: Int!
+	games: Int!
+}
+
+"""
+An account's plays in the window.
+"""
+type PlayerPlays {
+	userId: Int!
+	"""
+	Null for an account since deleted.
+	"""
+	username: String
+	sessions: Int!
+	seconds: Float!
+	games: Int!
+}
+
 type Query {
 	"""
 	Where and how to sign in here. Works signed out: an app's first question, which also tells
@@ -1608,6 +2093,14 @@ type Query {
 	"""
 	viewer: Viewer!
 	clientConfig: ClientConfig!
+	"""
+	Admins: one account, with its sign-ins, what it has played and its saves.
+	"""
+	user(id: Int!): UserDetails!
+	"""
+	Admins: every browser and app signed in, across accounts, the most recently used first.
+	"""
+	signIns: [SignInNode!]!
 	"""
 	Admins: the accounts.
 	"""
@@ -1626,6 +2119,10 @@ type Query {
 	This user's collections, by name.
 	"""
 	collections: [Collection!]!
+	"""
+	The collections an admin keeps for everyone, by name.
+	"""
+	sharedCollections: [Collection!]!
 	"""
 	Every system SovEmu offers (hidden ones left out), in SovEmu's order.
 	"""
@@ -1760,6 +2257,46 @@ type Query {
 	keyframes, fast-forward, rewind).
 	"""
 	streaming: StreamingReport!
+	"""
+	Admins: the client errors of the last `days` days, by kind and client, the most frequent
+	first.
+	"""
+	clientEventGroups(days: Int! = 7): [ClientEventGroup!]!
+	"""
+	Admins: one group's client errors in the last `days` days, newest first (at most
+	`limit`, up to 200).
+	"""
+	clientEvents(kind: ClientEventKind!, client: String!, days: Int! = 7, limit: Int! = 50): [ClientEvent!]!
+	"""
+	Admins: the activity log, newest first: one account's (`userId`), one kind of thing
+	(`category`), or all. Up to `limit` (500 at most) a page; pass a page's `next` as `after`
+	for the one after it.
+	"""
+	activity(userId: Int, category: ActivityCategory, after: String, limit: Int! = 100): ActivityPage!
+	"""
+	Admins: what was played over the last week, month or year: totals, plays per day, the
+	most played games, each account's and each system's time, and the most favourited games.
+	"""
+	playStatistics(range: StatsRange!): PlayStatistics!
+	"""
+	Admins: the games (or files) of one kind needing attention, one system's or all, by
+	system and title (at most `limit`, up to 1000).
+	"""
+	gamesNeedingAttention(kind: AttentionKind!, system: ID, limit: Int! = 200): [AttentionItem!]!
+	"""
+	Admins: how many games (or files) of each kind need attention, per system.
+	"""
+	attentionCounts: [AttentionCount!]!
+	"""
+	Admins: the backups kept, and how they are made.
+	"""
+	backups: Backups!
+	"""
+	Admins: the server's recent log, its own lines and its game sessions': the newest
+	`limit` (1000 at most) at `level` and above, of one `session`, holding `text`, after line
+	`after`. Follow it by asking again with the last `cursor`.
+	"""
+	logs(after: Float, level: LogLevel, session: String, text: String, limit: Int! = 300): LogPage!
 }
 
 enum Rendering {
@@ -1906,6 +2443,10 @@ type ServerResources {
 	read (outside a container, or on macOS).
 	"""
 	usageNote: String
+	"""
+	When this server process started (Unix seconds): its uptime.
+	"""
+	startedAt: Float!
 }
 
 """
@@ -2015,6 +2556,52 @@ type Shape {
 }
 
 """
+Which client holds a sign-in.
+"""
+enum SignInClient {
+	"""
+	The web client, in a browser.
+	"""
+	WEB
+	"""
+	The Android or iOS app (a phone, a tablet, a TV).
+	"""
+	APP
+	OTHER
+}
+
+"""
+A browser or app signed in as an account: it holds a refresh token, and can be signed out
+on its own (`endSignIn`).
+"""
+type SignInNode {
+	id: ID!
+	userId: Int
+	"""
+	The account's name; null if it has gone.
+	"""
+	username: String
+	client: SignInClient!
+	"""
+	When it signed in, as a Unix time in seconds.
+	"""
+	signedInAt: Float!
+	"""
+	When it last renewed its access: about when it was last in use (Unix seconds).
+	"""
+	lastUsedAt: Float!
+	"""
+	When it lapses unless used again (Unix seconds); null for none.
+	"""
+	expiresAt: Float
+	"""
+	What the app calls its device (`nameDevice`); null for a browser, or an app that has not
+	said.
+	"""
+	device: String
+}
+
+"""
 What a game start is doing.
 """
 enum StartPhase {
@@ -2060,6 +2647,15 @@ type StartStatus {
 	"""
 	phaseMs: Float!
 	error: String
+}
+
+"""
+The window the figures cover, ending now.
+"""
+enum StatsRange {
+	WEEK
+	MONTH
+	YEAR
 }
 
 type StorageArea {
@@ -2294,6 +2890,16 @@ type SystemDecoration {
 }
 
 """
+A system's plays in the window.
+"""
+type SystemPlays {
+	system: String!
+	sessions: Int!
+	seconds: Float!
+	players: Int!
+}
+
+"""
 OpenTelemetry export: whether it is on, where to, and how it has gone.
 """
 type TelemetryReport {
@@ -2340,6 +2946,41 @@ type User {
 	Whether the role is `ADMIN`.
 	"""
 	isAdmin: Boolean!
+	"""
+	The environment declares it (`SOVEMU_ADMIN_USERNAME`, `SOVEMU_USERS__<n>__…`) and sets
+	it again at every start: its role and password are changed there, and it is not removed
+	here.
+	"""
+	declared: Boolean!
+}
+
+"""
+One account, as the admin's user page shows it.
+"""
+type UserDetails {
+	user: User!
+	"""
+	When it was created (UTC, `YYYY-MM-DD HH:MM:SS`).
+	"""
+	joinedAt: String
+	"""
+	Every browser and app signed in as it, the most recently used first.
+	"""
+	signIns: [SignInNode!]!
+	"""
+	Different games it has started, and starts in all.
+	"""
+	gamesPlayed: Int!
+	starts: Int!
+	"""
+	Its latest game start (UTC, `YYYY-MM-DD HH:MM:SS`); null if none yet.
+	"""
+	lastPlayedAt: String
+	"""
+	Its battery saves and states on disk: bytes (a Float: it can pass 2 GiB) and files.
+	"""
+	saveBytes: Float!
+	saveFiles: Int!
 }
 
 type UserStorage {
