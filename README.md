@@ -68,6 +68,11 @@ checkout this is a submodule of, and the build tells you which operations no lon
   (`docs/CONTROLLERS.md` in SovEmu). In force is yours for the system, else yours for all
   systems, else the server's default (set by an admin), else the built-in one; "Reset to
   defaults" removes yours in that scope and goes back to the next.
+- **Starting a game:** the loading screen stays until the game's first picture arrives, not just
+  until the server's session is ready: a console's BIOS can boot for seconds first (a PS2 for
+  5-6 s), and continuing from a save waits for the core's first frame. It then says "Starting the
+  game…", and after 20 s without a picture adds that Back opens the menu (to quit). Controllers
+  already reach the game meanwhile.
 - **In-game menu:** Back, or Select+Start.
 - **Stats** (in-game menu, "Show stats"; remembered): latency and stream health in a top-left
   panel of two columns, as on the web client: estimated button→pixel, measured button→frame,

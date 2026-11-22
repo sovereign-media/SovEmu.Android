@@ -121,11 +121,21 @@ class Stream(
     val frameLatency = FrameLatency()
 
     /** Every decoded frame passes here on its way to [videoSink]: the measurement's frame side. */
+    private val _firstFrame = MutableStateFlow(false)
+
+    /**
+     * A video frame has reached the renderer: the game's picture is up. The server's session is
+     * ready long before that on a console whose BIOS boots for seconds, and the player keeps its
+     * loading screen until then.
+     */
+    val firstFrame: StateFlow<Boolean> = _firstFrame.asStateFlow()
+
     private val frameEntered: (Long, Long) -> Unit = { renderTimeMs, captureTimeNs ->
         frameLatency.frameEntered(renderTimeMs, captureTimeNs, now32())
     }
 
     private val measuringSink = VideoSink { frame ->
+        if (!_firstFrame.value) _firstFrame.value = true
         frameLatency.frameDelivered(frame.timestampNs, now32())
         videoSink.onFrame(frame)
     }
