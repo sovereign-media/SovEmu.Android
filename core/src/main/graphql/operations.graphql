@@ -247,8 +247,8 @@ mutation StartSession($gameId: Int!) {
   }
 }
 
-mutation SessionOffer($id: ID!, $sdp: String!) {
-  sessionOffer(id: $id, sdp: $sdp)
+mutation SessionOffer($id: ID!, $sdp: String!, $client: String) {
+  sessionOffer(id: $id, sdp: $sdp, client: $client)
 }
 
 mutation SetDisc($sessionId: ID!, $disc: Int!) {

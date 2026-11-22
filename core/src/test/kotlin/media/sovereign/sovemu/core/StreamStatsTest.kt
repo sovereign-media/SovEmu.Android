@@ -86,4 +86,59 @@ class StreamStatsTest {
         assertEquals("256×240 @ 60 fps", rows["Video"])
         assertEquals("4.3 ms", rows["Network RTT"])
     }
+
+    private val pipeline = Protocol.Pipeline(
+        renderer = null,
+        video = Protocol.PipelineVideo(codec = "h264", encoder = "vaapi", hardware = true, width = 640, height = 480, fps = 60.0),
+        audio = Protocol.PipelineAudio(codec = "opus", sourceHz = 32040.0, kbps = 128),
+    )
+
+    @Test
+    fun `without a pipeline there are no stream rows`() {
+        assertEquals(emptyList<Pair<String, String>>(), pipelineRows(null, VideoDecoder("libvpx", false)))
+    }
+
+    @Test
+    fun `the stream rows name the codec, encoder, renderer, audio and run-ahead`() {
+        assertEquals(
+            listOf(
+                "Stream" to "H.264 · VA-API (GPU)",
+                "Rendering" to "CPU",
+                "Audio" to "Opus 128 kbps · from 32,040 Hz",
+                "Run-ahead" to "Off",
+                "Decoder" to "MediaCodecVideoDecoder (hardware)",
+            ),
+            pipelineRows(pipeline, VideoDecoder("MediaCodecVideoDecoder", true)),
+        )
+    }
+
+    @Test
+    fun `fallbacks, software rendering and run-ahead frames`() {
+        val rows = pipelineRows(
+            Protocol.Pipeline(
+                renderer = "llvmpipe (LLVM 19.1.7, 256 bits)",
+                rendererSoftware = true,
+                video = Protocol.PipelineVideo(
+                    codec = "vp8",
+                    encoder = "libvpx",
+                    fallbacks = listOf(Protocol.Fallback("nvenc", "no device"), Protocol.Fallback("x264", "failed")),
+                ),
+                runAhead = 2,
+            ),
+            null,
+        ).toMap()
+        assertEquals("VP8 · libvpx (CPU)", rows["Stream"])
+        assertEquals("NVENC: no device; x264: failed", rows["Fell back from"])
+        assertEquals("Software · llvmpipe (LLVM 19.1.7, 256 bits)", rows["Rendering"])
+        assertEquals("2 frames", rows["Run-ahead"])
+        assertNull(rows["Decoder"])
+        assertEquals("GPU · AMD Radeon 780M", pipelineRows(Protocol.Pipeline(renderer = "AMD Radeon 780M"), null).toMap()["Rendering"])
+        assertEquals("1 frame", pipelineRows(Protocol.Pipeline(runAhead = 1), null).toMap()["Run-ahead"])
+    }
+
+    @Test
+    fun `the decoder says hardware or software only when the stats do`() {
+        assertEquals("libvpx (software)", VideoDecoder("libvpx", false).label)
+        assertEquals("ExternalDecoder", VideoDecoder("ExternalDecoder", null).label)
+    }
 }
