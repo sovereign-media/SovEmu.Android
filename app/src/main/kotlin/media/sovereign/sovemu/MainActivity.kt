@@ -176,7 +176,6 @@ class MainActivity : ComponentActivity() {
         var idleMinutes by remember { mutableIntStateOf(settings.screensaverMinutes) }
         var statsOn by remember { mutableStateOf(settings.stats) }
         var gameMode by remember { mutableStateOf(settings.gameMode) }
-        var lowLatencyDecode by remember { mutableStateOf(settings.lowLatencyDecode) }
         val nav = remember {
             Nav(
                 home = { stack.removeRange(1, stack.size) },
@@ -201,11 +200,6 @@ class MainActivity : ComponentActivity() {
                 toggleGameMode = {
                     gameMode = !gameMode
                     settings.gameMode = gameMode
-                },
-                lowLatencyDecode = { lowLatencyDecode },
-                toggleLowLatencyDecode = {
-                    lowLatencyDecode = !lowLatencyDecode
-                    settings.lowLatencyDecode = lowLatencyDecode
                 },
                 signOut = {
                     lifecycleScope.launch {
@@ -298,7 +292,6 @@ class MainActivity : ComponentActivity() {
                                 api, sessions, r.system, r.game, r.start, controller, touchControls,
                                 stats = statsOn,
                                 gameMode = gameMode,
-                                lowLatencyDecode = lowLatencyDecode,
                                 onStatsChange = {
                                     statsOn = it
                                     settings.stats = it
@@ -429,14 +422,6 @@ var Settings.scanlines: Boolean
 var Settings.gameMode: Boolean
     get() = prefs.getBoolean("game_mode", true)
     set(value) = prefs.edit().putBoolean("game_mode", value).apply()
-
-/**
- * Ask the hardware video decoder not to hold frames back (on by default), where it supports that;
- * a switch so the measured button→frame can be compared with it off. Read at each game's start.
- */
-var Settings.lowLatencyDecode: Boolean
-    get() = prefs.getBoolean("low_latency_decode", true)
-    set(value) = prefs.edit().putBoolean("low_latency_decode", value).apply()
 
 /** The stats overlay over a game (off by default). */
 var Settings.stats: Boolean

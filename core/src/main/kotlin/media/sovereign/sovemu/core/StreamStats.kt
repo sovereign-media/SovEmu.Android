@@ -104,10 +104,10 @@ data class StreamStats(
 
     /**
      * The worker's `client stats` message: these values, the client ([client], `android 0.1.0
-     * (Pixel 7, Android 14)`), whether TV game mode was asked for and whether low-latency
-     * decoding was (the setting, whatever the decoder made of it).
+     * (Pixel 7, Android 14)`), whether TV game mode was asked for, and once the hardware decoder
+     * is configured, its name and whether it decodes in low-latency mode ([decoder]).
      */
-    fun encode(client: String, gameMode: Boolean?, lowLatencyDecode: Boolean? = null): ByteArray = Protocol.encodeStats(
+    fun encode(client: String, gameMode: Boolean?, decoder: DecoderSetup? = null): ByteArray = Protocol.encodeStats(
         listOf(
             "client" to client,
             "estimate_ms" to estimateMs,
@@ -123,7 +123,8 @@ data class StreamStats(
             "kbps" to kbps,
             "packets_lost" to packetsLost,
             "game_mode" to gameMode,
-            "low_latency_decode" to lowLatencyDecode,
+            "decoder" to decoder?.codec,
+            "low_latency_decode" to decoder?.lowLatency,
         ),
     )
 
@@ -173,10 +174,15 @@ class StatsSampler {
 
 /**
  * The overlay's rows on how the stream is made, after [StreamStats.rows]: the worker's
- * [pipeline] (none from a server that predates it, so no rows) and this app's [decoder]. The
- * labels and formats are the web client's.
+ * [pipeline] (none from a server that predates it, so no rows) and this app's [decoder], with
+ * whether it decodes in low-latency mode once its [setup] is known. The labels and formats are
+ * the web client's.
  */
-fun pipelineRows(pipeline: Protocol.Pipeline?, decoder: VideoDecoder?): List<Pair<String, String>> {
+fun pipelineRows(
+    pipeline: Protocol.Pipeline?,
+    decoder: VideoDecoder?,
+    setup: DecoderSetup? = null,
+): List<Pair<String, String>> {
     pipeline ?: return emptyList()
     val video = pipeline.video
     return buildList {
@@ -201,7 +207,7 @@ fun pipelineRows(pipeline: Protocol.Pipeline?, decoder: VideoDecoder?): List<Pai
                 else -> "${pipeline.runAhead} frames"
             },
         )
-        decoder?.let { add("Decoder" to it.label) }
+        decoder?.let { add("Decoder" to (setup?.let { s -> "${it.label} · ${s.label}" } ?: it.label)) }
     }
 }
 
