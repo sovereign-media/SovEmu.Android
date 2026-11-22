@@ -18,6 +18,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import media.sovereign.sovemu.core.DecoderSetup
 import media.sovereign.sovemu.core.FrameLatency
 import media.sovereign.sovemu.core.IceServer
 import media.sovereign.sovemu.core.InputMixer
@@ -51,10 +52,10 @@ object WebRtc {
     private var factory: PeerConnectionFactory? = null
 
     /**
-     * Ask the hardware video decoder for low latency (the "Low-latency decoding" setting). The
-     * factory is process-wide, so each [Stream] sets this before its decoder is made.
+     * Hears how the hardware decoder was configured. The factory is process-wide and one stream
+     * plays at a time, so each [Stream] points this at itself while it is open.
      */
-    @Volatile var lowLatencyDecode = true
+    @Volatile var onDecoder: ((DecoderSetup) -> Unit)? = null
 
     fun factory(context: Context): PeerConnectionFactory = factory ?: run {
         PeerConnectionFactory.initialize(
@@ -62,13 +63,10 @@ object WebRtc {
         )
         PeerConnectionFactory.builder()
             .setVideoDecoderFactory(
-                LowLatencyVideoDecoderFactory(egl.eglBaseContext, { lowLatencyDecode }) { setup ->
-                    // Once per stream, beside the stats lines: which decoder, and what it was asked.
-                    Log.i(
-                        STATS_TAG,
-                        "decoder=${setup.codec} mime=${setup.mime} low_latency_requested=${setup.requested} " +
-                            "low_latency_supported=${setup.keys.isNotEmpty()} low_latency_keys=${setup.keys.joinToString(",").ifEmpty { "none" }}",
-                    )
+                LowLatencyVideoDecoderFactory(egl.eglBaseContext) { setup ->
+                    // Once per stream, beside the stats lines: which decoder, and in which mode.
+                    Log.i(STATS_TAG, setup.logfmt())
+                    onDecoder?.invoke(setup)
                 },
             )
             .createPeerConnectionFactory()
@@ -92,8 +90,6 @@ class Stream(
     iceServers: List<IceServer>,
     private val controller: Controller,
     private val videoSink: VideoSink,
-    /** Ask the hardware decoder for low latency ([WebRtc.lowLatencyDecode]). */
-    lowLatencyDecode: Boolean,
     private val onState: (PeerConnection.PeerConnectionState) -> Unit,
 ) {
     private val scope = CoroutineScope(Dispatchers.Default)
@@ -103,6 +99,16 @@ class Stream(
 
     /** Recent input round trips in ms (input → applied on a frame → ack). */
     val inputRtts = ConcurrentLinkedDeque<Long>()
+
+    private val _decoder = MutableStateFlow<DecoderSetup?>(null)
+
+    /**
+     * How the hardware video decoder was configured (its name, low latency or not), once it has
+     * been; stays null when the stream decodes in software from the start.
+     */
+    val decoder: StateFlow<DecoderSetup?> = _decoder.asStateFlow()
+
+    private val decoderListener: (DecoderSetup) -> Unit = { _decoder.value = it }
 
     /** Button to frame, measured: acks against the frames that follow them. */
     val frameLatency = FrameLatency()
@@ -144,7 +150,7 @@ class Stream(
         override fun onRenegotiationNeeded() {}
     }
 
-    private val pc: PeerConnection = WebRtc.also { it.lowLatencyDecode = lowLatencyDecode }.factory(context).createPeerConnection(
+    private val pc: PeerConnection = WebRtc.factory(context).createPeerConnection(
         PeerConnection.RTCConfiguration(iceServers.map(::toIceServer)).apply {
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
         },
@@ -154,6 +160,7 @@ class Stream(
     private val channel: DataChannel
 
     init {
+        WebRtc.onDecoder = decoderListener
         val recvOnly = RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.RECV_ONLY)
         pc.addTransceiver(MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO, recvOnly)
         pc.addTransceiver(MediaStreamTrack.MediaType.MEDIA_TYPE_AUDIO, recvOnly)
@@ -318,6 +325,7 @@ class Stream(
      */
     fun close() {
         if (!closed.compareAndSet(false, true)) return
+        if (WebRtc.onDecoder === decoderListener) WebRtc.onDecoder = null
         // The pump sends on the channel from another thread: it must have stopped before the
         // channel goes (sending on a disposed one crashes in native code). One loop is ~4 ms.
         runBlocking { pump?.cancelAndJoin() }

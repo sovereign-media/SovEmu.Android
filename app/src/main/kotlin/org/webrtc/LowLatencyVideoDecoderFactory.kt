@@ -12,22 +12,18 @@ import android.os.Build
 import android.os.Bundle
 import android.view.Surface
 import media.sovereign.sovemu.core.DecoderLatency
+import media.sovereign.sovemu.core.DecoderSetup
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
-
-/** How a hardware decoder was configured: its [codec] name, [mime] type, and the low-latency [keys] set. */
-data class DecoderSetup(val codec: String, val mime: String, val requested: Boolean, val keys: List<String>)
 
 /**
  * [DefaultVideoDecoderFactory]'s choice of decoders (software with the hardware one preferred,
  * falling back to software if it fails), except that the hardware decoder's MediaFormat gets
- * the low-latency keys the decoder supports ([DecoderLatency]) while [lowLatency] is on. Read
- * when a decoder is configured, so a change applies from the next stream. [onConfigured] hears
- * once per decoder how it went.
+ * the low-latency keys the decoder supports ([DecoderLatency]), whenever it supports one.
+ * [onConfigured] hears once per decoder how it went (on WebRTC's decoder thread).
  */
 class LowLatencyVideoDecoderFactory(
     private val egl: EglBase.Context?,
-    private val lowLatency: () -> Boolean,
     private val onConfigured: (DecoderSetup) -> Unit,
 ) : VideoDecoderFactory {
     private val defaults = DefaultVideoDecoderFactory(egl)
@@ -72,15 +68,14 @@ class LowLatencyVideoDecoderFactory(
         private val reported = AtomicBoolean(false)
 
         override fun createByCodecName(name: String): MediaCodecWrapper = Codec(MediaCodec.createByCodecName(name)) { codec, format ->
-            val requested = lowLatency()
-            val vendor = if (requested && !featureLowLatency && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val vendor = if (!featureLowLatency && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 codec.supportedVendorParameters
             } else {
                 emptyList()
             }
-            val keys = DecoderLatency.keys(requested, featureLowLatency, vendor)
+            val keys = DecoderLatency.keys(featureLowLatency, vendor)
             for (key in keys) format.setInteger(key, 1)
-            if (reported.compareAndSet(false, true)) onConfigured(DecoderSetup(name, mime, requested, keys))
+            if (reported.compareAndSet(false, true)) onConfigured(DecoderSetup(name, mime, keys))
         }
     }
 }

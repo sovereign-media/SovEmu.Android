@@ -21,13 +21,37 @@ object DecoderLatency {
     )
 
     /**
-     * The keys to set to 1, empty when [requested] is off or the decoder supports none.
+     * The keys to set to 1, empty when the decoder supports none.
      * [vendorParameters]: what the decoder lists, with or without the `vendor.` prefix.
      */
-    fun keys(requested: Boolean, featureLowLatency: Boolean, vendorParameters: Collection<String>): List<String> {
-        if (!requested) return emptyList()
+    fun keys(featureLowLatency: Boolean, vendorParameters: Collection<String>): List<String> {
         if (featureLowLatency) return listOf(KEY_LOW_LATENCY)
         val listed = vendorParameters.mapTo(HashSet()) { it.removePrefix("vendor.") }
         return VENDOR_KEYS.filter { it.removePrefix("vendor.") in listed }
     }
+}
+
+/**
+ * How this stream's hardware video decoder was configured: its MediaCodec name ([codec],
+ * `c2.amlogic.avc.decoder`), its [mime] type and the low-latency [keys] set on it.
+ */
+data class DecoderSetup(val codec: String, val mime: String, val keys: List<String>) {
+    /** Low latency was applied. Keys are set whenever the decoder supports one, so also: supported. */
+    val lowLatency: Boolean get() = keys.isNotEmpty()
+
+    /** The key(s) in words: `KEY_LOW_LATENCY` for the standard one, else the vendor names. */
+    val keyName: String?
+        get() = when {
+            keys.isEmpty() -> null
+            keys == listOf(DecoderLatency.KEY_LOW_LATENCY) -> "KEY_LOW_LATENCY"
+            else -> keys.joinToString(",")
+        }
+
+    /** The Decoder row's suffix. */
+    val label: String get() = if (lowLatency) "low latency: on" else "low latency: not supported"
+
+    /** The one logcat line per stream (logfmt, beside the stats lines). */
+    fun logfmt(): String =
+        "decoder=$codec mime=$mime low_latency_supported=$lowLatency low_latency_applied=$lowLatency " +
+            "low_latency_key=${keyName ?: "none"}"
 }

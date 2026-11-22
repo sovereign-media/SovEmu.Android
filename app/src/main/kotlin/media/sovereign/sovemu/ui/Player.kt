@@ -141,8 +141,6 @@ fun PlayerScreen(
     onStatsChange: (Boolean) -> Unit,
     /** Ask the TV for its game picture mode while playing (a setting). */
     gameMode: Boolean,
-    /** Ask the hardware video decoder for low latency (a setting; read when the stream starts). */
-    lowLatencyDecode: Boolean,
     onEnded: () -> Unit,
     onExit: () -> Unit,
     /** Paused (the in-game menu or the controllers screen is open): the screensaver may start. */
@@ -204,7 +202,7 @@ fun PlayerScreen(
             // WebRTC's factory and peer connection are slow to build: not on the main thread.
             // Built whatever happens, so it is closed whatever happens.
             val s = withContext(NonCancellable + Dispatchers.Default) {
-                Stream(context, api, session.id, ClientEvents.clientName(context), ice.await(), controller, renderer, lowLatencyDecode) { state ->
+                Stream(context, api, session.id, ClientEvents.clientName(context), ice.await(), controller, renderer) { state ->
                     if (state == PeerConnection.PeerConnectionState.FAILED) status = "Connection failed"
                     when (state) {
                         PeerConnection.PeerConnectionState.CONNECTED -> everConnected = true
@@ -263,10 +261,11 @@ fun PlayerScreen(
             val reading = s.readStats() ?: break
             val sample = sampler.sample(reading, s.inputRtts.toList(), s.frameLatency.medianMs())
             // How the worker makes the stream follows, once it has said (old servers never do).
-            readout = sample.rows() + pipelineRows(s.pipeline.value, sample.decoder)
+            val setup = s.decoder.value
+            readout = sample.rows() + pipelineRows(s.pipeline.value, sample.decoder, setup)
             latencyHistory.add(sample.inputToFrameMs?.toDouble(), sample.estimateMs)
             latencySamples++
-            s.sendStats(sample.encode(client, currentGameMode, lowLatencyDecode))
+            s.sendStats(sample.encode(client, currentGameMode, setup))
             Log.i(STATS_TAG, sample.logfmt())
         }
     }

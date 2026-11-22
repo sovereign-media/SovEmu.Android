@@ -74,9 +74,6 @@ class Nav(
     /** Whether games ask the TV for its game picture mode, and the switch. */
     val gameMode: () -> Boolean,
     val toggleGameMode: () -> Unit,
-    /** Whether games ask the video decoder for low latency, and the switch. */
-    val lowLatencyDecode: () -> Boolean,
-    val toggleLowLatencyDecode: () -> Unit,
     val signOut: () -> Unit,
 )
 
@@ -284,12 +281,6 @@ private fun AccountMenu(user: User, nav: Nav, anchor: @Composable (show: () -> U
                 leading = { LucideIcon(Lucide.Gamepad2, tint = Sov.Slate300, size = 16.dp) },
                 detail = GAME_MODE_DETAIL,
             )
-            MenuRow(
-                if (nav.lowLatencyDecode()) "Low-latency decoding: on" else "Low-latency decoding: off",
-                onClick = nav.toggleLowLatencyDecode,
-                leading = { LucideIcon(Lucide.Microchip, tint = Sov.Slate300, size = 16.dp) },
-                detail = LOW_LATENCY_DECODE_DETAIL,
-            )
             MenuRow("Sign out", onClick = { expanded = false; nav.signOut() }, leading = { LucideIcon(Lucide.LogOut, tint = Sov.Slate300, size = 16.dp) })
         }
     }
@@ -317,9 +308,6 @@ private fun Menu(expanded: Boolean, onDismiss: () -> Unit, heading: String, cont
 
 /** What the TV game mode setting trades, shown under it. */
 internal const val GAME_MODE_DETAIL = "Less input lag. Some TVs blink entering and leaving a game."
-
-/** What the low-latency decoding setting does, shown under it. */
-internal const val LOW_LATENCY_DECODE_DETAIL = "Frames shown as soon as decoded, where the TV supports it. From the next game."
 
 /** A menu row; a [detail] goes on a second, smaller line (a setting's trade-off). */
 @Composable

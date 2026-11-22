@@ -153,16 +153,37 @@ class StreamStatsTest {
     }
 
     @Test
-    fun `the stats message carries the measurement and the decoder setting only when known`() {
-        fun json(stats: StreamStats, lowLatency: Boolean?) = String(stats.encode("app", true, lowLatency).let { it.copyOfRange(2, it.size) })
+    fun `the stats message carries the measurement and the decoder only when known`() {
+        fun json(stats: StreamStats, decoder: DecoderSetup?) = String(stats.encode("app", true, decoder).let { it.copyOfRange(2, it.size) })
         val unknown = StatsSampler().sample(reading(0), emptyList())
         assertEquals(false, json(unknown, null).contains("input_to_frame_ms"))
+        assertEquals(false, json(unknown, null).contains("decoder"))
         assertEquals(false, json(unknown, null).contains("low_latency_decode"))
         val known = StatsSampler().sample(reading(0), emptyList(), inputToFrameMs = 41)
         assertEquals(
             """{"client":"app","input_to_frame_ms":41,"net_rtt_ms":4.3,"width":256,"height":240,""" +
-                """"fps":60,"packets_lost":3,"game_mode":true,"low_latency_decode":false}""",
-            json(known, false),
+                """"fps":60,"packets_lost":3,"game_mode":true,"decoder":"c2.amlogic.avc.decoder",""" +
+                """"low_latency_decode":false}""",
+            json(known, DecoderSetup("c2.amlogic.avc.decoder", "video/avc", emptyList())),
+        )
+        assertEquals(
+            true,
+            json(known, DecoderSetup("c2.qti.avc.decoder", "video/avc", listOf("low-latency"))).contains(""""low_latency_decode":true"""),
+        )
+    }
+
+    @Test
+    fun `the decoder row says whether it decodes in low-latency mode once known`() {
+        val hardware = VideoDecoder("MediaCodecVideoDecoder", true)
+        fun decoderRow(setup: DecoderSetup?) = pipelineRows(pipeline, hardware, setup).toMap()["Decoder"]
+        assertEquals("MediaCodecVideoDecoder (hardware)", decoderRow(null))
+        assertEquals(
+            "MediaCodecVideoDecoder (hardware) · low latency: on",
+            decoderRow(DecoderSetup("c2.qti.avc.decoder", "video/avc", listOf("low-latency"))),
+        )
+        assertEquals(
+            "MediaCodecVideoDecoder (hardware) · low latency: not supported",
+            decoderRow(DecoderSetup("c2.amlogic.avc.decoder", "video/avc", emptyList())),
         )
     }
 }

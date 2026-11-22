@@ -81,6 +81,9 @@ class Settings(context: Context) : TokenStore {
         // Before OAuth the app signed in with a session cookie, which the server no longer
         // accepts: dropping it shows the sign-in screen once after the upgrade.
         if (prefs.contains("cookie")) prefs.edit().remove("cookie").apply()
+        // The "Low-latency decoding" switch is gone: the decoder gets low latency wherever it
+        // supports it.
+        if (prefs.contains("low_latency_decode")) prefs.edit().remove("low_latency_decode").apply()
     }
 
     var serverUrl: String
