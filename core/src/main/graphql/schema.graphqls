@@ -252,6 +252,41 @@ type Collection {
 }
 
 """
+How much of its CPU and memory the container (server and game sessions) is using.
+"""
+type ContainerUsage {
+	"""
+	When it was read (Unix seconds).
+	"""
+	sampledAt: Float!
+	"""
+	Over the last interval, a share (0–100) of `allowedCores`; null on the first reading.
+	"""
+	cpuPercent: Float
+	"""
+	The cores the container may use: its quota, or the host's count.
+	"""
+	allowedCores: Float!
+	"""
+	Whether a CPU quota is set (else `allowedCores` is the host's count).
+	"""
+	cpuLimited: Boolean!
+	"""
+	In use, less page cache it can drop.
+	"""
+	memoryUsedBytes: Float!
+	"""
+	The container's limit, or the host's memory when it has none.
+	"""
+	memoryLimitBytes: Float!
+	memoryLimited: Boolean!
+	"""
+	`memoryUsedBytes` as a share (0–100) of `memoryLimitBytes`.
+	"""
+	memoryPercent: Float
+}
+
+"""
 The default controller mappings (admins).
 """
 type ControllerDefaults {
@@ -548,6 +583,45 @@ type Home {
 	This user's favourites, by title.
 	"""
 	favourites: [Game!]!
+}
+
+"""
+What the server's host is. Read once at startup; anything unreadable is null.
+"""
+type HostFacts {
+	"""
+	`AMD Ryzen 7 5800U with Radeon Graphics`.
+	"""
+	cpuModel: String
+	"""
+	`x86_64`, `aarch64`.
+	"""
+	arch: String!
+	"""
+	Logical CPUs on the host.
+	"""
+	hostCpus: Int
+	"""
+	Logical CPUs the server may run on (its affinity; a quota is in `usage.allowedCores`).
+	"""
+	usableCpus: Int!
+	"""
+	The CPU's highest clock, MHz.
+	"""
+	maxMhz: Int
+	"""
+	Instruction sets some cores need or run better with: `sse4_1`, `sse4_2`, `avx`, `avx2`,
+	`avx512f` (x86 only).
+	"""
+	features: [String!]!
+	"""
+	The host's memory, bytes.
+	"""
+	memoryBytes: Float
+	"""
+	The kernel's release.
+	"""
+	kernel: String
 }
 
 """
@@ -1072,6 +1146,15 @@ type Query {
 	"""
 	jobRuns(job: JobName, limit: Int! = 50): [JobRun!]!
 	"""
+	Admins: the server's host and how much of its CPU and memory is in use.
+	"""
+	serverResources: ServerResources!
+	"""
+	Admins: the container's CPU and memory over a window: the last hour from the readings
+	in memory, longer windows from a row per minute.
+	"""
+	resourceHistory(range: ResourceRange!): ResourceHistory!
+	"""
 	Admins: a system's emulator settings.
 	"""
 	emulatorSettings(system: ID!): EmulatorSettings!
@@ -1098,6 +1181,66 @@ enum Rendering {
 	GPU
 	SOFTWARE
 	OFF
+}
+
+"""
+A window of CPU and memory history, about 200 buckets per series.
+"""
+type ResourceHistory {
+	"""
+	Unix seconds.
+	"""
+	from: Float!
+	to: Float!
+	"""
+	A bucket's width: a gap wider than this between two points had no readings.
+	"""
+	bucketSeconds: Int!
+	series: [ResourceSeries!]!
+}
+
+"""
+What a series measures.
+"""
+enum ResourceKind {
+	"""
+	A share of the allowed cores.
+	"""
+	CPU
+	"""
+	A share of the memory limit.
+	"""
+	MEMORY
+}
+
+"""
+One bucket of a series, as shares (0–100).
+"""
+type ResourcePoint {
+	"""
+	The bucket's start (Unix seconds).
+	"""
+	at: Float!
+	average: Float!
+	max: Float!
+}
+
+"""
+A chart's window.
+"""
+enum ResourceRange {
+	HOUR
+	DAY
+	WEEK
+	MONTH
+}
+
+type ResourceSeries {
+	resource: ResourceKind!
+	"""
+	Oldest first. A bucket with no readings (the server was down) is absent.
+	"""
+	points: [ResourcePoint!]!
 }
 
 """
@@ -1158,6 +1301,26 @@ type ScanReport {
 	found: Int!
 	added: Int!
 	removed: Int!
+}
+
+"""
+The admin Resources page: the host, and the container's latest use.
+"""
+type ServerResources {
+	host: HostFacts!
+	"""
+	Seconds between readings (`SOVEMU_RESOURCE_SAMPLE_SECONDS`; 0: not read).
+	"""
+	sampleSeconds: Int!
+	"""
+	The latest reading; null if there is none (see `usageNote`).
+	"""
+	usage: ContainerUsage
+	"""
+	Why there is no reading: sampling is off, it has not run yet, or there is no cgroup to
+	read (outside a container, or on macOS).
+	"""
+	usageNote: String
 }
 
 """
