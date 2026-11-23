@@ -11,6 +11,7 @@ import android.media.MediaFormat
 import android.os.Build
 import android.os.Bundle
 import android.view.Surface
+import media.sovereign.sovemu.core.DecoderChoice
 import media.sovereign.sovemu.core.DecoderLatency
 import media.sovereign.sovemu.core.DecoderSetup
 import java.nio.ByteBuffer
@@ -38,6 +39,57 @@ class LowLatencyVideoDecoderFactory(
     private val platformSoftware = PlatformSoftwareVideoDecoderFactory(egl)
 
     override fun getSupportedCodecs(): Array<VideoCodecInfo> = defaults.supportedCodecs
+
+    /**
+     * The decoder [createDecoder] would give each supported codec, for the capabilities this
+     * app reports to the server: the hardware one where there is one (it is tried first), else
+     * the software one. Nothing is opened but, on a hardware decoder without the standard
+     * low-latency feature, the codec itself for a moment, to read which vendor keys it knows.
+     */
+    fun describe(): List<DecoderChoice> = supportedCodecs.distinctBy { it.name }.mapNotNull { info ->
+        runCatching { describe(info) }.getOrNull()
+    }
+
+    private fun describe(info: VideoCodecInfo): DecoderChoice? {
+        val hw = hardware.createDecoder(info)
+        if (hw is AndroidVideoDecoder) {
+            val name = hw.implementationName
+            val mime = VideoCodecMimeType.valueOf(info.name).mimeType()
+            val codec = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.firstOrNull { it.name == name && !it.isEncoder }
+            val feature = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                codec?.let { capabilities(it, mime) }?.isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_LowLatency) == true
+            val lowLatency = DecoderLatency.keys(feature, if (feature) emptyList() else vendorParameters(name)).isNotEmpty()
+            return DecoderChoice(info.name, hardware = codec?.let(::hardwareAccelerated) ?: true, lowLatency = lowLatency, name = name)
+        }
+        if (hw != null) return DecoderChoice(info.name, hardware = true, lowLatency = false, name = hw.javaClass.simpleName)
+        val sw = software.createDecoder(info) ?: platformSoftware.createDecoder(info) ?: return null
+        // WebRTC's own decoders (libvpx, dav1d) run in native code and return each frame as it
+        // is decoded; a platform software codec says nothing about holding frames.
+        val native = sw is WrappedNativeVideoDecoder
+        val name = if (native) sw.javaClass.simpleName else runCatching { sw.implementationName }.getOrNull()
+        return DecoderChoice(info.name, hardware = false, lowLatency = native, name = name)
+    }
+
+    /** Whether the platform calls [codec] hardware; before Android 10, whether it is not one of Google's software ones. */
+    private fun hardwareAccelerated(codec: MediaCodecInfo): Boolean =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            codec.isHardwareAccelerated
+        } else {
+            !codec.name.startsWith("OMX.google.") && !codec.name.startsWith("c2.android.")
+        }
+
+    /** The vendor parameters the decoder [name] lists (Android 12+), opening it only to ask. */
+    private fun vendorParameters(name: String): List<String> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return emptyList()
+        return runCatching {
+            val codec = MediaCodec.createByCodecName(name)
+            try {
+                codec.supportedVendorParameters
+            } finally {
+                codec.release()
+            }
+        }.getOrDefault(emptyList())
+    }
 
     override fun createDecoder(info: VideoCodecInfo): VideoDecoder? {
         // As DefaultVideoDecoderFactory.createDecoder.

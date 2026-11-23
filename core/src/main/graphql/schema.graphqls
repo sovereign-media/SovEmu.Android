@@ -555,6 +555,14 @@ type BuildInfoNode {
 	The libretro stable release its cores come from.
 	"""
 	libretroRelease: String!
+	"""
+	SovEmu's licence (SPDX: `AGPL-3.0-or-later`).
+	"""
+	licence: String!
+	"""
+	Where SovEmu's source is. A modified server must point this at its own.
+	"""
+	source: String!
 }
 
 """
@@ -579,6 +587,40 @@ type Cheat {
 	description: String!
 	code: String!
 	enabled: Boolean!
+}
+
+"""
+Everything a client declares about what it can play: one complete document, sent whole with
+every `sessionOffer`. The server never reads a missing fact as permission.
+"""
+type ClientCapabilities {
+	"""
+	The document's shape: 1. A document of any other version is refused (`BAD_REQUEST`,
+	with a message asking the player to update the app).
+	"""
+	version: Int!
+	"""
+	Every video codec the client can decode, one row each: the decoder it would use.
+	"""
+	videoDecoders: [VideoDecoder!]!
+	display: Display!
+}
+
+"""
+Everything a client declares about what it can play: one complete document, sent whole with
+every `sessionOffer`. The server never reads a missing fact as permission.
+"""
+input ClientCapabilitiesInput {
+	"""
+	The document's shape: 1. A document of any other version is refused (`BAD_REQUEST`,
+	with a message asking the player to update the app).
+	"""
+	version: Int!
+	"""
+	Every video codec the client can decode, one row each: the decoder it would use.
+	"""
+	videoDecoders: [VideoDecoderInput!]!
+	display: DisplayInput!
 }
 
 type ClientConfig {
@@ -972,6 +1014,36 @@ type DecorationsReport {
 	"""
 	folders: [String!]!
 	systems: [SystemDecoration!]!
+}
+
+"""
+The screen a client shows games on.
+"""
+type Display {
+	"""
+	In physical pixels.
+	"""
+	width: Int!
+	height: Int!
+	"""
+	Pictures a second.
+	"""
+	refreshHz: Float!
+}
+
+"""
+The screen a client shows games on.
+"""
+input DisplayInput {
+	"""
+	In physical pixels.
+	"""
+	width: Int!
+	height: Int!
+	"""
+	Pictures a second.
+	"""
+	refreshHz: Float!
 }
 
 """
@@ -1720,9 +1792,12 @@ type Mutation {
 	"""
 	Answers a client's WebRTC offer (SDP) for a session with the worker's answer (SDP).
 	`client` names the app and device (`web`, `android 1.4.0 (Mi TV)`), as its stats do,
-	for the admin's sessions page.
+	for the admin's sessions page. `capabilities` is what the client can decode and show:
+	the whole document, every time. It is kept against the sign-in's device; `BAD_REQUEST`
+	for one of another version (the message asks the player to update the app) or one that
+	does not hold together.
 	"""
-	sessionOffer(id: ID!, sdp: String!, client: String): String!
+	sessionOffer(id: ID!, sdp: String!, client: String, capabilities: ClientCapabilitiesInput): String!
 	"""
 	Presses the console's reset button.
 	"""
@@ -1911,6 +1986,28 @@ input NewUserInput {
 	username: String!
 	password: String!
 	role: Role! = VIEWER
+}
+
+"""
+One licence text, and the packages it covers.
+"""
+type Notice {
+	"""
+	SPDX (`MIT`).
+	"""
+	id: String!
+	name: String!
+	packages: [NoticePackage!]!
+	text: String!
+}
+
+"""
+A package SovEmu ships.
+"""
+type NoticePackage {
+	name: String!
+	version: String!
+	repository: String
 }
 
 """
@@ -2124,7 +2221,7 @@ type Query {
 	"""
 	sharedCollections: [Collection!]!
 	"""
-	Every system SovEmu offers (hidden ones left out), in SovEmu's order.
+	The systems with games (hidden ones and those with none left out), in SovEmu's order.
 	"""
 	systems: [System!]!
 	system(id: ID!): System
@@ -2168,6 +2265,11 @@ type Query {
 	licences and terms.
 	"""
 	attributions: Attributions!
+	"""
+	Admins: every open-source package the server and the web client ship, with its licence
+	text, grouped by licence.
+	"""
+	thirdPartyNotices: ThirdPartyNotices!
 	"""
 	Admins: OpenTelemetry export: whether it is on, where to, and how each signal's last
 	export went.
@@ -2599,6 +2701,11 @@ type SignInNode {
 	said.
 	"""
 	device: String
+	"""
+	What its device says it can decode and show, from its latest `sessionOffer`; null until
+	it has started a stream with one, or if what is kept is of another version.
+	"""
+	capabilities: ClientCapabilities
 }
 
 """
@@ -2936,6 +3043,20 @@ type TelemetryReport {
 }
 
 """
+The open-source packages SovEmu ships, with their licences.
+"""
+type ThirdPartyNotices {
+	"""
+	The server's and the workers' Rust crates (cargo-about, at the image's build).
+	"""
+	server: [Notice!]!
+	"""
+	The web client's npm packages (its build); empty for a development build.
+	"""
+	web: [Notice!]!
+}
+
+"""
 An account.
 """
 type User {
@@ -2991,6 +3112,58 @@ type UserStorage {
 	username: String
 	bytes: Float!
 	files: Float!
+}
+
+"""
+A video codec a client may decode. The worker encodes VP8 and H.264 today; the rest are
+named so a client's document need not change when their encoders arrive.
+"""
+enum VideoCodec {
+	VP8
+	H264
+	VP9
+	AV1
+	H265
+}
+
+"""
+How a client decodes one codec: the decoder it would use for a game's stream.
+"""
+type VideoDecoder {
+	codec: VideoCodec!
+	"""
+	The device's hardware decodes it; false for a decoder that runs on the CPU.
+	"""
+	hardware: Boolean!
+	"""
+	The decoder hands over each frame as soon as it is decoded, holding none back.
+	"""
+	lowLatency: Boolean!
+	"""
+	The decoder's own name (`c2.amlogic.avc.decoder`, `libvpx`), for logs and the admin's
+	view: nothing is decided from it. Kept to 80 characters.
+	"""
+	name: String
+}
+
+"""
+How a client decodes one codec: the decoder it would use for a game's stream.
+"""
+input VideoDecoderInput {
+	codec: VideoCodec!
+	"""
+	The device's hardware decodes it; false for a decoder that runs on the CPU.
+	"""
+	hardware: Boolean!
+	"""
+	The decoder hands over each frame as soon as it is decoded, holding none back.
+	"""
+	lowLatency: Boolean!
+	"""
+	The decoder's own name (`c2.amlogic.avc.decoder`, `libvpx`), for logs and the admin's
+	view: nothing is decided from it. Kept to 80 characters.
+	"""
+	name: String
 }
 
 type Viewer {

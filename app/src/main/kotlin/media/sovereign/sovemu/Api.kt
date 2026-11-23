@@ -66,6 +66,7 @@ import media.sovereign.sovemu.core.graphql.StopSessionMutation
 import media.sovereign.sovemu.core.graphql.SystemGamesQuery
 import media.sovereign.sovemu.core.graphql.SystemsQuery
 import media.sovereign.sovemu.core.graphql.ViewerQuery
+import media.sovereign.sovemu.core.graphql.type.ClientCapabilitiesInput
 import media.sovereign.sovemu.core.iceServers
 import media.sovereign.sovemu.core.orThrow
 import media.sovereign.sovemu.core.toControls
@@ -278,9 +279,12 @@ class SovEmuApi(
         mutate(StartSessionMutation(gameId, Optional.present(startId))).startSession.sessionFields
     /** How far the start [startId] has got. */
     suspend fun startProgress(startId: String): StartStatus = query(StartProgressQuery(startId)).startProgress.toStartStatus()
-    /** Sends the complete offer SDP, naming this app ([client]); returns the answer SDP. */
-    suspend fun offer(sessionId: String, sdp: String, client: String): String =
-        mutate(SessionOfferMutation(sessionId, sdp, Optional.present(client))).sessionOffer
+    /**
+     * Sends the complete offer SDP, naming this app ([client]) and saying what this device can
+     * decode and show ([capabilities], the whole document every time); returns the answer SDP.
+     */
+    suspend fun offer(sessionId: String, sdp: String, client: String, capabilities: ClientCapabilitiesInput): String =
+        mutate(SessionOfferMutation(sessionId, sdp, Optional.present(client), Optional.present(capabilities))).sessionOffer
     suspend fun stopSession(sessionId: String) {
         mutate(StopSessionMutation(sessionId))
     }

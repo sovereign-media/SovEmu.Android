@@ -1,7 +1,9 @@
 package media.sovereign.sovemu
 
 import android.content.Context
+import android.hardware.display.DisplayManager
 import android.util.Log
+import android.view.Display
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -14,17 +16,21 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.cancel
 import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import media.sovereign.sovemu.core.Capabilities
 import media.sovereign.sovemu.core.DecoderSetup
 import media.sovereign.sovemu.core.FrameLatency
 import media.sovereign.sovemu.core.IceServer
 import media.sovereign.sovemu.core.InputMixer
 import media.sovereign.sovemu.core.Protocol
+import media.sovereign.sovemu.core.ScreenMode
 import media.sovereign.sovemu.core.StatsReading
 import media.sovereign.sovemu.core.VideoDecoder
+import media.sovereign.sovemu.core.graphql.type.ClientCapabilitiesInput
 import org.webrtc.DataChannel
 import org.webrtc.EglBase
 import org.webrtc.IceCandidate
@@ -65,19 +71,37 @@ object WebRtc {
             PeerConnectionFactory.InitializationOptions.builder(context.applicationContext).createInitializationOptions(),
         )
         PeerConnectionFactory.builder()
-            .setVideoDecoderFactory(
-                LowLatencyVideoDecoderFactory(
-                    egl.eglBaseContext,
-                    onConfigured = { setup ->
-                        // Once per stream, beside the stats lines: which decoder, and in which mode.
-                        Log.i(STATS_TAG, setup.logfmt())
-                        onDecoder?.invoke(setup)
-                    },
-                    onFrameEntered = { renderTimeMs, captureTimeNs -> onFrameEntered?.invoke(renderTimeMs, captureTimeNs) },
-                ),
-            )
+            .setVideoDecoderFactory(decoders)
             .createPeerConnectionFactory()
             .also { factory = it }
+    }
+
+    private val decoders by lazy {
+        LowLatencyVideoDecoderFactory(
+            egl.eglBaseContext,
+            onConfigured = { setup ->
+                // Once per stream, beside the stats lines: which decoder, and in which mode.
+                Log.i(STATS_TAG, setup.logfmt())
+                onDecoder?.invoke(setup)
+            },
+            onFrameEntered = { renderTimeMs, captureTimeNs -> onFrameEntered?.invoke(renderTimeMs, captureTimeNs) },
+        )
+    }
+
+    /** The decoder each codec would get, asked of the device once (it does not change while the app runs). */
+    private val decoderChoices by lazy { decoders.describe() }
+
+    /**
+     * What this device can decode and show, for the server (`sessionOffer`): the decoders
+     * WebRTC would use here, and the screen as it is now (its mode can change between games).
+     * Call it after [factory], off the main thread: the first call asks the device's codecs.
+     */
+    fun capabilities(context: Context): ClientCapabilitiesInput {
+        val mode = context.getSystemService(DisplayManager::class.java).getDisplay(Display.DEFAULT_DISPLAY).mode
+        val screen = ScreenMode(mode.physicalWidth, mode.physicalHeight, mode.refreshRate.toDouble())
+        return Capabilities.document(decoderChoices, screen).also {
+            Log.i(STATS_TAG, "capabilities decoders=\"${Capabilities.summary(it)}\" display=${screen.width}x${screen.height}@${screen.refreshHz}")
+        }
     }
 
     private const val STATS_TAG = "SovEmu.Stats"
@@ -100,6 +124,7 @@ class Stream(
     private val onState: (PeerConnection.PeerConnectionState) -> Unit,
 ) {
     private val scope = CoroutineScope(Dispatchers.Default)
+    private val appContext = context.applicationContext
     private val iceGathered = CompletableDeferred<Unit>()
     private var pump: Job? = null
     @Volatile var suspended = false
@@ -230,7 +255,9 @@ class Stream(
         setLocal(offer)
         withTimeoutOrNull(1500) { iceGathered.await() }
         val local = pc.localDescription ?: offer
-        val answer = api.offer(sessionId, local.description, client)
+        // The first call asks the device's codecs, so not on the main thread.
+        val capabilities = withContext(Dispatchers.Default) { WebRtc.capabilities(appContext) }
+        val answer = api.offer(sessionId, local.description, client, capabilities)
         setRemote(SessionDescription(SessionDescription.Type.ANSWER, answer))
         pump = scope.launch { pumpInput() }
     }

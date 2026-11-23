@@ -98,6 +98,12 @@ checkout this is a submodule of, and the build tells you which operations no lon
   `FEATURE_LowLatency` (Android 11+), else a known vendor key the decoder itself lists
   (Android 12+). Nothing is forced on a decoder that lists neither. The stats send the
   decoder's name and whether low latency was applied to the server.
+- **Capabilities** (automatic): with every stream's offer the app tells the server what this
+  device can decode and show, as one complete document (`Capabilities`, version 1): for each of
+  WebRTC's video codecs the decoder it would use here (hardware or software, with a low-latency
+  mode or not, and its name), and the screen's size and refresh rate. The server keeps it against
+  this sign-in and picks each session's codec from it (sovereign-media/SovEmu#184). One line in
+  logcat (`adb logcat -s SovEmu.Stats`, `capabilities decoders=…`) shows what was sent.
 - **Fast-forward:** hold Select+R.
 - **Rewind:** hold Select+L.
 - **Touch controller:** shown by default; hide it from the menu.
