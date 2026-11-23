@@ -119,8 +119,11 @@ import media.sovereign.sovemu.core.SessionInfo
 import media.sovereign.sovemu.core.SystemSummary
 import org.webrtc.PeerConnection
 
-/** Systems whose picture keeps its own shape rather than a TV's 4:3. */
-private val HANDHELDS = setOf("gb", "gbc", "gba", "gamegear")
+/** Systems whose picture keeps its own shape rather than a TV's 4:3: the handhelds, and the
+ *  Vectrex's portrait tube. */
+private val HANDHELDS = setOf(
+    "gb", "gbc", "gba", "gamegear", "lynx", "ngp", "ngpc", "wswan", "wswanc", "virtualboy", "vectrex",
+)
 
 /**
  * How a game starts: from a save slot ([Continue] is the auto save's), from scratch, or asking
