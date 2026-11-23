@@ -52,14 +52,17 @@ class LowLatencyVideoDecoderFactory(
 
     private fun describe(info: VideoCodecInfo): DecoderChoice? {
         val hw = hardware.createDecoder(info)
-        if (hw is AndroidVideoDecoder) {
+        if (hw is AndroidVideoDecoder && !softwareInstead(info, hw)) {
             val name = hw.implementationName
-            val mime = VideoCodecMimeType.valueOf(info.name).mimeType()
             val codec = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.firstOrNull { it.name == name && !it.isEncoder }
-            val feature = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-                codec?.let { capabilities(it, mime) }?.isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_LowLatency) == true
-            val lowLatency = DecoderLatency.keys(feature, if (feature) emptyList() else vendorParameters(name)).isNotEmpty()
-            return DecoderChoice(info.name, hardware = codec?.let(::hardwareAccelerated) ?: true, lowLatency = lowLatency, name = name)
+            // A decoder named as software is one, whatever the platform calls it.
+            val hardware = !DecoderLatency.softwareByName(name) && (codec?.let(::hardwareAccelerated) ?: true)
+            return DecoderChoice(info.name, hardware = hardware, lowLatency = lowLatency(info, name), name = name)
+        }
+        if (hw is AndroidVideoDecoder) {
+            // The hardware decoder holds frames back, so createDecoder gives WebRTC's own.
+            val sw = software.createDecoder(info) ?: return null
+            return DecoderChoice(info.name, hardware = false, lowLatency = true, name = sw.javaClass.simpleName)
         }
         if (hw != null) return DecoderChoice(info.name, hardware = true, lowLatency = false, name = hw.javaClass.simpleName)
         val sw = software.createDecoder(info) ?: platformSoftware.createDecoder(info) ?: return null
@@ -92,10 +95,36 @@ class LowLatencyVideoDecoderFactory(
     }
 
     override fun createDecoder(info: VideoCodecInfo): VideoDecoder? {
-        // As DefaultVideoDecoderFactory.createDecoder.
-        val sw = (software.createDecoder(info) ?: platformSoftware.createDecoder(info))?.let(::watched)
-        val hw = hardware.createDecoder(info)?.let { watched(configurable(info, it)) }
+        val native = software.createDecoder(info)
+        val chosen = hardware.createDecoder(info)
+        // A hardware decoder that holds frames back gives way to WebRTC's own software one.
+        if (native != null && softwareInstead(info, chosen)) return watched(native)
+        // Otherwise as DefaultVideoDecoderFactory.createDecoder.
+        val sw = (native ?: platformSoftware.createDecoder(info))?.let(::watched)
+        val hw = chosen?.let { watched(configurable(info, it)) }
         return if (hw != null && sw != null) VideoDecoderFallback(sw, hw) else hw ?: sw
+    }
+
+    /** Whether each hardware decoder (by name and mime type) has a low-latency mode; asked once. */
+    private val lowLatencyModes = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+
+    /** Whether the hardware decoder [name] has a low-latency mode for [info]'s codec. */
+    private fun lowLatency(info: VideoCodecInfo, name: String): Boolean {
+        val mime = VideoCodecMimeType.valueOf(info.name).mimeType()
+        return lowLatencyModes.getOrPut("$name $mime") {
+            val codec = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.firstOrNull { it.name == name && !it.isEncoder }
+            val feature = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                codec?.let { capabilities(it, mime) }?.isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_LowLatency) == true
+            DecoderLatency.keys(feature, if (feature) emptyList() else vendorParameters(name)).isNotEmpty()
+        }
+    }
+
+    /** [DecoderLatency.prefersSoftware] for the hardware decoder the library [chosen] for [info]. */
+    private fun softwareInstead(info: VideoCodecInfo, chosen: VideoDecoder?): Boolean {
+        if (chosen !is AndroidVideoDecoder) return false
+        val name = chosen.implementationName
+        val native = software.createDecoder(info) is WrappedNativeVideoDecoder
+        return DecoderLatency.prefersSoftware(name, lowLatency(info, name), native)
     }
 
     /**

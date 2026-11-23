@@ -4,21 +4,24 @@ import kotlin.math.ceil
 
 /**
  * The stats overlay's latency graph: the last [capacity] samples (one a second) of the measured
- * button→frame and the estimated button→pixel, oldest first, and the graph's y scale. A fixed
- * ring, so adding a sample allocates nothing; an unknown value is NaN (a gap in its line).
+ * button→frame, the estimated button→pixel and the audio's delay, oldest first, and the graph's
+ * two y scales (the audio's delay has its own). A fixed ring, so adding a sample allocates nothing; an unknown value is NaN (a gap
+ * in its line).
  */
 class LatencyHistory(val capacity: Int = DEFAULT_CAPACITY) {
     private val measured = DoubleArray(capacity) { Double.NaN }
     private val estimated = DoubleArray(capacity) { Double.NaN }
+    private val audio = DoubleArray(capacity) { Double.NaN }
     private var next = 0
 
     /** Samples held, up to [capacity]. */
     var size = 0
         private set
 
-    fun add(measuredMs: Double?, estimatedMs: Double?) {
+    fun add(measuredMs: Double?, estimatedMs: Double?, audioMs: Double? = null) {
         measured[next] = measuredMs ?: Double.NaN
         estimated[next] = estimatedMs ?: Double.NaN
+        audio[next] = audioMs ?: Double.NaN
         next = (next + 1) % capacity
         size = minOf(size + 1, capacity)
     }
@@ -32,6 +35,7 @@ class LatencyHistory(val capacity: Int = DEFAULT_CAPACITY) {
     /** The [i]th held sample, 0 the oldest; NaN when unknown. */
     fun measured(i: Int): Double = measured[slot(i)]
     fun estimated(i: Int): Double = estimated[slot(i)]
+    fun audio(i: Int): Double = audio[slot(i)]
 
     /** The newest measured value, or null when the newest sample has none. */
     val latestMeasured: Double?
@@ -52,6 +56,22 @@ class LatencyHistory(val capacity: Int = DEFAULT_CAPACITY) {
         return maxOf(MIN_SCALE_MS, ceil(highest / SCALE_STEP_MS) * SCALE_STEP_MS)
     }
 
+    /**
+     * The top of the audio line's own y axis in ms: sound's delay runs several times the
+     * button's, so on one scale it would flatten the other two lines. The highest audio delay
+     * held, rounded up to a multiple of [AUDIO_SCALE_STEP_MS], and never below it; null while
+     * no audio delay is held (nothing to draw, and no scale to label).
+     */
+    fun audioScaleMaxMs(): Double? {
+        var highest = Double.NaN
+        for (i in 0 until size) {
+            val a = audio(i)
+            if (!a.isNaN() && !(a <= highest)) highest = a
+        }
+        if (highest.isNaN()) return null
+        return maxOf(AUDIO_SCALE_STEP_MS, ceil(highest / AUDIO_SCALE_STEP_MS) * AUDIO_SCALE_STEP_MS)
+    }
+
     private fun slot(i: Int): Int {
         require(i in 0 until size) { "sample $i of $size" }
         return (next - size + i + capacity) % capacity
@@ -62,5 +82,6 @@ class LatencyHistory(val capacity: Int = DEFAULT_CAPACITY) {
         const val DEFAULT_CAPACITY = 60
         const val SCALE_STEP_MS = 25.0
         const val MIN_SCALE_MS = 50.0
+        const val AUDIO_SCALE_STEP_MS = 100.0
     }
 }

@@ -18,6 +18,7 @@ import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -211,8 +212,17 @@ class Controller {
         publish()
     }
 
+    /**
+     * Told (at most once per wait) whenever a key, a stick, a trigger or a touch button changes,
+     * so the stream sends the new state at once instead of at its next look. A missed signal
+     * costs nothing: the stream still looks every few milliseconds.
+     */
+    val changes = Channel<Unit>(Channel.CONFLATED)
+
     /** A key from any device while playing. Returns true if the game took it. */
-    fun onKey(event: KeyEvent): Boolean {
+    fun onKey(event: KeyEvent): Boolean = key(event).also { if (it) changes.trySend(Unit) }
+
+    private fun key(event: KeyEvent): Boolean {
         val down = when (event.action) {
             KeyEvent.ACTION_DOWN -> true
             KeyEvent.ACTION_UP -> false
@@ -235,7 +245,9 @@ class Controller {
     }
 
     /** Sticks, triggers and the hat from a joystick. Returns true if consumed. */
-    fun onMotion(event: MotionEvent): Boolean {
+    fun onMotion(event: MotionEvent): Boolean = motion(event).also { if (it) changes.trySend(Unit) }
+
+    private fun motion(event: MotionEvent): Boolean {
         if (!event.isFromSource(InputDevice.SOURCE_JOYSTICK)) return false
         val id = event.deviceId
         if (!mixer.isPad(id)) {
@@ -265,7 +277,10 @@ class Controller {
         e.getAxisValue(MotionEvent.AXIS_Z), e.getAxisValue(MotionEvent.AXIS_RZ),
     )
 
-    fun setTouch(button: Button, pressed: Boolean) = mixer.touch(button, pressed)
+    fun setTouch(button: Button, pressed: Boolean) {
+        mixer.touch(button, pressed)
+        changes.trySend(Unit)
+    }
 
     /**
      * The app lost its window (a system overlay, a notification panel, another app): Android

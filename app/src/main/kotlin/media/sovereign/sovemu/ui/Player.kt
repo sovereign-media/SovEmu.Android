@@ -7,7 +7,9 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import media.sovereign.sovemu.core.FrameLatency
@@ -30,7 +32,9 @@ import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.flowOf
+import media.sovereign.sovemu.core.GameModeState
 import media.sovereign.sovemu.core.pipelineRows
+import media.sovereign.sovemu.minimalPostProcessingSupported
 import media.sovereign.sovemu.core.Protocol
 import media.sovereign.sovemu.core.qualityNotice
 import media.sovereign.sovemu.core.QualityNotice
@@ -284,6 +288,7 @@ fun PlayerScreen(
         val s = stream ?: return@LaunchedEffect
         val sampler = StatsSampler()
         var loggedMatch: FrameLatency.Match? = null
+        var audioTick = 0
         val client = ClientEvents.clientName(context)
         while (true) {
             delay(1000)
@@ -291,10 +296,16 @@ fun PlayerScreen(
             val sample = sampler.sample(reading, s.inputRtts.toList(), s.frameLatency.medianMs())
             // How the worker makes the stream follows, once it has said (old servers never do).
             val setup = s.decoder.value
-            s.sendStats(sample.encode(client, currentGameMode, setup))
+            // Whether the TV's game mode took effect, not only whether it was asked for: read
+            // each second, since the display can change (another HDMI input, another TV).
+            val gameModeState = GameModeState.of(currentGameMode, minimalPostProcessingSupported(context))
+            s.sendStats(sample.encode(client, gameModeState.applied, setup))
+            // The audio's delays, every ten seconds, overlay or not.
+            if (++audioTick % 10 == 0) sample.audioLogfmt()?.let { Log.i(STATS_TAG, it) }
             if (!stats) continue
-            readout = sample.rows() + pipelineRows(s.pipeline.value, sample.decoder, setup)
-            latencyHistory.add(sample.inputToFrameMs?.toDouble(), sample.estimateMs)
+            readout = sample.rows() + ("TV game mode" to gameModeState.label) +
+                pipelineRows(s.pipeline.value, sample.decoder, setup)
+            latencyHistory.add(sample.inputToFrameMs?.toDouble(), sample.estimateMs, sample.audioBufferMs)
             latencySamples++
             Log.i(STATS_TAG, sample.logfmt())
             // How the measurement matches frames across the decoder, once it has learned it.
@@ -403,7 +414,7 @@ fun PlayerScreen(
                 it,
                 latencyHistory,
                 { latencySamples },
-                Modifier.align(Alignment.TopStart).safeDrawingPadding().padding(16.dp),
+                Modifier.align(Alignment.TopStart).safeDrawingPadding().padding(12.dp),
             )
         }
         quality?.let {
@@ -659,6 +670,22 @@ private fun StartBar(fraction: Double, modifier: Modifier = Modifier) {
 
 private const val STATS_TAG = "SovEmu.Stats"
 
+/** The colour of each graphed value's line, by its row's label: the graph's key. */
+private val GRAPH_KEY = mapOf(
+    "Measured button→frame" to Sov.Accent,
+    "Estimated button→pixel" to Sov.Slate400,
+    "Audio delay" to Sov.Amber200,
+)
+
+/** The stats panel's rows: 10 sp monospace on a 12 sp line, with no extra padding around it. */
+private val STATS_TEXT = TextStyle(
+    fontSize = 10.sp,
+    lineHeight = 12.sp,
+    fontFamily = FontFamily.Monospace,
+    platformStyle = PlatformTextStyle(includeFontPadding = false),
+    lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None),
+)
+
 /** Seconds without a new video frame, while playing, before it is reported as a stall. */
 private const val STALL_SECONDS = 3
 
@@ -687,50 +714,71 @@ private fun StatsOverlay(
             .width(IntrinsicSize.Max)
             .clip(RoundedCornerShape(8.dp))
             .background(Color.Black.copy(alpha = 0.7f))
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = 8.dp, vertical = 6.dp),
     ) {
         val half = (rows.size + 1) / 2
-        Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             StatsColumn(rows.subList(0, half))
             StatsColumn(rows.subList(half, rows.size))
         }
-        LatencyGraph(history, samples, Modifier.padding(top = 8.dp).fillMaxWidth().height(64.dp))
-        Text(STATS_WARNING, Modifier.padding(top = 4.dp), color = Sov.Slate400, fontSize = 10.sp)
+        LatencyGraph(history, samples, Modifier.padding(top = 6.dp).fillMaxWidth().height(48.dp))
+        Text(STATS_WARNING, Modifier.padding(top = 3.dp), color = Sov.Slate400, fontSize = 9.sp, lineHeight = 11.sp)
     }
 }
 
 /** Label and value pairs: labels muted on the left, values right-aligned. */
 @Composable
 private fun StatsColumn(rows: List<Pair<String, String>>, modifier: Modifier = Modifier) {
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Column { for ((label, _) in rows) Text(label, color = Sov.Slate400, fontSize = 12.sp, fontFamily = FontFamily.Monospace) }
+    // Small and tight: the panel sits over the game, so it should cover as little as it can.
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column { for ((label, _) in rows) Text(label, color = Sov.Slate400, style = STATS_TEXT) }
         Column(horizontalAlignment = Alignment.End) {
-            for ((_, value) in rows) Text(value, color = Color.White, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+            for ((label, value) in rows) {
+                // The graph's key: a jewel in its line's colour beside each value it draws.
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    GRAPH_KEY[label]?.let { Box(Modifier.size(6.dp).clip(CircleShape).background(it)) }
+                    Text(value, color = Color.White, style = STATS_TEXT)
+                }
+            }
         }
     }
 }
 
 /**
- * The last minute of "Measured button→frame" (solid, accent) and "Estimated button→pixel"
- * (thin, muted), from 0 to [LatencyHistory.scaleMaxMs], with the scale's gridlines and the latest
- * measurement at the right. Everything is read while drawing, so a new sample only redraws.
+ * The last minute of "Measured button→frame" (solid, accent), "Estimated button→pixel" (thin,
+ * muted) from 0 to [LatencyHistory.scaleMaxMs], and "Audio delay" (thin, amber) from 0 to its own
+ * [LatencyHistory.audioScaleMaxMs], with the two scales' marks on the gridlines and the latest
+ * measurement at the right. Each line's colour is the jewel beside its
+ * value in the rows above ([GRAPH_KEY]). Everything is read while drawing, so a new sample only
+ * redraws.
  */
 @Composable
 private fun LatencyGraph(history: LatencyHistory, samples: () -> Int, modifier: Modifier = Modifier) {
     val measurer = rememberTextMeasurer()
     val label = remember { TextStyle(color = Sov.Slate500, fontSize = 9.sp, fontFamily = FontFamily.Monospace) }
+    val audioLabel = remember { TextStyle(color = Sov.Amber200, fontSize = 9.sp, fontFamily = FontFamily.Monospace) }
     val latest = remember { TextStyle(color = Sov.Accent, fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold) }
     val measuredPath = remember { Path() }
     val estimatedPath = remember { Path() }
+    val audioPath = remember { Path() }
     Canvas(modifier) {
         samples()
         val top = history.scaleMaxMs()
         val latestText = history.latestMeasured?.let { measurer.measure("${it.roundToInt()} ms", latest) }
         val right = size.width - (latestText?.size?.width ?: 0) - 4.dp.toPx()
         fun y(ms: Double) = (size.height * (1 - ms / top)).toFloat()
-        for (ms in doubleArrayOf(top, top / 2)) {
+        // The audio's delay has a scale of its own (it runs several times the button's): its
+        // marks sit beside the button scale's on the same two gridlines, in the audio's colour.
+        val audioTop = history.audioScaleMaxMs()
+        for (share in doubleArrayOf(1.0, 0.5)) {
+            val ms = top * share
             drawLine(Sov.Edge, Offset(0f, y(ms)), Offset(right, y(ms)), strokeWidth = 1f)
-            drawText(measurer.measure("${ms.roundToInt()}", label), topLeft = Offset(0f, y(ms)))
+            val mark = measurer.measure("${ms.roundToInt()}", label)
+            drawText(mark, topLeft = Offset(0f, y(ms)))
+            audioTop?.let {
+                val audioMark = measurer.measure("${(it * share).roundToInt()}", audioLabel)
+                drawText(audioMark, topLeft = Offset(mark.size.width + 4.dp.toPx(), y(ms)))
+            }
         }
         val step = right / (history.capacity - 1)
         // Newest at the right edge; a minute's worth fills the width.
@@ -748,6 +796,11 @@ private fun LatencyGraph(history: LatencyHistory, samples: () -> Int, modifier: 
                 if (pen) lineTo(x, y(v)) else moveTo(x, y(v))
                 pen = true
             }
+        }
+        if (audioTop != null) {
+            // Traced on the audio's scale, then drawn like the others.
+            audioPath.trace { i -> history.audio(i) * top / audioTop }
+            drawPath(audioPath, Sov.Amber200, style = Stroke(width = 1.dp.toPx()))
         }
         estimatedPath.trace(history::estimated)
         drawPath(estimatedPath, Sov.Slate400, style = Stroke(width = 1.dp.toPx()))

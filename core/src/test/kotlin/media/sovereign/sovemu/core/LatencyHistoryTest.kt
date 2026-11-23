@@ -53,4 +53,22 @@ class LatencyHistoryTest {
         assertEquals(0, history.size)
         assertEquals(50.0, history.scaleMaxMs(), 0.0)
     }
+
+    @Test
+    fun `the audio's delay is a third line on a scale of its own`() {
+        val history = LatencyHistory()
+        history.add(40.0, 60.0)
+        assertTrue("unknown until the audio's delay is", history.audio(0).isNaN())
+        assertNull("and no scale to label", history.audioScaleMaxMs())
+        history.add(42.0, 61.0, 310.0)
+        assertEquals(310.0, history.audio(1), 0.0)
+        // The button lines keep their scale; the audio's rounds up to the next hundred.
+        assertEquals(75.0, history.scaleMaxMs(), 0.0)
+        assertEquals(400.0, history.audioScaleMaxMs()!!, 0.0)
+        history.add(42.0, 61.0, 35.0)
+        assertEquals(400.0, history.audioScaleMaxMs()!!, 0.0)
+        history.clear()
+        history.add(null, null, 35.0)
+        assertEquals("never below one step", 100.0, history.audioScaleMaxMs()!!, 0.0)
+    }
 }

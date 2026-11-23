@@ -80,24 +80,41 @@ checkout this is a submodule of, and the build tells you which operations no lon
 - **In-game menu:** Back, or Select+Start.
 - **Stats** (in-game menu, "Show stats"; remembered): latency and stream health in a top-left
   panel of two columns, as on the web client: estimated button→pixel, measured button→frame,
-  input round trip (p50 and p95), network RTT, jitter buffer, decode, resolution and fps,
-  bitrate, packets lost; then, from a server that says how it makes the stream, the codec and
+  input round trip (p50 and p95), network RTT, jitter buffer, audio delay (how long sound waits
+  in its buffer, and the wait it is aiming for), decode, resolution and fps, bitrate, packets
+  lost, and TV game mode (`on`, `off`, or `Asked - Display does not report status` on a device
+  whose TV does not say whether it switched, a streaming stick's over HDMI); then, from a server that says how it makes the stream, the codec and
   encoder (GPU or CPU, and any it fell back from), what renders the picture, the audio, run-ahead
   and this device's video decoder, with whether it decodes in low-latency mode ("low latency:
   on" or "not supported"). Under them, a graph of the last minute's measured and
-  estimated latency. *Measured button→frame* is the median time from sending an input to the
+  estimated latency, with the audio's delay on a scale of its own (its marks beside the
+  latency's, in amber); a jewel in each line's colour sits beside its value in the rows above. *Measured button→frame* is the median time from sending an input to the
   renderer getting the frame that shows it: the first frame to enter the decoder after the
   worker's ack (the worker sends the ack just before that frame's video), matched across the
   decoder by its timestamp (or by counting frames in and out), so a decoder slower than a frame
   cannot make it read low. It leaves out the display's scan-out and the TV's own
   processing. While it is on, each once-a-second sample is also logged as logfmt
   (`adb logcat -s SovEmu.Stats`, with one `decoder=…` line per stream naming the video decoder
-  and its low-latency key); off, nothing is sampled.
+  and its low-latency key); off, nothing is sampled. The audio's delays are logged every ten
+  seconds either way (`audio_buffer_ms`, `audio_target_ms`).
 - **Low-latency decoding** (automatic): the hardware video decoder is asked to output each frame
   as soon as it is decoded wherever it supports that: `KEY_LOW_LATENCY` when it advertises
   `FEATURE_LowLatency` (Android 11+), else a known vendor key the decoder itself lists
   (Android 12+). Nothing is forced on a decoder that lists neither. The stats send the
   decoder's name and whether low latency was applied to the server.
+- **Software decoding where the hardware decoder holds frames back** (automatic): a hardware
+  decoder with no low-latency mode gives way to WebRTC's own software decoder where it has one
+  (VP8, VP9, AV1). Measured on a Fire TV Stick (MT8696): its hardware VP8 decoder dropped 3,867
+  frames of one session and showed the picture 1.9 s late; in software, none dropped and 40 ms
+  from button to frame. MediaTek's own `vdec-lowlatency` key was tried there and did not help. A
+  decoder named as software (`c2.amlogic.vp8.decoder.sw`) is left as it is, and is reported to
+  the server as software whatever the device calls it.
+- **Sound close to the picture** (automatic): the game's sound plays as game audio, in stereo,
+  on Android's low-latency output; its jitter buffer may hold at most 15 packets (150 ms) and
+  drains quickly after a hiccup. With the library's defaults (a voice call's: mono, and a buffer
+  free to grow) sound ran 175 to 390 ms behind the picture on a Mi TV and a Fire TV Stick; with
+  these, about 90 to 100 ms on the stick.
+- **Inputs as they happen:** a press is sent when it changes, not at the next look (every 4 ms).
 - **Capabilities** (automatic): with every stream's offer the app tells the server what this
   device can decode and show, as one complete document (`Capabilities`, version 1): for each of
   WebRTC's video codecs the decoder it would use here (hardware or software, with a low-latency

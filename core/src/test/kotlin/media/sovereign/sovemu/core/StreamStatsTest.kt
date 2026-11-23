@@ -27,6 +27,41 @@ class StreamStatsTest {
     )
 
     @Test
+    fun `the audio's delays are per sample played between two readings`() {
+        val sampler = StatsSampler()
+        val first = reading(1_000).copy(
+            audioJitterBufferDelay = 100.0,
+            audioJitterBufferTargetDelay = 80.0,
+            audioJitterBufferEmittedCount = 2_000.0,
+            audioPlayoutDelay = 50.0,
+            audioPlayoutSamples = 1_000.0,
+        )
+        // Nothing is known from one reading: no line.
+        assertNull(sampler.sample(first, emptyList()).audioLogfmt())
+        // A second later 48000 more samples were played, having waited 60 ms each in the
+        // buffer (aiming for 40 ms) and 25 ms in the output.
+        val second = first.copy(
+            atMs = 2_000,
+            audioJitterBufferDelay = 100.0 + 48_000 * 0.060,
+            audioJitterBufferTargetDelay = 80.0 + 48_000 * 0.040,
+            audioJitterBufferEmittedCount = 50_000.0,
+            audioPlayoutDelay = 50.0 + 48_000 * 0.025,
+            audioPlayoutSamples = 49_000.0,
+        )
+        val stats = sampler.sample(second, emptyList())
+        assertEquals(60.0, stats.audioBufferMs!!, 0.001)
+        assertEquals(40.0, stats.audioTargetMs!!, 0.001)
+        assertEquals(25.0, stats.audioPlayoutMs!!, 0.001)
+        assertEquals("audio_buffer_ms=60.0 audio_target_ms=40.0 audio_playout_ms=25.0", stats.audioLogfmt())
+        // The overlay shows the wait and what it is aiming for, and a dash before either is known.
+        assertEquals("60 ms · target 40", stats.rows().toMap()["Audio delay"])
+        assertEquals("–", StatsSampler().sample(first, emptyList()).rows().toMap()["Audio delay"])
+        // A platform that reports no output delay leaves it out of the line.
+        val third = second.copy(atMs = 3_000, audioJitterBufferDelay = second.audioJitterBufferDelay + 480.0, audioJitterBufferTargetDelay = second.audioJitterBufferTargetDelay + 480.0, audioJitterBufferEmittedCount = 98_000.0)
+        assertEquals("audio_buffer_ms=10.0 audio_target_ms=10.0", sampler.sample(third, emptyList()).audioLogfmt())
+    }
+
+    @Test
     fun `the first reading knows no rates`() {
         val stats = StatsSampler().sample(reading(1_000, bytes = 5_000.0, emitted = 60.0, decoded = 60.0), emptyList())
         assertNull(stats.kbps)

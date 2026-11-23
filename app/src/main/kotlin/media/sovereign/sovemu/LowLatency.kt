@@ -3,8 +3,10 @@ package media.sovereign.sovemu
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.hardware.display.DisplayManager
 import android.net.wifi.WifiManager
 import android.os.Build
+import android.view.Display
 import android.view.Window
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -51,6 +53,16 @@ fun LowLatencyWhilePlaying() {
 private val WIFI_LOCK_MODE =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) WifiManager.WIFI_MODE_FULL_LOW_LATENCY
     else WifiManager.WIFI_MODE_FULL_HIGH_PERF
+
+/**
+ * Whether the display this app is on says it can be switched to minimal post-processing (its
+ * game mode); null before Android 11, where there is no way to ask.
+ */
+fun minimalPostProcessingSupported(context: Context): Boolean? {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+    val display = context.getSystemService(DisplayManager::class.java)?.getDisplay(Display.DEFAULT_DISPLAY)
+    return display?.isMinimalPostProcessingSupported ?: false
+}
 
 private fun Window.preferMinimalPostProcessing(prefer: Boolean) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) setPreferMinimalPostProcessing(prefer)
