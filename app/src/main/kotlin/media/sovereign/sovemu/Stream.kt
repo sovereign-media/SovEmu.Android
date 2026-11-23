@@ -1,6 +1,7 @@
 package media.sovereign.sovemu
 
 import android.content.Context
+import android.media.AudioAttributes
 import android.hardware.display.DisplayManager
 import android.util.Log
 import android.view.Display
@@ -44,6 +45,7 @@ import org.webrtc.RTCStatsReport
 import org.webrtc.RtpReceiver
 import org.webrtc.RtpTransceiver
 import org.webrtc.SdpObserver
+import org.webrtc.audio.JavaAudioDeviceModule
 import org.webrtc.SessionDescription
 import org.webrtc.VideoSink
 import org.webrtc.VideoTrack
@@ -70,10 +72,27 @@ object WebRtc {
         PeerConnectionFactory.initialize(
             PeerConnectionFactory.InitializationOptions.builder(context.applicationContext).createInitializationOptions(),
         )
+        // A game's sound, not a call's: played as game audio on the low-latency output path,
+        // in stereo. (WebRTC's default is a voice call's: mono, on the ordinary path.)
+        val audio = JavaAudioDeviceModule.builder(context.applicationContext)
+            .setUseLowLatency(true)
+            .setUseStereoOutput(true)
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_GAME)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build(),
+            )
+            .createAudioDeviceModule()
         PeerConnectionFactory.builder()
             .setVideoDecoderFactory(decoders)
+            .setAudioDeviceModule(audio)
             .createPeerConnectionFactory()
-            .also { factory = it }
+            .also {
+                factory = it
+                // The factory holds the module now.
+                audio.release()
+            }
     }
 
     private val decoders by lazy {
@@ -106,6 +125,12 @@ object WebRtc {
 
     private const val STATS_TAG = "SovEmu.Stats"
 }
+
+/**
+ * The most audio packets the jitter buffer may hold: 150 ms at the server's 10 ms a packet,
+ * which holds the buffer's own target to about 110 ms.
+ */
+private const val AUDIO_BUFFER_MAX_PACKETS = 15
 
 /**
  * A connection to one game session: receive-only video and audio, plus the unordered,
@@ -199,6 +224,12 @@ class Stream(
     private val pc: PeerConnection = WebRtc.factory(context).createPeerConnection(
         PeerConnection.RTCConfiguration(iceServers.map(::toIceServer)).apply {
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
+            // Sound waits in a buffer that grows to smooth uneven arrival, and by default may
+            // grow to hundreds of milliseconds (measured: 150-390 ms behind the picture). Cap
+            // what it may hold, and let it drain quickly after a hiccup, so sound stays close
+            // to the picture; the price is a click where the link really does stall.
+            audioJitterBufferMaxPackets = AUDIO_BUFFER_MAX_PACKETS
+            audioJitterBufferFastAccelerate = true
         },
         observer,
     ) ?: error("could not create a peer connection")
@@ -317,7 +348,9 @@ class Stream(
                     lastAnalogSend = now
                 }
             }
-            delay(4)
+            // Until an input changes, or 4 ms: a press is sent as it happens, where a fixed wait
+            // held it for up to 4 ms; the timer keeps the heartbeats and anything unsignalled.
+            withTimeoutOrNull(4) { controller.changes.receive() }
         }
     }
 
@@ -336,6 +369,7 @@ class Stream(
         fun Map<String, Any?>.num(key: String) = (this[key] as? Number)?.toDouble()
         val video = all.firstOrNull { it.type == "inbound-rtp" && it.members["kind"] == "video" }?.members.orEmpty()
         val audio = all.firstOrNull { it.type == "inbound-rtp" && it.members["kind"] == "audio" }?.members.orEmpty()
+        val playout = all.firstOrNull { it.type == "media-playout" }?.members.orEmpty()
         val pair = all.firstOrNull {
             it.type == "candidate-pair" && it.members["nominated"] == true && it.members["state"] == "succeeded"
         }?.members.orEmpty()
@@ -355,6 +389,11 @@ class Stream(
                 VideoDecoder(it, video["powerEfficientDecoder"] as? Boolean)
             },
             framesDropped = video.num("framesDropped")?.toLong(),
+            audioJitterBufferDelay = audio.num("jitterBufferDelay") ?: 0.0,
+            audioJitterBufferTargetDelay = audio.num("jitterBufferTargetDelay") ?: 0.0,
+            audioJitterBufferEmittedCount = audio.num("jitterBufferEmittedCount") ?: 0.0,
+            audioPlayoutDelay = playout.num("totalPlayoutDelay") ?: 0.0,
+            audioPlayoutSamples = playout.num("totalSamplesCount") ?: 0.0,
         )
     }
 

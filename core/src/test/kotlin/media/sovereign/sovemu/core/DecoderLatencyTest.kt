@@ -2,6 +2,8 @@ package media.sovereign.sovemu.core
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class DecoderLatencyTest {
@@ -37,5 +39,21 @@ class DecoderLatencyTest {
         assertNull(none.keyName)
         assertEquals("low latency: not supported", none.label)
         assertEquals(false, none.lowLatency)
+    }
+
+    @Test
+    fun `a hardware decoder with no low-latency mode gives way to WebRTC's software one`() {
+        // A Fire TV Stick's VP8 decoder: hardware, no low-latency mode, and libvpx is there.
+        assertTrue(DecoderLatency.prefersSoftware("OMX.MTK.VIDEO.DECODER.VPX", lowLatency = false, nativeSoftware = true))
+        // Its H.264 decoder stays: WebRTC has no software H.264 on Android.
+        assertFalse(DecoderLatency.prefersSoftware("OMX.MTK.VIDEO.DECODER.AVC", lowLatency = false, nativeSoftware = false))
+        // A decoder with a low-latency mode stays.
+        assertFalse(DecoderLatency.prefersSoftware("c2.amlogic.vp9.decoder", lowLatency = true, nativeSoftware = true))
+        // A Mi TV's VP8 decoder is software already, whatever the TV calls it.
+        assertFalse(DecoderLatency.prefersSoftware("c2.amlogic.vp8.decoder.sw", lowLatency = false, nativeSoftware = true))
+        assertFalse(DecoderLatency.prefersSoftware(null, lowLatency = false, nativeSoftware = true))
+        assertTrue(DecoderLatency.softwareByName("OMX.google.vp8.decoder"))
+        assertTrue(DecoderLatency.softwareByName("c2.android.vp9.decoder"))
+        assertFalse(DecoderLatency.softwareByName("OMX.MTK.VIDEO.DECODER.VPX"))
     }
 }

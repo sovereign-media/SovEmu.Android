@@ -21,12 +21,37 @@ object DecoderLatency {
     )
 
     /**
+     * Whether a MediaCodec decoder is a software one by its name, whatever the platform says of
+     * it: Google's own (`OMX.google.`, `c2.android.`) and a vendor's named so (`.sw`, as
+     * `c2.amlogic.vp8.decoder.sw`, which its TV lists as hardware accelerated).
+     */
+    fun softwareByName(name: String): Boolean {
+        val n = name.lowercase()
+        return n.startsWith("omx.google.") || n.startsWith("c2.android.") || n.endsWith(".sw") || n.contains(".sw.")
+    }
+
+    /**
+     * Whether to decode with WebRTC's own software decoder instead of the device's hardware
+     * one: when there is one for the codec ([nativeSoftware]: libvpx for VP8 and VP9, dav1d for
+     * AV1), and the hardware decoder is real hardware with no low-latency mode. Such a decoder
+     * holds frames back: a Fire TV Stick's VP8 one dropped a quarter of a 60 fps stream and
+     * showed its picture over a second late, where software decodes a console's picture in a
+     * few milliseconds. A device with no hardware decoder, or one named as software, or one
+     * with a low-latency mode, is left as it is.
+     */
+    fun prefersSoftware(hardwareName: String?, lowLatency: Boolean, nativeSoftware: Boolean): Boolean =
+        hardwareName != null && nativeSoftware && !lowLatency && !softwareByName(hardwareName)
+
+    /**
      * The keys to set to 1, empty when the decoder supports none.
      * [vendorParameters]: what the decoder lists, with or without the `vendor.` prefix.
      */
     fun keys(featureLowLatency: Boolean, vendorParameters: Collection<String>): List<String> {
         if (featureLowLatency) return listOf(KEY_LOW_LATENCY)
         val listed = vendorParameters.mapTo(HashSet()) { it.removePrefix("vendor.") }
+        // MediaTek's `vdec-lowlatency`, which Moonlight sets by decoder name, was tried on a
+        // Fire TV Stick (MT8696, Android 11) and is not set: its VP8 decoder still dropped a
+        // fifth of the frames and showed the picture half a second late.
         return VENDOR_KEYS.filter { it.removePrefix("vendor.") in listed }
     }
 }

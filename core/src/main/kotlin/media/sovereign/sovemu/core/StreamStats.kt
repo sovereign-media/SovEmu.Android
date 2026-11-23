@@ -27,6 +27,19 @@ data class StatsReading(
     val decoder: VideoDecoder? = null,
     /** Video frames dropped since the stream began (`framesDropped`). */
     val framesDropped: Long? = null,
+    /**
+     * The audio's jitter buffer (`jitterBufferDelay`, `jitterBufferTargetDelay` and
+     * `jitterBufferEmittedCount` of the inbound audio): seconds summed over every sample played.
+     */
+    val audioJitterBufferDelay: Double = 0.0,
+    val audioJitterBufferTargetDelay: Double = 0.0,
+    val audioJitterBufferEmittedCount: Double = 0.0,
+    /**
+     * The audio output's own delay (`media-playout`: `totalPlayoutDelay` over
+     * `totalSamplesCount`), where the platform reports it.
+     */
+    val audioPlayoutDelay: Double = 0.0,
+    val audioPlayoutSamples: Double = 0.0,
 )
 
 /**
@@ -67,7 +80,24 @@ data class StreamStats(
     val inputToFrameMs: Long? = null,
     /** Video frames dropped since the stream began. */
     val framesDropped: Long? = null,
+    /** How long sound waits in the audio jitter buffer, and the wait it is aiming for. */
+    val audioBufferMs: Double? = null,
+    val audioTargetMs: Double? = null,
+    /** How long sound then takes to leave the audio output, where the platform says. */
+    val audioPlayoutMs: Double? = null,
 ) {
+    /**
+     * The audio's delays as one logfmt line (`adb logcat -s SovEmu.Stats`), null when none is
+     * known yet. Logged every few seconds whether or not the stats overlay is open (its
+     * "Audio delay" row shows the same): sound's delay is what a change to the audio path is
+     * judged by, and a capture should not need the overlay opened.
+     */
+    fun audioLogfmt(): String? = listOfNotNull(
+        audioBufferMs?.let { "audio_buffer_ms=${num(it, 1)}" },
+        audioTargetMs?.let { "audio_target_ms=${num(it, 1)}" },
+        audioPlayoutMs?.let { "audio_playout_ms=${num(it, 1)}" },
+    ).takeIf { it.isNotEmpty() }?.joinToString(" ")
+
     /**
      * Button to pixel, roughly, as the web client estimates it: the input round trip (the
      * input reaches the core and the frame comes back), plus half a frame of alignment, ~2 ms
@@ -83,6 +113,7 @@ data class StreamStats(
         "Input round trip" to (inputRttP50Ms?.let { p50 -> "$p50 ms · p95 ${inputRttP95Ms ?: "–"}" } ?: "–"),
         "Network RTT" to ms(networkRttMs, 1),
         "Jitter buffer" to ms(jitterBufferMs, 1),
+        "Audio delay" to (audioBufferMs?.let { "${num(it, 0)} ms" + (audioTargetMs?.let { t -> " · target ${num(t, 0)}" } ?: "") } ?: "–"),
         "Decode" to ms(decodeMs, 1),
         "Video" to "${width ?: "?"}×${height ?: "?"} @ ${fps?.let { num(it, 0) } ?: "–"} fps",
         "Bitrate" to (kbps?.let { "${num(it, 0)} kbps" } ?: "–"),
@@ -178,6 +209,9 @@ class StatsSampler {
             decoder = now.decoder,
             inputToFrameMs = inputToFrameMs,
             framesDropped = now.framesDropped,
+            audioBufferMs = perFrame(StatsReading::audioJitterBufferDelay, StatsReading::audioJitterBufferEmittedCount),
+            audioTargetMs = perFrame(StatsReading::audioJitterBufferTargetDelay, StatsReading::audioJitterBufferEmittedCount),
+            audioPlayoutMs = perFrame(StatsReading::audioPlayoutDelay, StatsReading::audioPlayoutSamples),
         )
     }
 }
