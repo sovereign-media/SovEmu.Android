@@ -263,8 +263,8 @@ query StartProgress($startId: String!) {
   }
 }
 
-mutation SessionOffer($id: ID!, $sdp: String!, $client: String) {
-  sessionOffer(id: $id, sdp: $sdp, client: $client)
+mutation SessionOffer($id: ID!, $sdp: String!, $client: String, $capabilities: ClientCapabilitiesInput) {
+  sessionOffer(id: $id, sdp: $sdp, client: $client, capabilities: $capabilities)
 }
 
 mutation SetDisc($sessionId: ID!, $disc: Int!) {
