@@ -5,7 +5,6 @@ import media.sovereign.sovemu.ui.Screensaver
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.mutableIntStateOf
 import android.view.WindowManager
-import android.os.SystemClock
 import androidx.navigation3.ui.NavDisplay
 import androidx.navigation3.runtime.entryProvider
 import androidx.compose.runtime.mutableStateListOf
@@ -17,6 +16,7 @@ import android.view.MotionEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -29,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
@@ -89,12 +90,10 @@ class MainActivity : ComponentActivity() {
     /** The screens want music (not in a game, switched on), and the app is in the foreground. */
     private var menusWantMusic = false
     private var foreground = false
-    /** Showing the screensaver (input ends it, and goes no further). */
-    private var screensaverOn by mutableStateOf(false)
+    /** The screensaver: shown after a while without input, while the app is in the foreground. */
+    private val idle = Idle()
     /** A game is paused (its menu is open): the screensaver may start over it. */
     private var gamePaused by mutableStateOf(false)
-    /** When a person last pressed, touched or moved something (uptime ms). */
-    private var lastInput = SystemClock.uptimeMillis()
     /** The key whose press ended the screensaver: its release is swallowed too. */
     private var swallowKey: Int? = null
     /** True while a game is playing: controller input goes to the game, not the UI. */
@@ -221,20 +220,28 @@ class MainActivity : ComponentActivity() {
             playing = route is Route.Play
             if (route is Route.Play) controller.analogSticks = route.system.needsGpu
             // Music in the menus; a game, and the screensaver's videos, have their own sound.
-            menusWantMusic = musicOn && route !is Route.Play && !screensaverOn
+            menusWantMusic = musicOn && route !is Route.Play && !idle.on
             updateMusic()
         }
 
         // The screensaver, after idleMinutes without input: in the menus, or over a paused game
-        // (never over one being played).
+        // (never over one being played), and only while the app is in the foreground.
         val inGame = route is Route.Play
-        val canIdle = !inGame || gamePaused
+        val canIdle = (!inGame || gamePaused) && idle.foreground
+        // Asleep, the screen no longer stays on: the device's own sleep timer takes over.
+        LaunchedEffect(idle.asleep) {
+            if (idle.asleep) {
+                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            } else {
+                window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+        }
         LaunchedEffect(idleMinutes, canIdle) {
             if (idleMinutes == 0 || !canIdle) return@LaunchedEffect
-            lastInput = SystemClock.uptimeMillis()
+            idle.restart()
             while (true) {
                 delay(5_000)
-                if (!screensaverOn && SystemClock.uptimeMillis() - lastInput >= idleMinutes * 60_000L) screensaverOn = true
+                idle.check(idleMinutes)
             }
         }
 
@@ -248,7 +255,7 @@ class MainActivity : ComponentActivity() {
         }
         QuitOnRootBack(atRoot = stack.size == 1 && !confirmQuit) { confirmQuit = true }
         val background by store.background.collectAsStateWithLifecycle()
-        Box(Modifier.fillMaxSize().scanlines(crt && (route !is Route.Play || screensaverOn))) {
+        Box(Modifier.fillMaxSize().scanlines(crt && (route !is Route.Play || idle.on))) {
             Box(Modifier.fillMaxSize().focusRequester(screenFocus).focusRestorer().focusGroup()) {
               CompositionLocalProvider(LocalBackground provides background) {
                 NavDisplay(
@@ -315,8 +322,13 @@ class MainActivity : ComponentActivity() {
                 )
               }
             }
-            if (screensaverOn && canIdle) {
-                Screensaver(api, remember(systems) { systems.associateBy { it.id } }, store::randomVideoGame)
+            if (idle.on && canIdle) {
+                if (idle.asleep) {
+                    // Played long enough: dark and silent until a press (the device may sleep).
+                    Box(Modifier.fillMaxSize().background(Color.Black))
+                } else {
+                    Screensaver(api, remember(systems) { systems.associateBy { it.id } }, store::randomVideoGame)
+                }
             }
             if (confirmQuit) QuitConfirm(onStay = { confirmQuit = false }, onQuit = ::finish)
         }
@@ -327,6 +339,7 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         foreground = true
+        idle.started()
         updateMusic()
     }
 
@@ -337,6 +350,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         foreground = false
+        // Out of sight, the screensaver ends: nothing could dismiss it, and its videos have sound.
+        idle.stopped()
         updateMusic()
         super.onStop()
     }
@@ -351,15 +366,15 @@ class MainActivity : ComponentActivity() {
     // every controller event goes to the game. Otherwise the system handles them (D-pad focus,
     // A to click, B to go back).
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        lastInput = SystemClock.uptimeMillis()
         // Any button ends the screensaver, and does nothing else (its release included).
-        if (screensaverOn) {
+        if (idle.on) {
             if (event.action == KeyEvent.ACTION_DOWN) {
-                screensaverOn = false
+                idle.input()
                 swallowKey = event.keyCode
             }
             return true
         }
+        idle.input()
         if (swallowKey == event.keyCode) {
             if (event.action == KeyEvent.ACTION_UP) swallowKey = null
             return true
@@ -376,24 +391,18 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        lastInput = SystemClock.uptimeMillis()
-        if (screensaverOn) {
-            if (event.actionMasked == MotionEvent.ACTION_DOWN) screensaverOn = false
+        if (idle.on) {
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) idle.input()
             return true
         }
+        idle.input()
         return super.dispatchTouchEvent(event)
     }
 
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
         // A stick pushed well over (not resting noise) counts as input, and ends the screensaver.
-        if (stickMoved(event)) {
-            lastInput = SystemClock.uptimeMillis()
-            if (screensaverOn) {
-                screensaverOn = false
-                return true
-            }
-        }
-        if (screensaverOn) return true
+        if (stickMoved(event) && idle.input()) return true
+        if (idle.on) return true
         if (controller.captureMotion(event)) return true
         if (playing && controller.toGame && controller.onMotion(event)) return true
         return super.dispatchGenericMotionEvent(event)
