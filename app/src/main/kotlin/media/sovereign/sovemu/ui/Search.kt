@@ -113,9 +113,5 @@ fun SearchScreen(
                 }
             }
         }
-        HintBar(
-            listOf(Hint.Dpad to "Choose", Hint.A to if (typing) "Type" else "Open", Hint.B to "Back"),
-            Modifier.align(Alignment.BottomCenter),
-        )
     }
 }
