@@ -114,10 +114,11 @@ fun LoginScreen(settings: Settings, api: SovEmuApi, onSignedIn: () -> Unit) {
     }
 
     // The field being typed in, if any. On a TV each field is picked on its own (A opens the
-    // keyboard, its Done key closes it, nothing jumps to the next field), and while typing only
-    // that field shows, at the top: the keyboard has the rest of the screen, below it.
+    // keyboard, its Done key closes it, nothing jumps to the next field). The app's keyboard
+    // leaves the form in view above it; under a system keyboard on a TV only the field being
+    // typed in shows, at the top, out of the keyboard's way.
     var typing by remember { mutableStateOf<LoginField?>(null) }
-    val tv = LocalForm.current.tv
+    val tv = LocalForm.current.tv && LocalTvKeyboard.current == null
     fun shown(field: LoginField?) = !tv || typing == null || typing == field
     val first = remember { FocusRequester() }
     LaunchedEffect(first) { runCatching { first.requestFocus() } }
