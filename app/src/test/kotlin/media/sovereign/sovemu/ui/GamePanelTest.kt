@@ -9,9 +9,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsFocused
@@ -48,10 +50,12 @@ class GamePanelTest {
     private val outside = FocusRequester()
     private var favourites = 0
     private var collections = 0
+    private lateinit var focusManager: FocusManager
 
     /** A card of the grid behind the panel (left of it), and the panel. */
     private fun show() = rule.setContent {
         TestApp {
+            focusManager = LocalFocusManager.current
             Row {
                 Box(Modifier.testTag("card").size(40.dp).focusRequester(outside).focusable()) { Text("card") }
                 Box {
@@ -112,6 +116,21 @@ class GamePanelTest {
         show()
         rule.waitForIdle()
         rule.runOnIdle { outside.requestFocus() }
+        rule.onNodeWithTag("card").assertIsNotFocused()
+        rule.onNodeWithText("Play").assertIsFocused()
+    }
+
+    /** Regression: back from a game, the focus could land in the grid behind the open panel (the
+     *  panel had stopped asking for it), and the D-pad then moved through the grid behind it. */
+    @Test
+    fun focusThatLandsBehindAnOpenPanelIsBroughtBack() {
+        show()
+        rule.waitForIdle()
+        rule.runOnIdle {
+            focusManager.clearFocus(force = true)
+            outside.requestFocus()
+        }
+        rule.waitForIdle()
         rule.onNodeWithTag("card").assertIsNotFocused()
         rule.onNodeWithText("Play").assertIsFocused()
     }
