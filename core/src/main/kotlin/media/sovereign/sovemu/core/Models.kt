@@ -12,6 +12,7 @@ import media.sovereign.sovemu.core.graphql.fragment.UserFields
 import media.sovereign.sovemu.core.graphql.type.BindingInput
 import media.sovereign.sovemu.core.graphql.type.PadButton
 import media.sovereign.sovemu.core.graphql.type.Rendering
+import media.sovereign.sovemu.core.graphql.type.Stick
 
 // The API's models. Most are the fragments Apollo generates from operations.graphql against
 // SovEmu.Server's schema, under the names the app uses; the controller models stay hand-written
@@ -167,8 +168,24 @@ data class PadLayout(
 /** `SystemButton`: one of a system's buttons, the RetroPad button driving it and the console's label. */
 data class SystemButton(val button: Button, val label: String)
 
-/** `System.controls`: the system's buttons in listing order, and its pad. */
-data class SystemControls(val buttons: List<SystemButton> = emptyList(), val layout: PadLayout)
+/**
+ * `SystemStick`: one of a system's analog controls, the console's [label] for it and its
+ * diagram [key]. Sticks are not remapped, so the player's left (or [right]) stick always drives it.
+ */
+data class SystemStick(val right: Boolean, val label: String, val key: String) {
+    /** The player's stick that drives it, as a row shows it. */
+    val stickName: String get() = if (right) "Right stick" else "Left stick"
+
+    /** The keys to light: the control on the system's pad, the stick on the controller's. */
+    fun highlight(): Highlight = Highlight(key, setOf(if (right) "r3" else "l3"))
+}
+
+/** `System.controls`: the system's buttons in listing order, its analog controls, and its pad. */
+data class SystemControls(
+    val buttons: List<SystemButton> = emptyList(),
+    val layout: PadLayout,
+    val sticks: List<SystemStick> = emptyList(),
+)
 
 /** GraphQL's `MappingSource`. A model the server has no mapping for uses the built-in defaults. */
 object MappingSource {
@@ -207,6 +224,7 @@ fun ControlsQuery.Data.toControls(): Pair<SystemControls?, List<PadLayout>> {
         SystemControls(
             buttons = c.buttons.mapNotNull { b -> b.button.toButton()?.let { SystemButton(it, b.label) } },
             layout = c.layout.layoutFields.toLayout(),
+            sticks = c.sticks.map { s -> SystemStick(s.stick == Stick.RIGHT, s.label, s.key) },
         )
     }
     return system to controllerLayouts.map { it.layoutFields.toLayout() }
