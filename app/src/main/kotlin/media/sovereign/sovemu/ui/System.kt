@@ -510,10 +510,6 @@ internal fun GamePanel(
     backToCollections: Int = 0,
     trapFocus: Boolean = true,
 ) {
-    // The last game stays drawn while the panel slides out: a plain holder, not state (writing
-    // state read in this same composition would recompose it again).
-    val last = remember { arrayOfNulls<Game>(1) }
-    if (game != null) last[0] = game
     val first = remember { FocusRequester() }
     val collections = remember { FocusRequester() }
     LaunchedEffect(backToCollections) {
@@ -529,94 +525,69 @@ internal fun GamePanel(
             if (first.requestFocus()) return@LaunchedEffect
         }
     }
-    AnimatedVisibility(game != null, enter = fadeIn(tween(200)), exit = fadeOut(tween(160))) {
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).clickable(remember { MutableInteractionSource() }, null, onClick = onClose))
-    }
-    Box(modifier.fillMaxSize(), contentAlignment = Alignment.CenterEnd) {
-        AnimatedVisibility(
-            game != null,
-            enter = slideInHorizontally(tween(260)) { it },
-            exit = slideOutHorizontally(tween(200)) { it },
+    SidePanel(game, onClose, modifier, trapFocus = trapFocus) { g ->
+        Box {
+            PanelArt(g, system)
+            PanelClose(onClose, Modifier.align(Alignment.TopEnd))
+        }
+        Column(
+            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            val g = game ?: last[0] ?: return@AnimatedVisibility
-            Column(
-                Modifier.fillMaxHeight().widthIn(max = 448.dp).fillMaxWidth()
-                    .background(Sov.Surface.copy(alpha = 0.96f))
-                    .border(1.dp, Color.White.copy(alpha = 0.1f))
-                    .clickable(remember { MutableInteractionSource() }, null) {}
-                    // Traps the focus only while open: sliding out, it must let the focus go
-                    // back to the card, and a drawer over it ([trapFocus] off) must be able to take it.
-                    .focusProperties { onExit = { if (game != null && trapFocus) cancelFocusChange() } }
-                    .focusGroup(),
-            ) {
-                Box {
-                    PanelArt(g, system)
-                    Box(
-                        Modifier.focusProperties { canFocus = false }.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp).size(36.dp).clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.5f)).clickable(onClick = onClose),
-                        contentAlignment = Alignment.Center,
-                    ) { LucideIcon(Lucide.X) }
+            Column {
+                Text(g.title, color = Color.White, fontSize = 24.sp, lineHeight = 28.sp, fontWeight = FontWeight.Black)
+                g.release?.let { Text(it, color = Sov.Amber200, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 4.dp)) }
+                if (g.tags.isNotEmpty()) Text(g.tags.joinToString(" · "), color = Sov.Slate500, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                FlowRow(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    g.year?.let { Fact(Lucide.CalendarDays, it) }
+                    (g.developer ?: g.publisher)?.let { Fact(Lucide.Building2, it) }
+                    g.genre?.let { Fact(Lucide.Tag, it) }
+                    maxPlayers(g.players)?.let { Fact(Lucide.Users, if (it == 1) "1 player" else "${g.players} players") }
+                    if (g.discs > 1) Fact(Lucide.Disc3, "${g.discs} discs")
                 }
-                Column(
-                    Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 24.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    Column {
-                        Text(g.title, color = Color.White, fontSize = 24.sp, lineHeight = 28.sp, fontWeight = FontWeight.Black)
-                        g.release?.let { Text(it, color = Sov.Amber200, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 4.dp)) }
-                        if (g.tags.isNotEmpty()) Text(g.tags.joinToString(" · "), color = Sov.Slate500, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
-                        FlowRow(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            g.year?.let { Fact(Lucide.CalendarDays, it) }
-                            (g.developer ?: g.publisher)?.let { Fact(Lucide.Building2, it) }
-                            g.genre?.let { Fact(Lucide.Tag, it) }
-                            maxPlayers(g.players)?.let { Fact(Lucide.Users, if (it == 1) "1 player" else "${g.players} players") }
-                            if (g.discs > 1) Fact(Lucide.Disc3, "${g.discs} discs")
-                        }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (auto) {
-                            SovButton("Continue", { onPlay(Start.Continue) }, Modifier.focusRequester(first), icon = Lucide.Play, filledIcon = true)
-                            SovButton("Start over", { onPlay(Start.New) }, variant = Variant.Outline, icon = Lucide.RotateCcw)
-                        } else {
-                            SovButton("Play", { onPlay(Start.New) }, Modifier.focusRequester(first), icon = Lucide.Play, filledIcon = true)
-                        }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SovButton(
-                            if (g.favourite) "Favourite" else "Add to favourites", onFavourite,
-                            variant = Variant.Outline, icon = Lucide.Heart, large = false,
-                            iconTint = if (g.favourite) Sov.Red300 else null,
-                        )
-                        SovButton("Collections", onCollections, Modifier.focusRequester(collections), variant = Variant.Outline, icon = Lucide.ListPlus, large = false)
-                    }
-                    // A, again and again, steps through the original and each patch: one button,
-                    // no menu to navigate on a remote.
-                    if (patches.isNotEmpty()) {
-                        SovButton(
-                            "Patch: ${g.patch ?: "Original"}", { onPatch(nextPatch(patches, g.patch)) },
-                            variant = Variant.Outline, icon = Lucide.FileDiff, large = false,
-                        )
-                    }
-                    notice?.let { Text(it, color = Sov.Red300, fontSize = 14.sp) }
-                    g.description?.let { Text(it, color = Sov.Slate300, fontSize = 14.sp, lineHeight = 22.sp) }
-                    if (slots.isNotEmpty()) {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Eyebrow("Start from a save")
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                for (s in slots.sortedBy { it.slot }) SaveThumb(s) { onPlay(Start.FromSlot(s.slot)) }
-                            }
-                        }
-                    }
-                    val now = remember(g.id) { System.currentTimeMillis() / 1000 }
-                    val history = if (g.playCount > 0) "Played ${g.playCount}× · last ${formatAgo(GameIndex.playedAt(g.lastPlayedAt), now)}" else "Not played yet"
-                    Column(Modifier.padding(top = 4.dp)) {
-                        Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.1f)))
-                        Text(
-                            "$history · ${g.path} · ${formatSize(g.size)}",
-                            color = Sov.Slate500, fontSize = 12.sp, modifier = Modifier.padding(top = 12.dp),
-                        )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (auto) {
+                    SovButton("Continue", { onPlay(Start.Continue) }, Modifier.focusRequester(first), icon = Lucide.Play, filledIcon = true)
+                    SovButton("Start over", { onPlay(Start.New) }, variant = Variant.Outline, icon = Lucide.RotateCcw)
+                } else {
+                    SovButton("Play", { onPlay(Start.New) }, Modifier.focusRequester(first), icon = Lucide.Play, filledIcon = true)
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SovButton(
+                    if (g.favourite) "Favourite" else "Add to favourites", onFavourite,
+                    variant = Variant.Outline, icon = Lucide.Heart, large = false,
+                    iconTint = if (g.favourite) Sov.Red300 else null,
+                )
+                SovButton("Collections", onCollections, Modifier.focusRequester(collections), variant = Variant.Outline, icon = Lucide.ListPlus, large = false)
+            }
+            // A, again and again, steps through the original and each patch: one button,
+            // no menu to navigate on a remote.
+            if (patches.isNotEmpty()) {
+                SovButton(
+                    "Patch: ${g.patch ?: "Original"}", { onPatch(nextPatch(patches, g.patch)) },
+                    variant = Variant.Outline, icon = Lucide.FileDiff, large = false,
+                )
+            }
+            notice?.let { Text(it, color = Sov.Red300, fontSize = 14.sp) }
+            g.description?.let { Text(it, color = Sov.Slate300, fontSize = 14.sp, lineHeight = 22.sp) }
+            if (slots.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Eyebrow("Start from a save")
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        for (s in slots.sortedBy { it.slot }) SaveThumb(s) { onPlay(Start.FromSlot(s.slot)) }
                     }
                 }
+            }
+            val now = remember(g.id) { System.currentTimeMillis() / 1000 }
+            val history = if (g.playCount > 0) "Played ${g.playCount}× · last ${formatAgo(GameIndex.playedAt(g.lastPlayedAt), now)}" else "Not played yet"
+            Column(Modifier.padding(top = 4.dp)) {
+                Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.1f)))
+                Text(
+                    "$history · ${g.path} · ${formatSize(g.size)}",
+                    color = Sov.Slate500, fontSize = 12.sp, modifier = Modifier.padding(top = 12.dp),
+                )
             }
         }
     }
@@ -625,11 +596,15 @@ internal fun GamePanel(
 @Composable
 private fun PanelArt(g: Game, system: SystemSummary) {
     val brush = remember(system.color) { tile(system.colour()) }
-    Box(Modifier.fillMaxWidth().aspectRatio(16 / 9f).background(brush), contentAlignment = Alignment.Center) {
-        Text(system.short, color = Color.White.copy(alpha = 0.8f), fontSize = 60.sp, fontWeight = FontWeight.Black)
-        Art(g.image ?: g.thumb, Modifier.fillMaxSize(), scale = if (g.image != null) ContentScale.Crop else ContentScale.Fit)
-        // Its video snap, after a moment, over the artwork (muted: the menus' music plays on).
-        if (g.video != null) VideoSnap(g.video, Modifier.fillMaxSize())
+    Box(Modifier.fillMaxWidth().aspectRatio(16 / 9f)) {
+        // Its video snap, after a moment, under the artwork as it fades out (muted: the menus'
+        // music plays on). The video is below the window, so the cover is drawn over it.
+        VideoSnap(g.video, Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxSize().background(brush), contentAlignment = Alignment.Center) {
+                Text(system.short, color = Color.White.copy(alpha = 0.8f), fontSize = 60.sp, fontWeight = FontWeight.Black)
+                Art(g.image ?: g.thumb, Modifier.fillMaxSize(), scale = if (g.image != null) ContentScale.Crop else ContentScale.Fit)
+            }
+        }
         Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.5f).background(Brush.verticalGradient(listOf(Color.Transparent, Sov.Surface.copy(alpha = 0.8f)))))
         if (g.image != null && g.thumb != null) {
             Art(g.thumb, Modifier.align(Alignment.BottomStart).padding(start = 20.dp, bottom = 12.dp).fillMaxHeight(0.5f).aspectRatio(3 / 4f).clip(RoundedCornerShape(6.dp)), scale = ContentScale.Fit)
