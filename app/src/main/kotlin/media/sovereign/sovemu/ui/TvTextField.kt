@@ -38,7 +38,15 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -48,6 +56,9 @@ import androidx.compose.ui.unit.sp
  * could not be passed). A or a tap ([onTyping] true) swaps in the text field, focused, which opens
  * the keyboard; its action key, Back, or the keyboard closing swaps the box back, focused. (The
  * system spends the first Back on hiding the keyboard, so the field never sees that one.)
+ *
+ * Under a [TvKeyboardHost] (on a TV) the box stays, and the app's own keyboard types into it
+ * along the bottom of the screen instead of the system's, which on Fire TV covers everything.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -61,35 +72,77 @@ fun TvTextField(
     mono: Boolean = false,
     action: ImeAction = ImeAction.Done,
     onAction: () -> Unit = {},
+    /** What the keyboard offers: an address, a password … (none of them capitalised). */
+    keyboardType: KeyboardType = KeyboardType.Text,
+    /** A password: dots in the box and in the field. */
+    secret: Boolean = false,
 ) {
     val box = remember { FocusRequester() }
     val field = remember { FocusRequester() }
+    val appKeyboard = LocalTvKeyboard.current
     var wasTyping by remember { mutableStateOf(false) }
     LaunchedEffect(typing) {
         withFrameNanos { }
-        if (typing) runCatching { field.requestFocus() }
-        else if (wasTyping) runCatching { box.requestFocus() }
+        if (typing) {
+            // The app's keyboard takes the focus itself.
+            if (appKeyboard == null) runCatching { field.requestFocus() }
+        } else if (wasTyping && appKeyboard?.request == null) {
+            // Back to the box, unless another field has gone on typing (a Next key).
+            runCatching { box.requestFocus() }
+        }
         wasTyping = typing
     }
-    // The keyboard closed while typing (Back, or its own close key): back to the D-pad.
-    val keyboard = WindowInsets.isImeVisible
-    var keyboardShown by remember { mutableStateOf(false) }
-    LaunchedEffect(keyboard, typing) {
-        if (!typing) keyboardShown = false
-        else if (keyboard) keyboardShown = true
-        else if (keyboardShown) onTyping(false)
+    if (appKeyboard != null) {
+        val owner = remember { Any() }
+        val currentValue by rememberUpdatedState(value)
+        val currentOnValue by rememberUpdatedState(onValue)
+        val currentOnAction by rememberUpdatedState(onAction)
+        val currentOnTyping by rememberUpdatedState(onTyping)
+        LaunchedEffect(typing, keyboardType, action) {
+            if (typing) {
+                appKeyboard.request = TvKeyboardRequest(
+                    owner, keyboardType, action,
+                    value = { currentValue },
+                    onValue = { currentOnValue(it) },
+                    // Closed first, so an action that moves on to another field (Next) wins.
+                    onAction = {
+                        currentOnTyping(false)
+                        currentOnAction()
+                    },
+                    onClose = { currentOnTyping(false) },
+                )
+            } else {
+                appKeyboard.release(owner)
+            }
+        }
+        DisposableEffect(appKeyboard) { onDispose { appKeyboard.release(owner) } }
+    } else {
+        // The system keyboard closed while typing (Back, or its own close key): back to the D-pad.
+        val keyboard = WindowInsets.isImeVisible
+        var keyboardShown by remember { mutableStateOf(false) }
+        LaunchedEffect(keyboard, typing) {
+            if (!typing) keyboardShown = false
+            else if (keyboard) keyboardShown = true
+            else if (keyboardShown) onTyping(false)
+        }
     }
     val style = TextStyle(color = Sov.Slate100, fontSize = 15.sp, fontFamily = if (mono) FontFamily.Monospace else FontFamily.Default)
     val shape = RoundedCornerShape(8.dp)
-    if (typing) {
+    if (typing && appKeyboard == null) {
         BasicTextField(
             value, onValue,
             singleLine = true,
             textStyle = style,
             cursorBrush = SolidColor(Sov.Accent),
+            visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
             keyboardOptions = KeyboardOptions(
-                capitalization = if (mono) KeyboardCapitalization.Characters else KeyboardCapitalization.Sentences,
+                capitalization = when {
+                    mono -> KeyboardCapitalization.Characters
+                    keyboardType == KeyboardType.Text -> KeyboardCapitalization.Sentences
+                    else -> KeyboardCapitalization.None
+                },
                 autoCorrectEnabled = false,
+                keyboardType = keyboardType,
                 imeAction = action,
             ),
             keyboardActions = KeyboardActions(onNext = { onAction() }, onDone = { onAction() }),
@@ -115,14 +168,30 @@ fun TvTextField(
         Box(
             modifier.fillMaxWidth().padding(horizontal = 4.dp).focusRequester(box)
                 .clip(shape).background(Sov.Surface)
-                .border(if (focused) 2.dp else 1.dp, if (focused) Color.White.copy(alpha = 0.7f) else Sov.Edge, shape)
+                .border(
+                    if (focused || typing) 2.dp else 1.dp,
+                    when {
+                        typing -> Sov.Accent
+                        focused -> Color.White.copy(alpha = 0.7f)
+                        else -> Sov.Edge
+                    },
+                    shape,
+                )
                 .clickable(interactionSource = source, indication = null) { onTyping(true) }
                 .padding(horizontal = 12.dp, vertical = 10.dp),
         ) {
-            if (value.isEmpty()) {
-                Text(if (focused) "$label · press A to type" else label, color = Sov.Slate500, fontSize = 14.sp)
-            } else {
-                Text(value, style = style, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val shown = if (secret) "•".repeat(value.length) else value
+            when {
+                // Typed into by the app's keyboard: the end of the text, and a cursor after it.
+                typing -> Text(
+                    buildAnnotatedString {
+                        append(shown)
+                        withStyle(SpanStyle(color = Sov.Accent)) { append("▏") }
+                    },
+                    style = style, maxLines = 1, overflow = TextOverflow.StartEllipsis,
+                )
+                value.isEmpty() -> Text(if (focused) "$label · press A to type" else label, color = Sov.Slate500, fontSize = 14.sp)
+                else -> Text(shown, style = style, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }

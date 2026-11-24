@@ -54,8 +54,10 @@ import media.sovereign.sovemu.ui.QuitOnRootBack
 import media.sovereign.sovemu.ui.Section
 import media.sovereign.sovemu.ui.SovTheme
 import media.sovereign.sovemu.ui.Start
+import media.sovereign.sovemu.ui.LocalForm
 import media.sovereign.sovemu.ui.SearchScreen
 import media.sovereign.sovemu.ui.SystemScreen
+import media.sovereign.sovemu.ui.TvKeyboardHost
 import media.sovereign.sovemu.ui.scanlines
 
 /** A place in the app. [key] names its saved state (scroll position, filters, focus). */
@@ -129,7 +131,9 @@ class MainActivity : ComponentActivity() {
                 ImageLoader.Builder(context).components { add(OkHttpNetworkFetcherFactory(callFactory = { api.client })) }.build()
             }
             SovTheme {
-                CompositionLocalProvider(LocalApi provides api) { App() }
+                // On a TV, text fields type with the app's own keyboard along the bottom of the
+                // screen: Fire TV's covers all of it.
+                CompositionLocalProvider(LocalApi provides api) { TvKeyboardHost(enabled = LocalForm.current.tv) { App() } }
             }
         }
     }
