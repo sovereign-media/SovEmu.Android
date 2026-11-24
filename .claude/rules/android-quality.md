@@ -72,9 +72,12 @@ here. "(judgement)" marks a rule that is ours rather than the docs'.
 - TV focus: every screen sets initial focus (a remembered `FocusRequester`, requested from an
   effect, never from the body), restores focus when returned to (`FocusMemory` /
   `focusRestorer` on lazy rows and grids), and gives it back when an overlay closes. [RF][FR]
-- Overlays (drawers, strips, menus) trap focus (`focusGroup` + `focusProperties { onExit }`)
-  and close on Back via `BackHandler`. They are drawn in the activity window, not a `Dialog`
-  window (Back was lost in one on a Mi TV). [FG] (judgement for the window)
+- Overlays (drawers, strips, menus, side panels) trap focus (`focusGroup` + `focusProperties
+  { onExit }`) and close on Back via `BackHandler`. Nothing behind an open overlay may ever
+  have the focus: focus that lands behind it (coming back from a game, a list restoring its
+  card) is brought back in, as `SidePanel` does. Closing a game's panel lands on its card.
+  They are drawn in the activity window, not a `Dialog` window (Back was lost in one on a Mi
+  TV). [FG] (judgement for the window and for focus behind)
 - Every focusable custom element shows its focus visibly through its `interactionSource`, not
   only by changing state in `onFocusChanged`. [FS][FOC]
 - Don't mix `androidx.tv.material3` with `androidx.compose.material3` under one theme. [TV]

@@ -25,7 +25,7 @@ import org.robolectric.annotation.Config
  * A "Continue playing" card opens Home's own panel (where the player left off) rather than
  * starting the game or leaving Home: Continue takes the focus and resumes the auto save, Game
  * details goes on to the game's panel on its system's page, and Back closes it, giving the
- * focus back to the card. Back from that system page's panel goes straight back to Home.
+ * focus back to the card. Back from that system page's panel lands in its grid, on the game.
  */
 @Config(qualifiers = "w960dp-h540dp")
 @RunWith(RobolectricTestRunner::class)
@@ -99,16 +99,17 @@ class ContinuePlayingTest {
         rule.onAllNodes(hasClickAction() and hasText("NES")).onFirst().assertIsFocused()
     }
 
+    /** Continue playing → Game details opens the game's panel on its system's page; Back from
+     *  that panel lands on its card in the grid, not back on Home. */
     @Test
-    fun backFromThePanelItWasOpenedOnLeaves() {
-        var left = 0
+    fun backFromThePanelItWasOpenedOnLandsInTheGrid() {
         rule.setContent {
             TestApp {
                 SystemScreen(
                     LocalApi.current, system(), Load.Ready(GameIndex(listOf(game(id = 7, title = "Zelda")))),
                     openFirst = 7, sort = media.sovereign.sovemu.core.GameSort.TITLE, onSort = {},
                     onPlay = { _, _ -> }, onFavourite = { _, _ -> null }, onCollectionsChanged = {},
-                    onPatch = { _, _ -> null }, onLeave = { left++ },
+                    onPatch = { _, _ -> null },
                 )
             }
         }
@@ -116,6 +117,7 @@ class ContinuePlayingTest {
         rule.onNodeWithText("Play").assertIsFocused()
         rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
         rule.waitForIdle()
-        assertEquals(1, left)
+        rule.onNodeWithText("Play").assertDoesNotExist()
+        rule.onAllNodes(hasClickAction() and hasText("Zelda")).onFirst().assertIsFocused()
     }
 }

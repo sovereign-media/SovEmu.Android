@@ -295,7 +295,6 @@ class MainActivity : ComponentActivity() {
                                     onFavourite = store::setFavourite,
                                     onCollectionsChanged = store::collectionsChanged,
                                     onPatch = store::setPatch,
-                                    onLeave = ::pop,
                                 )
                             }
                         }
