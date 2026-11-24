@@ -13,8 +13,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.defaultMinSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -103,7 +101,7 @@ fun SystemSummary.colour(): Color = colours.getOrPut(color) { Color(parseColor(c
 /** `linear-gradient(145deg, c, color-mix(c [mix]%, black))`, the web's card fill. */
 fun tile(c: Color, mix: Float = 0.3f): Brush = Brush.linearGradient(listOf(c, lerp(Color.Black, c, mix)))
 
-/** How the app is being used: a TV (D-pad, hint bar), a wide screen (side dock) or a phone (tab bar). */
+/** How the app is being used: a TV (D-pad), a wide screen (side dock) or a phone (tab bar). */
 data class Form(val tv: Boolean, val wide: Boolean)
 
 val LocalForm = staticCompositionLocalOf { Form(tv = false, wide = true) }
@@ -332,44 +330,6 @@ fun SystemBadge(short: String, colour: Color, modifier: Modifier = Modifier, lar
             .background(colour)
             .padding(horizontal = if (large) 10.dp else 8.dp, vertical = if (large) 4.dp else 2.dp),
     )
-
-enum class Hint { Dpad, A, B, Start, Select, X }
-
-/** The console-style bar of controller hints along the bottom, shown on a TV. */
-@Composable
-fun HintBar(hints: List<Pair<Hint, String>>, modifier: Modifier = Modifier) {
-    if (!LocalForm.current.tv) return
-    Row(
-        modifier
-            .fillMaxWidth()
-            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f))))
-            .padding(start = 32.dp, end = 32.dp, top = 32.dp, bottom = 18.dp),
-        horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.End),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        for ((button, label) in hints) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(
-                    Modifier
-                        .defaultMinSize(28.dp, 28.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.1f))
-                        .border(1.dp, Color.White.copy(alpha = 0.3f), CircleShape)
-                        .padding(horizontal = 6.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    when (button) {
-                        Hint.Dpad -> LucideIcon(Lucide.Move, size = 14.dp)
-                        Hint.Start -> LucideIcon(Lucide.Menu, size = 14.dp)
-                        Hint.Select -> LucideIcon(Lucide.SquareMinus, size = 14.dp)
-                        else -> Text(button.name, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-                Text(label, color = Sov.Slate300, fontSize = 14.sp)
-            }
-        }
-    }
-}
 
 /** A row's title with its icon ("Continue playing"). */
 @Composable

@@ -5,12 +5,6 @@ import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import media.sovereign.sovemu.core.AUTO_SLOT
 import media.sovereign.sovemu.core.year
 import media.sovereign.sovemu.attempt
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -302,12 +296,6 @@ private fun Games(
             notice = notice,
             backToCollections = backToCollections,
             trapFocus = !collectionsOpen,
-        )
-
-        HintBar(
-            if (open != null) listOf(Hint.Dpad to "Choose", Hint.A to "Select", Hint.B to "Close")
-            else listOf(Hint.Dpad to "Choose", Hint.A to "Open", Hint.Start to "Filters", Hint.B to "Home"),
-            Modifier.align(Alignment.BottomCenter),
         )
 
     if (collectionsOpen && open != null) {

@@ -241,29 +241,11 @@ object Lucide {
         )
     }
 
-    val Move: ImageVector by lazy {
-        icon(
-            "M12 2v20",
-            "m15 19-3 3-3-3",
-            "m19 9 3 3-3 3",
-            "M2 12h20",
-            "m5 9-3 3 3 3",
-            "m9 5 3-3 3 3",
-        )
-    }
-
     val Menu: ImageVector by lazy {
         icon(
             "M4 5h16",
             "M4 12h16",
             "M4 19h16",
-        )
-    }
-
-    val SquareMinus: ImageVector by lazy {
-        icon(
-            "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2z",
-            "M8 12h8",
         )
     }
 

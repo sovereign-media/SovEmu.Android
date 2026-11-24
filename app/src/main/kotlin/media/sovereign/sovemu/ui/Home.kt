@@ -186,7 +186,6 @@ private fun HomeContent(
                 }
             }
         }
-        HintBar(listOf(Hint.Dpad to "Choose", Hint.A to "Open", Hint.X to "Search"), Modifier.align(Alignment.BottomCenter))
         ContinuePanel(
             resume, resume?.let { byId[it.system] }, onClose = ::closeResume,
             onPlay = { start -> resume?.let { onPlay(it, start) } },
