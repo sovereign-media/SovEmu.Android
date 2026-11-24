@@ -93,10 +93,13 @@ fun HomeScreen(
     onPlay: (Game, Start) -> Unit,
     onSystem: (SystemSummary, Int?) -> Unit,
     onSearch: () -> Unit,
+    server: String,
+    onRetry: () -> Unit,
+    onSignOut: () -> Unit,
 ) {
     when (feed) {
         Load.Loading -> Box(Modifier.fillMaxWidth().aspectRatio(16 / 6.3f).background(Sov.Panel.copy(alpha = 0.4f)))
-        is Load.Failed -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(feed.message, color = Sov.Red300) }
+        is Load.Failed -> Unreachable(server, feed.message, onRetry, onSignOut)
         is Load.Ready -> HomeContent(feed.value, systems, onPlay, onSystem, onSearch)
     }
 }

@@ -44,6 +44,9 @@ class ContinuePlayingTest {
                 onPlay = { g, start -> played += g.id to start },
                 onSystem = { s: SystemSummary, open -> opened += s.id to open },
                 onSearch = {},
+                server = "http://h:8080",
+                onRetry = {},
+                onSignOut = {},
             )
         }
     }

@@ -204,10 +204,10 @@ class MainActivity : ComponentActivity() {
                     settings.gameMode = gameMode
                 },
                 signOut = {
-                    lifecycleScope.launch {
-                        api.signOut()
-                        store.clear()
-                    }
+                    // Cleared now, not after the revoke: with the server down that waits for a
+                    // timeout, and would wipe a sign-in made to another server meanwhile.
+                    store.clear()
+                    lifecycleScope.launch { api.signOut() }
                 },
             )
         }
@@ -274,6 +274,9 @@ class MainActivity : ComponentActivity() {
                                     onPlay = { game, start -> systems.firstOrNull { it.id == game.system }?.let { push(Route.Play(it, game, start)) } },
                                     onSystem = { s, open -> push(Route.System(s, open)) },
                                     onSearch = nav.search,
+                                    server = settings.serverUrl,
+                                    onRetry = store::refresh,
+                                    onSignOut = nav.signOut,
                                 )
                             }
                         }
