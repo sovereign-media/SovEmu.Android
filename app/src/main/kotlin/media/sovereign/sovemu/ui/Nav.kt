@@ -40,6 +40,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.focus.onFocusChanged
@@ -150,10 +152,11 @@ private fun Dock(section: Section, nav: Nav, user: User?, systems: List<SystemSu
         DockEntry(Lucide.Search, "Search", section == Section.Search, width, open, onClick = nav.search)
         SystemsMenu(systems, nav) { show -> DockEntry(Lucide.Gamepad2, "Systems", section == Section.Systems, width, open, onClick = show) }
         Box(Modifier.animatedWidth(width, 9.dp).padding(horizontal = 8.dp, vertical = 4.dp).background(Color.White.copy(alpha = 0.1f)))
-        if (user != null) {
-            AccountMenu(user, nav) { show ->
-                DockEntry(null, user.username, false, width, open, avatar = initials(user.username), onClick = show)
-            }
+        // Always there, user or not: signing out is the way to another server, so it must not
+        // wait for this one to answer.
+        val name = user?.username
+        AccountMenu(name, nav) { show ->
+            DockEntry(Lucide.LogOut, name ?: "Account", false, width, open, avatar = name?.let(::initials), onClick = show)
         }
     }
 }
@@ -182,6 +185,8 @@ private fun DockEntry(
                 },
             )
             .borderIf(focused, 2.dp, Color.White.copy(alpha = 0.6f), CircleShape)
+            // Closed, the dock shows only icons: the label still names the entry.
+            .semantics { if (!open) contentDescription = label }
             .clickable(interactionSource = source, indication = null, onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -217,10 +222,9 @@ private fun TabBar(section: Section, nav: Nav, user: User?, systems: List<System
         Box(Modifier.weight(1f)) {
             SystemsMenu(systems, nav) { show -> TabItem(Lucide.Gamepad2, "Systems", section == Section.Systems, Modifier.fillMaxWidth(), onClick = show) }
         }
-        if (user != null) {
-            Box(Modifier.weight(1f)) {
-                AccountMenu(user, nav) { show -> TabItem(Lucide.LogOut, user.username, false, Modifier.fillMaxWidth(), onClick = show) }
-            }
+        Box(Modifier.weight(1f)) {
+            val name = user?.username
+            AccountMenu(name, nav) { show -> TabItem(Lucide.LogOut, name ?: "Account", false, Modifier.fillMaxWidth(), onClick = show) }
         }
     }
 }
@@ -259,11 +263,11 @@ private fun SystemsMenu(systems: List<SystemSummary>, nav: Nav, anchor: @Composa
 }
 
 @Composable
-private fun AccountMenu(user: User, nav: Nav, anchor: @Composable (show: () -> Unit) -> Unit) {
+private fun AccountMenu(username: String?, nav: Nav, anchor: @Composable (show: () -> Unit) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         anchor { expanded = true }
-        Menu(expanded, { expanded = false }, "Signed in as ${user.username}") {
+        Menu(expanded, { expanded = false }, username?.let { "Signed in as $it" } ?: "Signed in") {
             MenuRow(
                 if (nav.music()) "Music: on" else "Music: off",
                 onClick = nav.toggleMusic,
