@@ -13,9 +13,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -45,15 +43,7 @@ internal fun ContinuePanel(
     modifier: Modifier = Modifier,
 ) {
     val first = remember { FocusRequester() }
-    LaunchedEffect(game?.id) {
-        if (game == null) return@LaunchedEffect
-        // Its buttons attach a frame or two after it opens (or after coming back to Home).
-        repeat(10) {
-            withFrameNanos { }
-            if (first.requestFocus()) return@LaunchedEffect
-        }
-    }
-    SidePanel(game, onClose, modifier) { g ->
+    SidePanel(game, onClose, first, modifier) { g ->
         Box {
             LeftOff(g, system)
             PanelClose(onClose, Modifier.align(Alignment.TopEnd))
