@@ -15,9 +15,6 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -30,15 +27,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -119,13 +113,22 @@ fun LoginScreen(settings: Settings, api: SovEmuApi, onSignedIn: () -> Unit) {
         }
     }
 
+    // The field being typed in, if any. On a TV each field is picked on its own (A opens the
+    // keyboard, its Done key closes it, nothing jumps to the next field), and while typing only
+    // that field shows, at the top: the keyboard has the rest of the screen, below it.
+    var typing by remember { mutableStateOf<LoginField?>(null) }
+    val tv = LocalForm.current.tv
+    fun shown(field: LoginField?) = !tv || typing == null || typing == field
+    val first = remember { FocusRequester() }
+    LaunchedEffect(first) { runCatching { first.requestFocus() } }
+
     Box(
         Modifier.fillMaxSize()
             .background(Brush.verticalGradient(listOf(Color(0xFF1E2A4A), Sov.Surface), endY = 1100f))
             .safeDrawingPadding()
             .imePadding()
             .verticalScroll(rememberScrollState()),
-        contentAlignment = Alignment.Center,
+        contentAlignment = if (tv && typing != null) Alignment.TopCenter else Alignment.Center,
     ) {
         Column(
             Modifier.padding(24.dp).widthIn(max = 384.dp).fillMaxWidth()
@@ -135,78 +138,102 @@ fun LoginScreen(settings: Settings, api: SovEmuApi, onSignedIn: () -> Unit) {
                 .padding(32.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Column {
-                Brand(size = 30)
-                Text("Sign in to play.", color = Sov.Muted, fontSize = 14.sp, modifier = Modifier.padding(top = 4.dp))
-            }
-            Field(
-                "Server address", server,
-                {
-                    server = it
-                    error = null
-                    config = null
-                },
-                KeyboardType.Uri,
-                onDone = if (ready) null else ::submit,
-            )
-            if (ready) {
-                Field("Username", username, { username = it; error = null })
-                Field("Password", password, { password = it; error = null }, KeyboardType.Password, secret = true, onDone = ::submit)
-            }
-            error?.let {
-                Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(Color(0x26EF4444)).padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    LucideIcon(Lucide.CircleAlert, tint = Sov.Red300, size = 16.dp)
-                    Text(it, color = Sov.Red300, fontSize = 14.sp)
+            if (shown(null)) {
+                Column {
+                    Brand(size = 30)
+                    Text("Sign in to play.", color = Sov.Muted, fontSize = 14.sp, modifier = Modifier.padding(top = 4.dp))
                 }
             }
-            SovButton(
-                when {
-                    !ready && busy -> "Checking…"
-                    !ready -> "Continue"
-                    busy -> "Signing in…"
-                    else -> "Sign in"
-                },
-                ::submit,
-                Modifier.fillMaxWidth(),
-                icon = Lucide.LogIn,
-                enabled = !busy,
-            )
+            if (shown(LoginField.SERVER)) {
+                Field(
+                    "Server address", server,
+                    {
+                        server = it
+                        error = null
+                        config = null
+                    },
+                    typing = typing == LoginField.SERVER,
+                    onTyping = { typing = if (it) LoginField.SERVER else null },
+                    modifier = if (ready) Modifier else Modifier.focusRequester(first),
+                    type = KeyboardType.Uri,
+                )
+            }
+            if (ready) {
+                if (shown(LoginField.USERNAME)) {
+                    Field(
+                        "Username", username, { username = it; error = null },
+                        typing = typing == LoginField.USERNAME,
+                        onTyping = { typing = if (it) LoginField.USERNAME else null },
+                        modifier = Modifier.focusRequester(first),
+                        type = KeyboardType.Email,
+                    )
+                }
+                if (shown(LoginField.PASSWORD)) {
+                    Field(
+                        "Password", password, { password = it; error = null },
+                        typing = typing == LoginField.PASSWORD,
+                        onTyping = { typing = if (it) LoginField.PASSWORD else null },
+                        type = KeyboardType.Password,
+                        secret = true,
+                    )
+                }
+            }
+            if (shown(null)) {
+                error?.let {
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(Color(0x26EF4444)).padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        LucideIcon(Lucide.CircleAlert, tint = Sov.Red300, size = 16.dp)
+                        Text(it, color = Sov.Red300, fontSize = 14.sp)
+                    }
+                }
+                SovButton(
+                    when {
+                        !ready && busy -> "Checking…"
+                        !ready -> "Continue"
+                        busy -> "Signing in…"
+                        else -> "Sign in"
+                    },
+                    ::submit,
+                    Modifier.fillMaxWidth(),
+                    icon = Lucide.LogIn,
+                    enabled = !busy,
+                )
+            }
         }
     }
 }
 
-/** A labelled input, as the web's Field and inputClass. */
+/** The sign-in form's fields, one of which may be being typed in. */
+enum class LoginField { SERVER, USERNAME, PASSWORD }
+
+/**
+ * A labelled input, as the web's Field and inputClass: a [TvTextField], so it is picked on its
+ * own and its keyboard's action key (Done) closes the keyboard rather than moving on.
+ */
 @Composable
 private fun Field(
     label: String,
     value: String,
     onValue: (String) -> Unit,
+    typing: Boolean,
+    onTyping: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
     type: KeyboardType = KeyboardType.Text,
     secret: Boolean = false,
-    onDone: (() -> Unit)? = null,
 ) {
-    var focused by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(label, color = Sov.Slate200, fontSize = 14.sp)
-        BasicTextField(
-            value, onValue,
-            singleLine = true,
-            textStyle = TextStyle(color = Sov.Slate100, fontSize = 16.sp),
-            cursorBrush = SolidColor(Sov.Accent),
-            visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
-            keyboardOptions = KeyboardOptions(keyboardType = type, imeAction = if (onDone != null) ImeAction.Go else ImeAction.Next, autoCorrectEnabled = false),
-            keyboardActions = KeyboardActions(onGo = { onDone?.invoke() }),
-            modifier = Modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused },
-            decorationBox = { inner ->
-                Box(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(Sov.Surface)
-                        .border(if (focused) 2.dp else 1.dp, if (focused) Sov.Accent else Sov.Edge, RoundedCornerShape(6.dp))
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                ) { inner() }
-            },
+        TvTextField(
+            label, value, onValue,
+            typing = typing,
+            onTyping = onTyping,
+            modifier = modifier,
+            action = ImeAction.Done,
+            onAction = { onTyping(false) },
+            keyboardType = type,
+            secret = secret,
         )
     }
 }

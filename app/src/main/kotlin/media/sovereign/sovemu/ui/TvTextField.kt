@@ -38,6 +38,9 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -61,6 +64,10 @@ fun TvTextField(
     mono: Boolean = false,
     action: ImeAction = ImeAction.Done,
     onAction: () -> Unit = {},
+    /** What the keyboard offers: an address, a password … (none of them capitalised). */
+    keyboardType: KeyboardType = KeyboardType.Text,
+    /** A password: dots in the box and in the field. */
+    secret: Boolean = false,
 ) {
     val box = remember { FocusRequester() }
     val field = remember { FocusRequester() }
@@ -87,9 +94,15 @@ fun TvTextField(
             singleLine = true,
             textStyle = style,
             cursorBrush = SolidColor(Sov.Accent),
+            visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
             keyboardOptions = KeyboardOptions(
-                capitalization = if (mono) KeyboardCapitalization.Characters else KeyboardCapitalization.Sentences,
+                capitalization = when {
+                    mono -> KeyboardCapitalization.Characters
+                    keyboardType == KeyboardType.Text -> KeyboardCapitalization.Sentences
+                    else -> KeyboardCapitalization.None
+                },
                 autoCorrectEnabled = false,
+                keyboardType = keyboardType,
                 imeAction = action,
             ),
             keyboardActions = KeyboardActions(onNext = { onAction() }, onDone = { onAction() }),
@@ -122,7 +135,7 @@ fun TvTextField(
             if (value.isEmpty()) {
                 Text(if (focused) "$label · press A to type" else label, color = Sov.Slate500, fontSize = 14.sp)
             } else {
-                Text(value, style = style, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(if (secret) "•".repeat(value.length) else value, style = style, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
