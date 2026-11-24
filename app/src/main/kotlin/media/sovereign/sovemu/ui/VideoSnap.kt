@@ -18,6 +18,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -72,6 +73,11 @@ fun VideoSnap(path: String?, modifier: Modifier = Modifier, cover: @Composable B
             player.removeListener(listener)
             player.release()
         }
+    }
+    // Out of sight (the app stopped), the video pauses rather than decoding for no one.
+    LifecycleStartEffect(player) {
+        player.playWhenReady = true
+        onStopOrDispose { player.playWhenReady = false }
     }
     LaunchedEffect(url) {
         player.stop()
