@@ -11,7 +11,9 @@ import androidx.compose.ui.test.onFirst
 import media.sovereign.sovemu.Load
 import media.sovereign.sovemu.core.GameIndex
 import media.sovereign.sovemu.core.HomeFeed
+import media.sovereign.sovemu.core.Game
 import media.sovereign.sovemu.core.SystemSummary
+import media.sovereign.sovemu.core.graphql.fragment.GameFields
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -20,8 +22,10 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * A "Continue playing" card opens the game's panel (Continue or Start over) on its system's page
- * rather than starting the game, and Back from that panel goes straight back to Home.
+ * A "Continue playing" card opens Home's own panel (where the player left off) rather than
+ * starting the game or leaving Home: Continue takes the focus and resumes the auto save, Game
+ * details goes on to the game's panel on its system's page, and Back closes it, giving the
+ * focus back to the card. Back from that system page's panel goes straight back to Home.
  */
 @Config(qualifiers = "w960dp-h540dp")
 @RunWith(RobolectricTestRunner::class)
@@ -29,28 +33,70 @@ class ContinuePlayingTest {
     @get:Rule
     val rule = createAndroidComposeRule<ComponentActivity>()
 
-    @Test
-    fun aContinueCardOpensTheGamesPanel() {
-        val played = mutableListOf<Int>()
-        val opened = mutableListOf<Pair<String, Int?>>()
-        val recent = game(id = 7, title = "Zelda")
-        rule.setContent {
-            TestApp {
-                HomeScreen(
-                    Load.Ready(HomeFeed(featured = emptyList(), recent = listOf(recent), added = emptyList())),
-                    listOf(system()),
-                    onPlay = { g, _ -> played += g.id },
-                    onSystem = { s: SystemSummary, open -> opened += s.id to open },
-                    onSearch = {},
-                )
-            }
+    private val played = mutableListOf<Pair<Int, Start>>()
+    private val opened = mutableListOf<Pair<String, Int?>>()
+
+    private fun home(recent: Game) = rule.setContent {
+        TestApp {
+            HomeScreen(
+                Load.Ready(HomeFeed(featured = emptyList(), recent = listOf(recent), added = emptyList())),
+                listOf(system()),
+                onPlay = { g, start -> played += g.id to start },
+                onSystem = { s: SystemSummary, open -> opened += s.id to open },
+                onSearch = {},
+            )
         }
-        // The card above the title (its tile shows the system, the game having no art here); the
-        // Continue row is the first row.
+    }
+
+    /** The card above the title (its tile shows the system, the game having no art here); the
+     * Continue row is the first row. */
+    private fun openCard() {
         rule.onAllNodes(hasClickAction() and hasText("NES")).onFirst().performClick()
         rule.waitForIdle()
+    }
+
+    private val saved = GameFields.AutoSave(slot = 0, savedAt = 0.0, screenshotUrl = null)
+
+    @Test
+    fun aContinueCardOpensHomesPanelWithContinueFocused() {
+        home(game(id = 7, title = "Zelda", playCount = 3, autoSave = saved))
+        openCard()
+        rule.onNodeWithText("Continue").assertIsFocused()
+        rule.onNodeWithText("Played 3×", substring = true).assertExists()
+        assertEquals(emptyList<Pair<String, Int?>>(), opened)
+        assertEquals(emptyList<Pair<Int, Start>>(), played)
+
+        rule.onNodeWithText("Continue").performClick()
+        assertEquals(listOf(7 to Start.Continue), played)
+    }
+
+    @Test
+    fun gameDetailsOpensTheGamesPanelOnItsSystemsPage() {
+        home(game(id = 7, title = "Zelda", autoSave = saved))
+        openCard()
+        rule.onNodeWithText("Game details").performClick()
         assertEquals(listOf("nes" to 7), opened)
-        assertEquals(emptyList<Int>(), played)
+        assertEquals(emptyList<Pair<Int, Start>>(), played)
+    }
+
+    @Test
+    fun withNoAutoSaveItOffersPlay() {
+        home(game(id = 7, title = "Zelda"))
+        openCard()
+        rule.onNodeWithText("Play").assertIsFocused()
+        rule.onNodeWithText("Continue").assertDoesNotExist()
+        rule.onNodeWithText("Play").performClick()
+        assertEquals(listOf(7 to Start.New), played)
+    }
+
+    @Test
+    fun backClosesThePanelAndTheCardTakesTheFocusBack() {
+        home(game(id = 7, title = "Zelda", autoSave = saved))
+        openCard()
+        rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
+        rule.waitForIdle()
+        rule.onNodeWithText("Game details").assertDoesNotExist()
+        rule.onAllNodes(hasClickAction() and hasText("NES")).onFirst().assertIsFocused()
     }
 
     @Test

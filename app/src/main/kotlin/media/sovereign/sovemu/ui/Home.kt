@@ -1,5 +1,6 @@
 package media.sovereign.sovemu.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
 import media.sovereign.sovemu.core.byline
 import androidx.compose.animation.core.animateDpAsState
@@ -41,6 +42,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -80,8 +82,9 @@ private const val ADVANCE_MS = 9000L
 /**
  * Home, as the web client's: a hero of featured games over rows of games to continue, systems
  * and recently added games. The D-pad moves between rows and along them; on the hero, left and
- * right change game and A plays. A game card opens its panel on its system's page (Continue or
- * Start over from there). X searches every system.
+ * right change game and A plays. A "Continue playing" card opens a panel here (where the player
+ * left off, Continue, Game details); any other game card opens the game's panel on its system's
+ * page. X searches every system.
  */
 @Composable
 fun HomeScreen(
@@ -111,10 +114,24 @@ private fun HomeContent(
     val memory = rememberFocusMemory()
     val scroll = rememberScrollState()
     val scope = rememberCoroutineScope()
+    // The "Continue playing" game whose panel is open, kept across a game and Game details.
+    var resumeId by rememberSaveable { mutableStateOf<Int?>(null) }
+    val resume = remember(resumeId, feed) { resumeId?.let { id -> feed.recent.firstOrNull { it.id == id } } }
+    // Back from a game with the panel open: the panel takes the focus, not the card behind it.
+    remember { if (resumeId != null) memory.pending = null }
+    fun closeResume() {
+        val id = resumeId ?: return
+        resumeId = null
+        scope.launch {
+            withFrameNanos { }
+            memory.focus("recent:$id")
+        }
+    }
+    BackHandler(enabled = resume != null, onBack = ::closeResume)
     Box(
         // X (the top face button) searches every system, as on the web.
         Modifier.fillMaxSize().onPreviewKeyEvent { e ->
-            if (e.type == KeyEventType.KeyDown && (e.key == Key.ButtonY || e.key == Key.Search)) {
+            if (resume == null && e.type == KeyEventType.KeyDown && (e.key == Key.ButtonY || e.key == Key.Search)) {
                 onSearch()
                 true
             } else {
@@ -128,10 +145,7 @@ private fun HomeContent(
                 if (feed.recent.isNotEmpty()) {
                     HomeRow("Continue playing", Lucide.History) {
                         itemsIndexed(feed.recent, key = { _, g -> g.id }) { _, g ->
-                            GameCard(g, byId[g.system], wide = true, memory = memory, key = "recent:${g.id}") {
-                                // The game's panel, to Continue or Start over (Back comes back here).
-                                byId[g.system]?.let { onSystem(it, g.id) }
-                            }
+                            GameCard(g, byId[g.system], wide = true, memory = memory, key = "recent:${g.id}") { resumeId = g.id }
                         }
                     }
                 }
@@ -173,6 +187,12 @@ private fun HomeContent(
             }
         }
         HintBar(listOf(Hint.Dpad to "Choose", Hint.A to "Open", Hint.X to "Search"), Modifier.align(Alignment.BottomCenter))
+        ContinuePanel(
+            resume, resume?.let { byId[it.system] }, onClose = ::closeResume,
+            onPlay = { start -> resume?.let { onPlay(it, start) } },
+            // On to the game's own panel; Back from there comes back here, to this panel.
+            onDetails = { resume?.let { g -> byId[g.system]?.let { onSystem(it, g.id) } } },
+        )
     }
 }
 

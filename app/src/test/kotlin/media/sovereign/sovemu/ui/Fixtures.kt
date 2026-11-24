@@ -7,6 +7,7 @@ import media.sovereign.sovemu.Settings
 import media.sovereign.sovemu.SovEmuApi
 import media.sovereign.sovemu.core.Game
 import media.sovereign.sovemu.core.SystemSummary
+import media.sovereign.sovemu.core.graphql.fragment.GameFields
 
 /** A game with only what a UI test cares about set (the generated model has no defaults). */
 fun game(
@@ -16,11 +17,13 @@ fun game(
     discs: Int = 1,
     release: String? = null,
     patch: String? = null,
+    playCount: Int = 0,
+    autoSave: GameFields.AutoSave? = null,
 ): Game = Game(
     id = id, system = "nes", title = title, fileTitle = null, tags = emptyList(), path = "nes/$title.nes", size = 0.0,
-    lastPlayedAt = null, playCount = 0, image = null, thumb = null, video = null, description = null,
+    lastPlayedAt = null, playCount = playCount, image = null, thumb = null, video = null, description = null,
     releaseDate = null, developer = null, publisher = null, genre = null, players = null, rating = null,
-    discs = discs, partKind = null, favourite = favourite, release = release, patch = patch, autoSave = null,
+    discs = discs, partKind = null, favourite = favourite, release = release, patch = patch, autoSave = autoSave,
 )
 
 fun system(): SystemSummary = SystemSummary(
