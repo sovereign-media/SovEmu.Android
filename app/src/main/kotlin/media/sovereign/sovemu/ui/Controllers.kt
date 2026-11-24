@@ -57,6 +57,7 @@ import media.sovereign.sovemu.core.MappingScope
 import media.sovereign.sovemu.core.highlight
 import media.sovereign.sovemu.core.Protocol
 import media.sovereign.sovemu.core.RebindCapture
+import media.sovereign.sovemu.core.SystemStick
 
 
 /**
@@ -176,6 +177,7 @@ private fun ColumnScope.Bindings(
     var inForce by remember(model.id) { mutableStateOf(MappingBook.sourceText(book.entry(model.id, MappingScope.SYSTEM))) }
     var capturing by remember { mutableStateOf<Button?>(null) }
     var focused by remember { mutableStateOf<Button?>(null) }
+    var focusedStick by remember { mutableStateOf<SystemStick?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     val first = remember { FocusRequester() }
 
@@ -229,7 +231,9 @@ private fun ColumnScope.Bindings(
         Controllers.REMAP_ORDER.map { it to Controllers.buttonLabel(it) }
     }
     val labelOf = rows.toMap()
-    val lit = (capturing ?: focused)?.let { highlight(it, mapping) }
+    // The system's analog controls, after its buttons: shown, never rebound (sticks are not remapped).
+    val sticks = if (mappingScope == MappingScope.SYSTEM && !device.isKeyboard) system?.sticks.orEmpty() else emptyList()
+    val lit = capturing?.let { highlight(it, mapping) } ?: focusedStick?.highlight() ?: focused?.let { highlight(it, mapping) }
     val pad = if (device.isKeyboard) null else {
         controls.layouts.firstOrNull { it.id == model.family.layoutId } ?: controls.layouts.firstOrNull { it.id == "generic" }
     }
@@ -285,6 +289,14 @@ private fun ColumnScope.Bindings(
                     modifier = if (i == 0) Modifier.focusRequester(first) else Modifier,
                     onFocused = { if (it) focused = button else if (focused == button) focused = null },
                 ) { rebind(button) }
+            }
+            for (stick in sticks) {
+                BindingRow(
+                    label = stick.label,
+                    inputs = listOf(stick.stickName),
+                    capturing = false,
+                    onFocused = { if (it) focusedStick = stick else if (focusedStick == stick) focusedStick = null },
+                ) { message = "${stick.label} is always the ${stick.stickName.lowercase()}: sticks are not remapped" }
             }
         }
     }

@@ -307,6 +307,11 @@ query Controls($id: ID!) {
         button
         label
       }
+      sticks {
+        stick
+        label
+        key
+      }
       layout {
         ...LayoutFields
       }

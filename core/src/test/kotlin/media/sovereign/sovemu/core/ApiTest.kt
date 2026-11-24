@@ -93,9 +93,15 @@ class ApiTest {
             "body":[{"x":0.0,"y":0.0,"w":100.0,"h":50.0,"r":10.0,"tone":0}],
             "keys":[{"key":"A","label":"A","x":80.0,"y":20.0,"w":8.0,"h":8.0,"r":4.0}]}"""
         val text = """{"data":{"system":{"controls":{"buttons":[{"button":"A","label":"A"},{"button":"START","label":"Start"}],
+            "sticks":[{"stick":"LEFT","label":"Control stick","key":"LS"},{"stick":"RIGHT","label":"C buttons","key":"RS"}],
             "layout":$layout}},"controllerLayouts":[${layout.replace("\"snes\"", "\"xbox\"")}]}}"""
         val (system, pads) = ControlsQuery("snes").parseResponse(json(text)).orThrow().toControls()
         assertEquals(listOf(SystemButton(Button.A, "A"), SystemButton(Button.START, "Start")), system?.buttons)
+        val (control, c) = system!!.sticks
+        assertEquals(SystemStick(right = false, label = "Control stick", key = "LS"), control)
+        assertEquals("Right stick", c.stickName)
+        // A stick's row lights its control on the system's pad and the stick on the controller's.
+        assertEquals(Highlight("RS", setOf("r3")), c.highlight())
         assertEquals(PadKey("A", "A", 80.0, 20.0, 8.0, 8.0, 4.0), system?.layout?.keys?.single())
         assertEquals("xbox", pads.single().id)
     }

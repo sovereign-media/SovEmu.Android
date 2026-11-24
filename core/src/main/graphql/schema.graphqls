@@ -26,6 +26,12 @@ type ActiveSession {
 	"""
 	connected: Boolean!
 	"""
+	Why its client is sent the video codec it is: each codec priced for it (what a frame
+	takes to encode here and to decode there), cheapest first, or the setting that decided.
+	Null until a client has offered.
+	"""
+	codecChoice: String
+	"""
 	How the stream is made; null until the first frame is encoded.
 	"""
 	pipeline: StreamPipeline
@@ -1101,6 +1107,48 @@ An encoder a session gave up, and why.
 type EncoderFallback {
 	encoder: String!
 	reason: String!
+}
+
+"""
+The startup encoder test: every video encoder run on a moving picture and timed, once,
+before the server takes requests, so no game starts without it.
+"""
+type EncoderTest {
+	encoders: [TestedEncoder!]!
+	"""
+	How long the whole test took, and the longest it may (10 seconds).
+	"""
+	tookMs: Int!
+	budgetMs: Int!
+	"""
+	Why the test gave no answer (the worker could not be run, or did not answer in time);
+	null when it did.
+	"""
+	note: String
+	"""
+	When it ran (Unix seconds).
+	"""
+	testedAt: Float
+}
+
+"""
+What one frame cost an encoder at one picture size, in the startup encoder test.
+"""
+type EncoderTiming {
+	width: Int!
+	height: Int!
+	"""
+	Frames timed.
+	"""
+	frames: Int!
+	"""
+	Milliseconds a frame, on average: colour conversion, any upload to a GPU, and the encode.
+	"""
+	meanMs: Float!
+	"""
+	Milliseconds a frame at the 95th percentile.
+	"""
+	p95Ms: Float!
 }
 
 """
@@ -2765,6 +2813,14 @@ enum StatsRange {
 	YEAR
 }
 
+"""
+One of the player's analog sticks.
+"""
+enum Stick {
+	LEFT
+	RIGHT
+}
+
 type StorageArea {
 	"""
 	`database`, `saves`, `cache`, `discs`, `mirror`, `artwork`, `launchbox`, `metadata`,
@@ -2900,6 +2956,10 @@ type StreamingReport {
 	How long a connection test stays up, connected or not.
 	"""
 	testSeconds: Int!
+	"""
+	What the startup encoder test found on this host.
+	"""
+	encoderTest: EncoderTest!
 }
 
 type System {
@@ -2969,13 +3029,18 @@ type SystemButton {
 }
 
 """
-A system's buttons and its pad's diagram.
+A system's buttons, its analog controls and its pad's diagram.
 """
 type SystemControls {
 	"""
 	The buttons the system's pad has, in the order to list them.
 	"""
 	buttons: [SystemButton!]!
+	"""
+	The analog controls the system's core reads from the player's sticks, in the order to
+	list them after the buttons; empty for a system without them.
+	"""
+	sticks: [SystemStick!]!
 	layout: PadLayout!
 }
 
@@ -3004,6 +3069,17 @@ type SystemPlays {
 	sessions: Int!
 	seconds: Float!
 	players: Int!
+}
+
+"""
+One of a system's analog controls: the player's stick that drives it (always the same one:
+sticks are not remapped), what the console calls it, and the key on the system's diagram it
+lights.
+"""
+type SystemStick {
+	stick: Stick!
+	label: String!
+	key: String!
 }
 
 """
@@ -3040,6 +3116,40 @@ type TelemetryReport {
 	The settings this page is about, as the Configuration page shows them.
 	"""
 	settings: [ConfigSetting!]!
+}
+
+"""
+A video encoder the startup test ran, exactly as a game's session would run it.
+"""
+type TestedEncoder {
+	"""
+	`vp8` or `h264`.
+	"""
+	codec: String!
+	"""
+	`libvpx`, `vaapi`, `nvenc` or `x264`.
+	"""
+	encoder: String!
+	"""
+	It encodes on a GPU.
+	"""
+	hardware: Boolean!
+	"""
+	CPU threads a frame is encoded on; null for a GPU's encoder.
+	"""
+	threads: Int
+	"""
+	It encoded every frame it was given, as it was given it, within its share of the time.
+	"""
+	works: Boolean!
+	"""
+	Why it does not work: it did not open, failed, held frames back, or ran out of time.
+	"""
+	error: String
+	"""
+	A row for each picture size it finished, smallest first.
+	"""
+	timings: [EncoderTiming!]!
 }
 
 """
