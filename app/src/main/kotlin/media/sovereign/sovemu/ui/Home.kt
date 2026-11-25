@@ -306,7 +306,7 @@ private fun Slide(game: Game, system: SystemSummary?) {
             Art(game.thumb, Modifier.fillMaxSize().graphicsLayer { scaleX = 1.1f; scaleY = 1.1f }, alpha = 0.5f, sizePx = 32)
             if (LocalForm.current.wide) {
                 Box(Modifier.fillMaxSize().padding(end = 64.dp), contentAlignment = Alignment.CenterEnd) {
-                    Art(game.thumb, Modifier.fillMaxHeight(0.7f).aspectRatio(3 / 4f).clip(RoundedCornerShape(8.dp)), scale = ContentScale.Fit)
+                    Art(game.cover ?: game.thumb, Modifier.fillMaxHeight(0.7f).aspectRatio(3 / 4f).clip(RoundedCornerShape(8.dp)), scale = ContentScale.Fit)
                 }
             }
         }
@@ -361,7 +361,7 @@ internal fun GameCard(game: Game, system: SystemSummary?, wide: Boolean, memory:
                 }
             } else Box(Modifier.fillMaxSize().then(if (covered) Modifier else Modifier.background(brush)), contentAlignment = Alignment.Center) {
                 if (!covered) Text(short, color = Color.White.copy(alpha = 0.8f), fontSize = 28.sp, fontWeight = FontWeight.Black)
-                Art(game.image ?: game.thumb, Modifier.fillMaxSize(), scale = if (wide) ContentScale.Crop else ContentScale.Fit,
+                Art(game.imageSmall ?: game.thumb, Modifier.fillMaxSize(), scale = if (wide) ContentScale.Crop else ContentScale.Fit,
                     onLoaded = { if (wide) covered = it })
             }
         }
