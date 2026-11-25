@@ -127,9 +127,13 @@ query Bootstrap {
   bootstrapConfig {
     signInAvailable
     address
-    nativeClientId
+    # The client a TV, or an app signing in with a code or a password, signs in as.
+    deviceClientId
     tokenEndpoint
     revocationEndpoint
+    # Where to ask for a code to show, and where the person approves it.
+    deviceAuthorizationEndpoint
+    verificationUri
     passwordEndpoint
   }
 }

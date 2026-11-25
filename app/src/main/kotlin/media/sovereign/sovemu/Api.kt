@@ -25,7 +25,10 @@ import media.sovereign.sovemu.core.IceServer
 import media.sovereign.sovemu.core.PadLayout
 import media.sovereign.sovemu.core.SaveSlot
 import media.sovereign.sovemu.core.SessionInfo
+import media.sovereign.sovemu.core.DeviceCode
+import media.sovereign.sovemu.core.DevicePoll
 import media.sovereign.sovemu.core.SignInConfig
+import media.sovereign.sovemu.core.Tokens
 import media.sovereign.sovemu.core.bootstrap
 import media.sovereign.sovemu.core.SystemControls
 import media.sovereign.sovemu.core.SystemSummary
@@ -130,6 +133,8 @@ class Settings(context: Context) : TokenStore {
                 tokenEndpoint = prefs.getString("signin.token", null),
                 revocationEndpoint = prefs.getString("signin.revoke", null),
                 passwordEndpoint = prefs.getString("signin.password", null),
+                deviceAuthorizationEndpoint = prefs.getString("signin.device", null),
+                verificationUri = prefs.getString("signin.verify", null),
             )
         }
         set(value) {
@@ -141,6 +146,8 @@ class Settings(context: Context) : TokenStore {
                 .putString("signin.token", value?.tokenEndpoint)
                 .putString("signin.revoke", value?.revocationEndpoint)
                 .putString("signin.password", value?.passwordEndpoint)
+                .putString("signin.device", value?.deviceAuthorizationEndpoint)
+                .putString("signin.verify", value?.verificationUri)
                 .apply()
         }
 }
@@ -162,7 +169,8 @@ class SovEmuApi(
         .build()
 
     /** The sign-in: OAuth tokens from the endpoints the server's `bootstrapConfig` names. */
-    val auth = Auth(TokenClient(plain, { settings.serverUrl }, { settings.signInConfig }), settings)
+    private val tokenClient = TokenClient(plain, { settings.serverUrl }, { settings.signInConfig })
+    val auth = Auth(tokenClient, settings)
 
     /**
      * Shared with Apollo, the image loader and the video players: GraphQL requests carry the
@@ -214,6 +222,18 @@ class SovEmuApi(
     suspend fun signIn(username: String, password: String) {
         auth.signIn(username, password)
         // A new sign-in on the server: it has no name yet.
+        settings.namedDevice = null
+    }
+
+    /** A code to show, to sign in by approving it elsewhere (after [bootstrap]). */
+    suspend fun requestDeviceCode(): DeviceCode = tokenClient.requestDeviceCode()
+
+    /** One poll for [code]'s approval. */
+    suspend fun pollDeviceCode(code: DeviceCode): DevicePoll = tokenClient.pollDeviceCode(code)
+
+    /** Signs in with the tokens an approved code got. */
+    suspend fun signedInWith(tokens: Tokens) {
+        auth.signedInWith(tokens)
         settings.namedDevice = null
     }
 

@@ -34,7 +34,12 @@ repository's root.
   `KEYCODE_BUTTON_A` is the bottom face.
 - **Signalling** is one `sessionOffer` mutation carrying the complete offer (non-trickle: wait for
   ICE gathering), as on the other clients.
-- **Sign-in URLs and client ids come from `bootstrapConfig`**, never hard-coded.
+- **Sign-in follows Sovereign's TVs**: *Sign in with your phone* (the device grant: a code and
+  its QR code, approved at the server's `/device` page, polled at the server's `interval`,
+  `slow_down` widening it, waiting never shown as an error) with the password as the fallback,
+  and only the code when the server has the password off. The app signs in as the **device
+  client**; its id and every sign-in URL come from `bootstrapConfig` (`deviceClientId`), never
+  hard-coded. The pairing loop is `core`'s `awaitApproval`, tested on a fake clock.
 
 ## GraphQL through Apollo
 

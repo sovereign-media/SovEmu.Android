@@ -50,22 +50,30 @@ data class SignInConfig(
     /** The address the server saw (`Host`), which is what `SOVEMU_PUBLIC_URL` must list. */
     val address: String,
     val signInAvailable: Boolean,
-    /** The apps' OAuth client id. */
+    /** The device client's id: what the app signs in as, with a code or a password. */
     val clientId: String?,
     val tokenEndpoint: String?,
     val revocationEndpoint: String?,
     /** The password sign-in; null when the server has switched it off. */
     val passwordEndpoint: String?,
+    /** Where to ask for a code to show (RFC 8628); null from a server that offers none. */
+    val deviceAuthorizationEndpoint: String? = null,
+    /** Where the person approves that code, in a signed-in browser. */
+    val verificationUri: String? = null,
 ) {
-    /** Why this app cannot sign in with a password here, written for people; null when it can. */
+    /** Whether the app can sign in by showing a code to approve on another screen. */
+    val pairing: Boolean get() = deviceAuthorizationEndpoint != null
+
+    /** Whether the app can sign in with a username and password. */
+    val password: Boolean get() = passwordEndpoint != null
+
+    /** Why this app cannot sign in here at all, written for people; null when it can. */
     val problem: String?
         get() = when {
             !signInAvailable ->
                 "Signing in isn't available at $address. Add it to SOVEMU_PUBLIC_URL on the server."
-            passwordEndpoint == null ->
-                "This server signs in with a code shown on the screen, which this version of the " +
-                    "app can't do yet."
-            clientId == null || tokenEndpoint == null -> "The server sent no sign-in details."
+            clientId == null || tokenEndpoint == null || (!pairing && !password) ->
+                "The server sent no sign-in details."
             else -> null
         }
 }
@@ -89,16 +97,18 @@ suspend fun bootstrap(apollo: ApolloClient, address: String): SignInConfig {
 fun BootstrapQuery.BootstrapConfig.toSignInConfig(): SignInConfig = SignInConfig(
     address = address,
     signInAvailable = signInAvailable,
-    clientId = nativeClientId,
+    clientId = deviceClientId,
     tokenEndpoint = tokenEndpoint,
     revocationEndpoint = revocationEndpoint,
     passwordEndpoint = passwordEndpoint,
+    deviceAuthorizationEndpoint = deviceAuthorizationEndpoint,
+    verificationUri = verificationUri,
 )
 
 /**
- * SovEmu's OAuth endpoints, as the apps' public client, at the URLs [config] (the server's
- * `bootstrapConfig`) gives: the password sign-in, the refresh_token grant at the token endpoint,
- * and revocation to sign out. [server] is the address the user typed
+ * SovEmu's OAuth endpoints, as the device client, at the URLs [config] (the server's
+ * `bootstrapConfig`) gives: a code to approve elsewhere (the device grant), the password
+ * sign-in, the refresh_token grant at the token endpoint, and revocation to sign out. [server] is the address the user typed
  * (`http://192.168.1.10:8080`), which relative endpoints resolve against.
  */
 class TokenClient(
@@ -114,6 +124,7 @@ class TokenClient(
     suspend fun signIn(username: String, password: String): Tokens {
         val c = config() ?: throw unavailable("Check the server address first.")
         c.problem?.let { throw unavailable(it) }
+        if (!c.password) throw unavailable("This server signs in only with a code shown on the screen.")
         return token(
             c.passwordEndpoint!!,
             FormBody.Builder()
@@ -140,6 +151,73 @@ class TokenClient(
         )
     }
 
+    /**
+     * Asks the server for a code to show (RFC 8628 device authorization). A refusal is an
+     * [OAuthException]; a network failure is thrown as it is.
+     */
+    suspend fun requestDeviceCode(): DeviceCode {
+        val c = config() ?: throw unavailable("Check the server address first.")
+        c.problem?.let { throw unavailable(it) }
+        val endpoint = c.deviceAuthorizationEndpoint
+            ?: throw unavailable("This server does not sign in with a code.")
+        val form = FormBody.Builder().add("client_id", c.clientId!!).add("scope", SCOPE).build()
+        val (status, json) = send(endpoint, form)
+        if (status !in 200..299) throw refusal(status, json)
+        val deviceCode = json?.get("device_code") as? String
+        val userCode = json?.get("user_code") as? String
+        val verificationUri = json?.get("verification_uri") as? String ?: c.verificationUri
+        val expiresIn = (json?.get("expires_in") as? Long)
+        if (deviceCode == null || userCode == null || verificationUri == null || expiresIn == null) {
+            throw OAuthException("invalid_response", "The server sent no code to show", status)
+        }
+        return DeviceCode(
+            deviceCode = deviceCode,
+            userCode = userCode,
+            verificationUri = verificationUri,
+            verificationUriComplete = json["verification_uri_complete"] as? String,
+            expiresInSeconds = expiresIn,
+            intervalSeconds = (json["interval"] as? Long) ?: DeviceCode.DEFAULT_INTERVAL_SECONDS,
+        )
+    }
+
+    /**
+     * Asks the token endpoint whether [code] has been approved: one device_code grant. Never
+     * throws for an answer, only for cancellation: a request that got none is
+     * [DevicePoll.NoAnswer], and the next poll is the retry.
+     */
+    suspend fun pollDeviceCode(code: DeviceCode): DevicePoll {
+        val c = config()
+        val endpoint = c?.tokenEndpoint
+        val clientId = c?.clientId
+        if (endpoint == null || clientId == null) return DevicePoll.Refused(PairingFailure.Failed)
+        val form = FormBody.Builder()
+            .add("grant_type", DEVICE_CODE_GRANT)
+            .add("client_id", clientId)
+            .add("device_code", code.deviceCode)
+            .build()
+        val (status, json) = try {
+            send(endpoint, form)
+        } catch (_: IOException) {
+            return DevicePoll.NoAnswer
+        }
+        if (status in 200..299) {
+            return try {
+                DevicePoll.Approved(tokens(status, json))
+            } catch (_: OAuthException) {
+                DevicePoll.Refused(PairingFailure.Failed)
+            }
+        }
+        if (status == 429) return DevicePoll.SlowDown
+        return when (json?.get("error") as? String) {
+            // On every poll until someone approves: waiting, not a failure.
+            "authorization_pending" -> DevicePoll.Pending
+            "slow_down" -> DevicePoll.SlowDown
+            "expired_token" -> DevicePoll.Refused(PairingFailure.Expired)
+            "access_denied" -> DevicePoll.Refused(PairingFailure.Denied)
+            else -> if (status >= 500) DevicePoll.NoAnswer else DevicePoll.Refused(PairingFailure.Failed)
+        }
+    }
+
     /** Revokes the sign-in [refreshToken] belongs to (the server always answers 200). */
     suspend fun revoke(refreshToken: String) {
         val c = config()
@@ -151,26 +229,31 @@ class TokenClient(
 
     private fun unavailable(why: String) = OAuthException(SIGN_IN_UNAVAILABLE, why, 0)
 
-    private suspend fun token(path: String, form: FormBody): Tokens = withContext(io) {
-        http.newCall(post(path, form)).execute().use { response ->
-            val body = response.body.string()
-            val json = parse(body)
-            if (!response.isSuccessful) {
-                throw OAuthException(
-                    json?.get("error") as? String ?: "http_${response.code}",
-                    json?.get("error_description") as? String
-                        ?: "The server refused the sign-in (HTTP ${response.code})",
-                    response.code,
-                )
-            }
-            val access = json?.get("access_token") as? String
-            val expiresIn = (json?.get("expires_in") as? Number)?.toLong()
-                ?: json?.get("expires_in")?.toString()?.toLongOrNull()
-            if (access == null || expiresIn == null) {
-                throw OAuthException("invalid_response", "The server sent no access token", response.code)
-            }
-            Tokens(access, expiresIn, json["refresh_token"] as? String)
+    private suspend fun token(path: String, form: FormBody): Tokens {
+        val (status, json) = send(path, form)
+        if (status !in 200..299) throw refusal(status, json)
+        return tokens(status, json)
+    }
+
+    /** A form post: the status and the answer's JSON members (null when it is not JSON). */
+    private suspend fun send(path: String, form: FormBody): Pair<Int, Map<String, Any?>?> = withContext(io) {
+        http.newCall(post(path, form)).execute().use { response -> response.code to parse(response.body.string()) }
+    }
+
+    private fun refusal(status: Int, json: Map<String, Any?>?) = OAuthException(
+        json?.get("error") as? String ?: "http_$status",
+        json?.get("error_description") as? String ?: "The server refused the sign-in (HTTP $status)",
+        status,
+    )
+
+    private fun tokens(status: Int, json: Map<String, Any?>?): Tokens {
+        val access = json?.get("access_token") as? String
+        val expiresIn = (json?.get("expires_in") as? Number)?.toLong()
+            ?: json?.get("expires_in")?.toString()?.toLongOrNull()
+        if (access == null || expiresIn == null) {
+            throw OAuthException("invalid_response", "The server sent no access token", status)
         }
+        return Tokens(access, expiresIn, json["refresh_token"] as? String)
     }
 
     private fun post(endpoint: String, form: FormBody): Request {
@@ -204,6 +287,9 @@ class TokenClient(
     companion object {
         const val SCOPE = "openid profile offline_access"
 
+        /** RFC 8628's grant type, polled at the token endpoint. */
+        const val DEVICE_CODE_GRANT = "urn:ietf:params:oauth:grant-type:device_code"
+
         /** [OAuthException.error] when the server's sign-in details rule a sign-in out. */
         const val SIGN_IN_UNAVAILABLE = "sign_in_unavailable"
     }
@@ -234,7 +320,11 @@ class Auth(
 
     /** Signs in with a username and password; throws [OAuthException] with the server's reason. */
     suspend fun signIn(username: String, password: String) {
-        val tokens = client.signIn(username, password)
+        signedInWith(client.signIn(username, password))
+    }
+
+    /** Keeps the tokens a sign-in got (a password, or an approved code): signed in from now. */
+    suspend fun signedInWith(tokens: Tokens) {
         if (tokens.refreshToken == null) {
             throw OAuthException("invalid_response", "The server granted no refresh token", 200)
         }
