@@ -111,6 +111,13 @@ data class StartScreen(val label: String, val detail: String = "", val fraction:
  */
 object GameStart {
     /**
+     * Under the loading screen, how to get out: the in-game menu (which has Quit) opens over it.
+     * A controller's B goes to the game while it starts (some wait for a button), so on a
+     * controller it is the guide/home button or Select+Start; on a remote, Back.
+     */
+    const val MENU_HINT = "To quit, open the menu: Back on the remote, or Home (or Select + Start) on a controller."
+
+    /**
      * [error] (a failure to start, or a lost connection) wins; then the session starting
      * ([ready] not yet), with the server's [progress] once it has said (a FAILED start shows its
      * error); then, until [pictureShown], the wait for it, [waitedMs] so far.
