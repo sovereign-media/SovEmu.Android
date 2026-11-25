@@ -5,6 +5,7 @@ import media.sovereign.sovemu.core.artFills
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import media.sovereign.sovemu.core.AUTO_SLOT
+import media.sovereign.sovemu.core.starsText
 import media.sovereign.sovemu.core.year
 import media.sovereign.sovemu.attempt
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -516,17 +517,24 @@ internal fun GamePanel(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Column {
-                Text(g.title, color = Color.White, fontSize = 24.sp, lineHeight = 28.sp, fontWeight = FontWeight.Black)
-                g.release?.let { Text(it, color = Sov.Amber200, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 4.dp)) }
-                if (g.tags.isNotEmpty()) Text(g.tags.joinToString(" · "), color = Sov.Slate500, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
-                FlowRow(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    g.year?.let { Fact(Lucide.CalendarDays, it) }
-                    (g.developer ?: g.publisher)?.let { Fact(Lucide.Building2, it) }
-                    g.genre?.let { Fact(Lucide.Tag, it) }
-                    maxPlayers(g.players)?.let { Fact(Lucide.Users, if (it == 1) "1 player" else "${g.players} players") }
-                    if (g.discs > 1) Fact(Lucide.Disc3, "${g.discs} discs")
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Column(Modifier.weight(1f)) {
+                    Text(g.title, color = Color.White, fontSize = 24.sp, lineHeight = 28.sp, fontWeight = FontWeight.Black)
+                    g.release?.let { Text(it, color = Sov.Amber200, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 4.dp)) }
+                    if (g.tags.isNotEmpty()) Text(g.tags.joinToString(" · "), color = Sov.Slate500, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                    FlowRow(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        g.year?.let { Fact(Lucide.CalendarDays, it) }
+                        (g.developer ?: g.publisher)?.let { Fact(Lucide.Building2, it) }
+                        g.genre?.let { Fact(Lucide.Tag, it) }
+                        maxPlayers(g.players)?.let { Fact(Lucide.Users, if (it == 1) "1 player" else "${g.players} players") }
+                        if (g.discs > 1) Fact(Lucide.Disc3, "${g.discs} discs")
+                        g.rating?.let { Fact(Lucide.Star, starsText(it)) }
+                        if (g.modes.isNotEmpty()) Fact(Lucide.Gamepad2, g.modes.joinToString(", "))
+                        if (g.series.isNotEmpty()) Fact(Lucide.Library, g.series.joinToString(", "))
+                        if (g.themes.isNotEmpty()) Fact(Lucide.Sparkles, g.themes.joinToString(", "))
+                    }
                 }
+                g.esrb?.let { rating -> g.esrbBadgeUrl?.let { EsrbBadge(rating, it) } }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (auto) {

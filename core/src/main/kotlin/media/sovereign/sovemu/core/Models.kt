@@ -40,13 +40,14 @@ data class Viewer(val setupRequired: Boolean, val user: User?)
 
 /**
  * `Query.home` and this user's collections: the hero's games, recently played (with their auto
- * saves), recently added, favourites, and a row per collection.
+ * saves), recently added, favourites, the library's best rated, and a row per collection.
  */
 data class HomeFeed(
     val featured: List<Game>,
     val recent: List<Game>,
     val added: List<Game>,
     val favourites: List<Game> = emptyList(),
+    val topRated: List<Game> = emptyList(),
     val collections: List<HomeCollection> = emptyList(),
 )
 

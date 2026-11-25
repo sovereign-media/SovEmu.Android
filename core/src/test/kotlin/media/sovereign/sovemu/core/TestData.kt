@@ -19,7 +19,8 @@ fun game(
 ): Game = Game(
     id = id, system = system, title = title, fileTitle = fileTitle, tags = tags, path = "$system/$title", size = 0.0,
     lastPlayedAt = lastPlayedAt, playCount = playCount, image = null, imageSmall = null, cover = null, thumb = null, video = null, description = null,
-    releaseDate = releaseDate, developer = developer, publisher = null, genre = genre, players = players, rating = null,
+    releaseDate = releaseDate, developer = developer, publisher = null, genre = genre, genres = emptyList(), players = players, rating = null, esrb = null, esrbBadgeUrl = null,
+    modes = emptyList(), series = emptyList(), themes = emptyList(),
     discs = 1, partKind = null, favourite = favourite, release = null, patch = null, autoSave = null,
 )
 

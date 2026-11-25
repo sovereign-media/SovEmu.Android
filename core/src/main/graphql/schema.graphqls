@@ -1156,6 +1156,40 @@ type EncoderTiming {
 }
 
 """
+The ESRB's age ratings.
+"""
+enum EsrbRating {
+	"""
+	EC: Early Childhood (until 2018).
+	"""
+	EARLY_CHILDHOOD
+	"""
+	E: Everyone (K-A, Kids to Adults, until 1998).
+	"""
+	EVERYONE
+	"""
+	E10+: Everyone 10+.
+	"""
+	EVERYONE_10_PLUS
+	"""
+	T: Teen.
+	"""
+	TEEN
+	"""
+	M: Mature 17+.
+	"""
+	MATURE
+	"""
+	AO: Adults Only 18+.
+	"""
+	ADULTS_ONLY
+	"""
+	RP: Rating Pending.
+	"""
+	RATING_PENDING
+}
+
+"""
 How one signal's exports have gone since the server started.
 """
 type ExportResult {
@@ -1280,6 +1314,32 @@ type Game {
 	0 to 1.
 	"""
 	rating: Float
+	"""
+	The ESRB's age rating, if the game information has one.
+	"""
+	esrb: EsrbRating
+	"""
+	The ESRB rating's icon (PNG), if the game has a rating and the decoration folders an icon
+	for it: the built-in set's `ratings/esrb/<rating>.png`, or an admin's own at that path in
+	an earlier decorations folder. A URL signed for this user.
+	"""
+	esrbBadgeUrl: String
+	"""
+	Ways to play: "Single player", "Multiplayer (simultaneous)" …
+	"""
+	modes: [String!]!
+	"""
+	The series and families it belongs to: "Castlevania" …
+	"""
+	series: [String!]!
+	"""
+	Its themes: "Horror", "Fantasy" …
+	"""
+	themes: [String!]!
+	"""
+	Its genres, as `genre` lists them.
+	"""
+	genres: [String!]!
 	"""
 	This user's save states (slot 0 is the auto save, written when a session ends).
 	"""
@@ -1408,6 +1468,10 @@ type Home {
 	This user's favourites, by title.
 	"""
 	favourites: [Game!]!
+	"""
+	The library's best rated games (`Game.rating`), best first.
+	"""
+	topRated: [Game!]!
 }
 
 """
@@ -1767,6 +1831,19 @@ enum MetadataField {
 	GENRE
 	PLAYERS
 	RATING
+	"""
+	The ESRB's age rating.
+	"""
+	ESRB
+	"""
+	Ways to play.
+	"""
+	MODES
+	"""
+	Series and families.
+	"""
+	SERIES
+	THEMES
 	BOX_ART
 	"""
 	A screenshot, shown behind the game.
