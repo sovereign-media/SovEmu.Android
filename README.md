@@ -34,7 +34,7 @@ adb shell cmd package compile -f -m speed-profile media.sovereign.sovemu
 
 ### The API schema
 
-`core/src/main/graphql/schema.graphqls` is a copy of SovEmu's `SovEmu.Server/schema.graphql`
+`core/src/main/graphql/schema.graphqls` is a copy of SovEmu's `SovEmu.Backend/SovEmu.Server/schema.graphql`
 (this repository builds on its own). When the server's schema changes, refresh it from the SovEmu
 checkout this is a submodule of, and the build tells you which operations no longer fit:
 
