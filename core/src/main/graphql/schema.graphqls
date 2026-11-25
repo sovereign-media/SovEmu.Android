@@ -195,7 +195,7 @@ type AppearanceSettings {
 }
 
 """
-Box art being downloaded after a lookup, for the games that have no local thumb.
+Artwork (box art, screenshots, logos) and videos being downloaded after a lookup.
 """
 type ArtworkStatus {
 	running: Boolean!
@@ -1696,7 +1696,7 @@ Artwork and video kinds a game can have.
 """
 enum MediaKind {
 	"""
-	A screenshot or composite image.
+	A screenshot, shown behind the game.
 	"""
 	IMAGE
 	"""
@@ -1708,7 +1708,7 @@ enum MediaKind {
 	"""
 	MARQUEE
 	"""
-	A short video snap.
+	A short gameplay video.
 	"""
 	VIDEO
 }
@@ -1763,6 +1763,14 @@ enum MetadataField {
 	PLAYERS
 	RATING
 	BOX_ART
+	"""
+	A screenshot, shown behind the game.
+	"""
+	SCREENSHOT
+	"""
+	The game's logo.
+	"""
+	MARQUEE
 	VIDEO
 }
 
