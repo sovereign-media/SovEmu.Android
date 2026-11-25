@@ -175,6 +175,15 @@ private fun HomeContent(
                         }
                     }
                 }
+                if (feed.topRated.isNotEmpty()) {
+                    HomeRow("Top rated", Lucide.Star) {
+                        itemsIndexed(feed.topRated, key = { _, g -> g.id }) { _, g ->
+                            GameCard(g, byId[g.system], wide = false, memory = memory, key = "rated:${g.id}") {
+                                byId[g.system]?.let { onSystem(it, g.id) }
+                            }
+                        }
+                    }
+                }
                 for (c in feed.collections) {
                     if (c.games.isEmpty()) continue
                     key(c.id) {

@@ -237,6 +237,7 @@ class SovEmuApi(
         HomeFeed(
             h.featured.map { it.gameFields }, h.recent.map { it.gameFields }, h.added.map { it.gameFields },
             h.favourites.map { it.gameFields },
+            h.topRated.map { it.gameFields },
             d.collections.map { c -> HomeCollection(c.id, c.name, c.games.map { it.gameFields }) },
         )
     }
