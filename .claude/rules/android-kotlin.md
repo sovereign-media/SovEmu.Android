@@ -31,7 +31,7 @@ the end). "(judgement)" marks a rule that is ours rather than the docs'. Compose
   moves itself off Main with `withContext(dispatcher)`. [CO][UI]
 - **Inject dispatchers and long-lived scopes through constructors**, with a default argument
   standing in for DI (as `Store`'s `compute` and `Auth`'s `io`); never `GlobalScope`, and no new
-  hard-coded `Dispatchers.*` in a class (`Stream` still has some). [CO]
+  hard-coded `Dispatchers.*` in a class. [CO]
 - Collect flows in UI with `collectAsStateWithLifecycle()`. [UI]
 
 ## Ownership

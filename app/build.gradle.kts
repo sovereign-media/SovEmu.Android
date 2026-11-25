@@ -51,7 +51,6 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.browser)
     implementation(libs.androidx.lifecycle.runtime.compose)
-    implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.okhttp)
     implementation(libs.webrtc)
