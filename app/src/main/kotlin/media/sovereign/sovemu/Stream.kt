@@ -6,6 +6,7 @@ import android.hardware.display.DisplayManager
 import android.util.Log
 import android.view.Display
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -146,9 +147,11 @@ class Stream(
     iceServers: List<IceServer>,
     private val controller: Controller,
     private val videoSink: VideoSink,
+    /** Where the stream's own work runs (statistics, capability checks): off the main thread. */
+    private val compute: CoroutineDispatcher = Dispatchers.Default,
     private val onState: (PeerConnection.PeerConnectionState) -> Unit,
 ) {
-    private val scope = CoroutineScope(Dispatchers.Default)
+    private val scope = CoroutineScope(compute)
     private val appContext = context.applicationContext
     private val iceGathered = CompletableDeferred<Unit>()
     private var pump: Job? = null
@@ -287,7 +290,7 @@ class Stream(
         withTimeoutOrNull(1500) { iceGathered.await() }
         val local = pc.localDescription ?: offer
         // The first call asks the device's codecs, so not on the main thread.
-        val capabilities = withContext(Dispatchers.Default) { WebRtc.capabilities(appContext) }
+        val capabilities = withContext(compute) { WebRtc.capabilities(appContext) }
         val answer = api.offer(sessionId, local.description, client, capabilities)
         setRemote(SessionDescription(SessionDescription.Type.ANSWER, answer))
         pump = scope.launch { pumpInput() }

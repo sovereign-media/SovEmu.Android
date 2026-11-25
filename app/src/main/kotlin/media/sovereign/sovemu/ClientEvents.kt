@@ -58,7 +58,8 @@ object ClientEvents {
         if (pending?.isActive == true) return
         pending = scope.launch {
             delay(GATHER_MS)
-            for (batch in queue.take()) runCatching { api?.reportClientEvents(client, batch) }
+            // `attempt`, not runCatching: a report dropped on failure, but cancellation still stops it.
+            for (batch in queue.take()) attempt { api?.reportClientEvents(client, batch) }
         }
     }
 
