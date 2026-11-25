@@ -3,7 +3,7 @@ package media.sovereign.sovemu.core
 import media.sovereign.sovemu.core.graphql.type.EsrbRating
 
 // A game's ratings as the game panel shows them, after the web client's `lib/esrb.ts`: the
-// ESRB's age rating as SovEmu's own badge (its code over its ages; not the ESRB's icons) and the
+// ESRB's age rating as the ESRB's own icon and the
 // score out of 1 as stars out of 5.
 
 /**
