@@ -41,20 +41,25 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
-import media.sovereign.sovemu.SovEmuApi
-import media.sovereign.sovemu.attempt
 import media.sovereign.sovemu.core.Cheat
 
 /**
  * This user's cheats for the game, as the in-game menu's Cheats page: each one turns on or off
  * with A, and has a delete button beside it; a form below adds one (code and an optional name,
- * typed with the on-screen keyboard). A running session applies every change at once.
+ * typed with the on-screen keyboard). A running session applies every change at once. Draws
+ * [cheats] (null: loading) and [message]; the changes go to the screen's `CheatsModel`.
  */
 @Composable
-fun CheatsPage(api: SovEmuApi, gameId: Int, modifier: Modifier = Modifier, first: Modifier = Modifier) {
+fun CheatsPage(
+    cheats: List<Cheat>?,
+    message: String?,
+    onToggle: (Cheat) -> Unit,
+    onDelete: (Cheat) -> Unit,
+    onAdd: (code: String, name: String) -> Unit,
+    modifier: Modifier = Modifier,
+    first: Modifier = Modifier,
+) {
     val scope = rememberCoroutineScope()
-    var cheats by remember { mutableStateOf<List<Cheat>?>(null) }
-    var message by remember { mutableStateOf<String?>(null) }
     var code by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
     /** The field being typed in ("code" or "name"), or none. */
@@ -62,14 +67,6 @@ fun CheatsPage(api: SovEmuApi, gameId: Int, modifier: Modifier = Modifier, first
     val codeField = remember { FocusRequester() }
     val addButton = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
-    LaunchedEffect(gameId) {
-        cheats = attempt { api.cheats(gameId) }.getOrElse { e -> message = "Could not load cheats: ${e.message}"; emptyList() }
-    }
-    fun run(block: suspend () -> List<Cheat>) {
-        scope.launch {
-            attempt { block() }.onSuccess { cheats = it; message = null }.onFailure { e -> message = e.message }
-        }
-    }
 
     Column(modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         val list = cheats
@@ -79,15 +76,8 @@ fun CheatsPage(api: SovEmuApi, gameId: Int, modifier: Modifier = Modifier, first
         }
         list?.forEachIndexed { i, cheat ->
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                CheatRow(cheat, Modifier.weight(1f).then(if (i == 0) first else Modifier)) {
-                    run { api.setCheatEnabled(gameId, cheat.id, !cheat.enabled) }
-                }
-                IconAction(Lucide.X, "Delete") {
-                    run {
-                        api.deleteCheat(gameId, cheat.id)
-                        api.cheats(gameId)
-                    }
-                }
+                CheatRow(cheat, Modifier.weight(1f).then(if (i == 0) first else Modifier)) { onToggle(cheat) }
+                IconAction(Lucide.X, "Delete") { onDelete(cheat) }
             }
         }
         Box(Modifier.padding(vertical = 6.dp).fillMaxWidth().height(1.dp).background(Sov.Edge))
@@ -98,11 +88,8 @@ fun CheatsPage(api: SovEmuApi, gameId: Int, modifier: Modifier = Modifier, first
                 // Nothing typed yet: start typing the code.
                 typing = "code"
             } else {
-                // Codes are upper case; the keyboard capitalises as it types, and this catches the rest.
                 // Both are read now: the request runs after the fields below are cleared.
-                val newCode = c.uppercase()
-                val newName = name.trim()
-                run { api.addCheat(gameId, newCode, newName) }
+                onAdd(c, name)
                 code = ""
                 name = ""
                 // Done typing: the keyboard goes, and the focus waits on Add for the next one.

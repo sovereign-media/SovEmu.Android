@@ -1,5 +1,7 @@
 package media.sovereign.sovemu.ui
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import media.sovereign.sovemu.core.CollectionsModel
 import media.sovereign.sovemu.core.DEFAULT_BOX_ASPECT
 import media.sovereign.sovemu.core.artFills
 import androidx.activity.compose.BackHandler
@@ -325,10 +327,18 @@ private fun Games(
         )
 
     if (collectionsOpen && open != null) {
-        CollectionsDrawer(api, open, onCollectionsChanged, onClose = {
-            collectionsOpen = false
-            backToCollections++
-        })
+        // The drawer draws; its state and the calls behind it are the screen's.
+        val collections = remember(open.id) { CollectionsModel(api, open.id, scope, onCollectionsChanged) }
+        LaunchedEffect(collections) { collections.load() }
+        val choices by collections.choices.collectAsStateWithLifecycle()
+        val collectionError by collections.error.collectAsStateWithLifecycle()
+        CollectionsDrawer(
+            open, choices, collectionError, collections::toggle, collections::create,
+            onClose = {
+                collectionsOpen = false
+                backToCollections++
+            },
+        )
     }
     if (filtersOpen) {
         FilterDrawer(index, query, { query = it }, filters, { filters = it }) {

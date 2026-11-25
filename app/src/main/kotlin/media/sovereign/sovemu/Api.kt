@@ -14,6 +14,8 @@ import media.sovereign.sovemu.core.Auth
 import media.sovereign.sovemu.core.BearerInterceptor
 import media.sovereign.sovemu.core.Binding
 import media.sovereign.sovemu.core.Cheat
+import media.sovereign.sovemu.core.CheatService
+import media.sovereign.sovemu.core.CollectionService
 import media.sovereign.sovemu.core.CollectionChoice
 import media.sovereign.sovemu.core.HomeCollection
 import media.sovereign.sovemu.core.ControllerMapping
@@ -177,7 +179,7 @@ class SovEmuApi(
     private val settings: Settings,
     /** What this app calls its device on the server ([ClientEvents.deviceName]). */
     private val device: String = "SovEmu for Android",
-) {
+) : CheatService, CollectionService {
     /** The sign-in's token client: plain HTTP, without the bearer interceptor. */
     private val plain: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
@@ -351,14 +353,14 @@ class SovEmuApi(
         mutate(SetFavouriteMutation(gameId, favourite))
     }
     /** This user's collections, each marked with whether [gameId] is in it. */
-    suspend fun collectionChoices(gameId: Int): List<CollectionChoice> =
+    override suspend fun collectionChoices(gameId: Int): List<CollectionChoice> =
         query(CollectionChoicesQuery(gameId)).let { d ->
             val member = d.game.collectionIds.toSet()
             d.collections.map { CollectionChoice(it.id, it.name, it.id in member) }
         }
     /** Makes a collection (names are 1 to 64 characters, unique per user); returns its id. */
-    suspend fun createCollection(name: String): Int = mutate(CreateCollectionMutation(name.trim().take(64))).createCollection.id
-    suspend fun setInCollection(collectionId: Int, gameId: Int, member: Boolean) {
+    override suspend fun createCollection(name: String): Int = mutate(CreateCollectionMutation(name.trim().take(64))).createCollection.id
+    override suspend fun setInCollection(collectionId: Int, gameId: Int, member: Boolean) {
         mutate(SetInCollectionMutation(collectionId, gameId, member))
     }
     suspend fun games(system: String): List<Game> =
@@ -403,13 +405,13 @@ class SovEmuApi(
     suspend fun resetControllerMapping(controller: String, system: String?): Boolean =
         mutate(ResetControllerMappingMutation(controller, Optional.present(system))).resetControllerMapping
     /** This user's cheats for a game. */
-    suspend fun cheats(gameId: Int): List<Cheat> = query(CheatsQuery(gameId)).game.cheats.map { it.cheatFields }
+    override suspend fun cheats(gameId: Int): List<Cheat> = query(CheatsQuery(gameId)).game.cheats.map { it.cheatFields }
     /** Adds a cheat (on); a running session gets it at once. Returns the game's cheats. */
-    suspend fun addCheat(gameId: Int, code: String, description: String): List<Cheat> =
+    override suspend fun addCheat(gameId: Int, code: String, description: String): List<Cheat> =
         mutate(AddCheatMutation(gameId, code, description)).addCheat.map { it.cheatFields }
-    suspend fun setCheatEnabled(gameId: Int, cheatId: Int, enabled: Boolean): List<Cheat> =
+    override suspend fun setCheatEnabled(gameId: Int, cheatId: Int, enabled: Boolean): List<Cheat> =
         mutate(SetCheatEnabledMutation(gameId, cheatId, enabled)).setCheatEnabled.map { it.cheatFields }
-    suspend fun deleteCheat(gameId: Int, cheatId: Int) {
+    override suspend fun deleteCheat(gameId: Int, cheatId: Int) {
         mutate(DeleteCheatMutation(gameId, cheatId))
     }
 
