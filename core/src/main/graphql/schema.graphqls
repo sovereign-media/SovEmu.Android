@@ -1489,6 +1489,11 @@ enum JobName {
 	A backup of the database, the signing keys and the saves.
 	"""
 	BACKUP
+	"""
+	After each scan: removed games' information and artwork deleted, missing files fetched
+	again.
+	"""
+	RECONCILE
 }
 
 """
