@@ -650,6 +650,8 @@ private fun Splash(game: Game, system: SystemSummary, screen: StartScreen, choic
                 screen.fraction?.let { StartBar(it, Modifier.width(400.dp)) }
                 Text(screen.label, color = Sov.Slate100, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
                 if (screen.detail.isNotEmpty()) Text(screen.detail, color = Sov.Slate400, fontSize = 16.sp, textAlign = TextAlign.Center)
+                // How to leave a start that is slow, stuck or failed: B goes to the game.
+                Text(GameStart.MENU_HINT, color = Sov.Slate400, fontSize = 13.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp))
             }
         }
     }

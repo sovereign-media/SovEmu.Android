@@ -122,4 +122,12 @@ class GameStartTest {
         assertEquals(StartScreen("Connection failed"), screen(error = "Connection failed", ready = true, pictureShown = true))
         assertEquals(StartScreen("Could not start: x"), screen(error = "Could not start: x"))
     }
+
+    @Test
+    fun theLoadingScreenSaysHowToQuit() {
+        // The menu (with Quit) opens with Back on a remote, Home or Select+Start on a controller.
+        assertTrue(GameStart.MENU_HINT.contains("Back"))
+        assertTrue(GameStart.MENU_HINT.contains("Home"))
+        assertTrue(GameStart.MENU_HINT.contains("Select + Start"))
+    }
 }
