@@ -1,5 +1,6 @@
 package media.sovereign.sovemu.ui
 
+import media.sovereign.sovemu.core.CheatsModel
 import android.util.Log
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -439,7 +440,15 @@ fun PlayerScreen(
                 game, system,
                 onResume = { menuOpen = false },
                 saves = { attempt { api.states(game.id) }.getOrDefault(emptyList()) },
-                cheats = { first -> CheatsPage(api, game.id, first = first) },
+                cheats = { first ->
+                    // The page draws; its state and the calls behind it are this screen's, loaded
+                    // as the page opens.
+                    val model = remember(game.id) { CheatsModel(api, game.id, scope) }
+                    LaunchedEffect(model) { model.load() }
+                    val cheats by model.cheats.collectAsStateWithLifecycle()
+                    val message by model.message.collectAsStateWithLifecycle()
+                    CheatsPage(cheats, message, model::toggle, model::delete, model::add, first = first)
+                },
                 discs = info?.discs ?: 1,
                 disc = disc,
                 onDisc = { n ->

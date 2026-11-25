@@ -29,9 +29,11 @@ constructor defaults for DI.
 - Unidirectional data flow: `Store` and a screen's remembered state produce state and handle
   events; composables render it and forward events. [UI][HOIST]
 - **Only the screen-level composable touches `Store`, `SovEmuApi` or `Controller`**; children get
-  plain values and lambdas. Several screens still call `SovEmuApi` from effects and pass `api`
-  into children (`Cheats`, `Collections`, `Login`): move a call into `Store` or a plain class when
-  you change it, never add one. [UI][HOIST]
+  plain values and lambdas. A component's state and calls live in a plain class in `core` behind a
+  small service interface `SovEmuApi` implements, created by the screen and tested on the JVM
+  with a fake (`CheatsModel`, `CollectionsModel` in `GameExtras.kt`); the component takes values
+  and callbacks. `Login`, `Search` and `Controllers` still call `SovEmuApi` from effects: move a
+  call out when you change it, never add one. [UI][HOIST]
 - Hoist state to the lowest common ancestor that reads and writes it; keep purely visual state
   (expanded, animation) inside. Involved UI logic is a remembered plain class (`FocusMemory`),
   saved with `rememberSaveable` + `Saver` when it must survive. [HOIST]

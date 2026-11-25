@@ -29,7 +29,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,9 +41,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.launch
-import media.sovereign.sovemu.SovEmuApi
-import media.sovereign.sovemu.attempt
 import media.sovereign.sovemu.core.CollectionChoice
 import media.sovereign.sovemu.core.Game
 
@@ -55,35 +51,28 @@ import media.sovereign.sovemu.core.Game
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun CollectionsDrawer(api: SovEmuApi, game: Game, onChanged: () -> Unit, onClose: () -> Unit, modifier: Modifier = Modifier) {
-    val scope = rememberCoroutineScope()
-    var choices by remember { mutableStateOf<List<CollectionChoice>?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
+fun CollectionsDrawer(
+    game: Game,
+    choices: List<CollectionChoice>?,
+    error: String?,
+    onToggle: (CollectionChoice) -> Unit,
+    /** Makes a collection with the game in it; the lambda gets the name back if that failed. */
+    onCreate: (name: String, onFailed: (String) -> Unit) -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     var name by remember { mutableStateOf("") }
     var typing by remember { mutableStateOf(false) }
     val first = remember { FocusRequester() }
     BackHandler(onBack = onClose)
-    LaunchedEffect(game.id) {
-        attempt { api.collectionChoices(game.id) }
-            .onSuccess { choices = it }
-            .onFailure { error = it.message ?: "Could not load the collections" }
-        // The first collection, or the field when there are none yet.
+    // Once loaded: the first collection, or the field when there are none yet.
+    LaunchedEffect(choices != null || error != null) {
+        if (choices == null && error == null) return@LaunchedEffect
         withFrameNanos { }
         runCatching { first.requestFocus() }
     }
 
-    fun toggle(c: CollectionChoice) {
-        val now = !c.member
-        choices = choices?.map { if (it.id == c.id) it.copy(member = now) else it }
-        scope.launch {
-            attempt { api.setInCollection(c.id, game.id, now) }
-                .onSuccess { error = null; onChanged() }
-                .onFailure { e ->
-                    choices = choices?.map { if (it.id == c.id) it.copy(member = !now) else it }
-                    error = "Could not change ${c.name}: ${e.message}"
-                }
-        }
-    }
+    fun toggle(c: CollectionChoice) = onToggle(c)
 
     fun create() {
         // The field is cleared at once, so the value is taken first.
@@ -91,20 +80,7 @@ fun CollectionsDrawer(api: SovEmuApi, game: Game, onChanged: () -> Unit, onClose
         typing = false
         if (wanted.isEmpty()) return
         name = ""
-        scope.launch {
-            attempt {
-                val id = api.createCollection(wanted)
-                api.setInCollection(id, game.id, true)
-                id
-            }.onSuccess { id ->
-                error = null
-                choices = (choices.orEmpty() + CollectionChoice(id, wanted, true)).sortedBy { it.name.lowercase() }
-                onChanged()
-            }.onFailure { e ->
-                name = wanted
-                error = e.message ?: "Could not create the collection"
-            }
-        }
+        onCreate(wanted) { name = it }
     }
 
     Box(
