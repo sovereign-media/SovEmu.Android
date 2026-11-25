@@ -17,8 +17,12 @@ paths:
   `./gradlew :core:test :app:testDebugUnitTest :app:assembleDebug`. Keep the two in step.
 - **Performance is judged on the R8 release build** (`assembleRelease`), compiled with its profile
   (`adb shell cmd package compile -m speed-profile`), or with Macrobenchmark / `dumpsys gfxinfo`;
-  never on a debug build. The app ships no Baseline Profile of its own yet; one (Baseline Profile
-  plugin + Macrobenchmark, covering startup, scrolling a system's games and starting a game) is
-  the next step when startup or scrolling needs work.
+  never on a debug build.
+- **The release build ships a Baseline Profile** (`app/src/release/generated/baselineProfiles/`,
+  committed; `profileinstaller` installs it on first run). `:baselineprofile` generates it:
+  sign the debug build in on an Android TV emulator of API 33+ (no root needed) to a server with
+  games, then `./gradlew :app:generateBaselineProfile`. The run uninstalls the app, so sign in
+  again before the next one. A green run can still be a thin walk: check the file names
+  `HomeKt` and `SystemKt`. Regenerate when the walk's screens change a lot.
 - The WebRTC library is a pinned binary dependency: move its version deliberately, with an
   emulator check of a game session.
