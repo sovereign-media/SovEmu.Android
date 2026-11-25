@@ -1,5 +1,7 @@
 package media.sovereign.sovemu.ui
 
+import media.sovereign.sovemu.core.DEFAULT_BOX_ASPECT
+import media.sovereign.sovemu.core.artFills
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import media.sovereign.sovemu.core.AUTO_SLOT
@@ -424,10 +426,13 @@ private fun CoverCard(
 ) {
     val brush = remember(system.color) { tile(system.colour()) }
     val shape = RoundedCornerShape(12.dp)
+    // The card takes the shape of the system's boxes; art of another shape is shown whole.
+    val aspect = system.boxAspect.toFloat().takeIf { it > 0f } ?: DEFAULT_BOX_ASPECT
+    var fills by remember(game.id) { mutableStateOf(true) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         FocusCard(
             onOpen,
-            Modifier.fillMaxWidth().aspectRatio(3 / 4f).remembersFocus(memory, "game:${game.id}", initial).borderIf(isOpen, 2.dp, Sov.Accent, shape),
+            Modifier.fillMaxWidth().aspectRatio(aspect).remembersFocus(memory, "game:${game.id}", initial).borderIf(isOpen, 2.dp, Sov.Accent, shape),
             shape,
         ) {
             // The tile and title are only a stand-in: once the cover is drawn they are not (a
@@ -438,7 +443,11 @@ private fun CoverCard(
                     Text(game.title, color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 4,
                         overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(12.dp))
                 }
-                Art(game.thumb ?: game.image, Modifier.fillMaxSize(), onLoaded = { loaded = it })
+                Art(
+                    game.thumb ?: game.imageSmall, Modifier.fillMaxSize(),
+                    scale = if (fills) ContentScale.Crop else ContentScale.Fit,
+                    onLoaded = { loaded = it }, onShape = { fills = artFills(it, aspect) },
+                )
                 // Several discs (disks, tapes…): a pill top left, as the web's.
                 if (game.discs > 1) {
                     Row(
@@ -575,12 +584,12 @@ private fun PanelArt(g: Game, system: SystemSummary) {
         VideoSnap(g.video, Modifier.fillMaxSize()) {
             Box(Modifier.fillMaxSize().background(brush), contentAlignment = Alignment.Center) {
                 Text(system.short, color = Color.White.copy(alpha = 0.8f), fontSize = 60.sp, fontWeight = FontWeight.Black)
-                Art(g.image ?: g.thumb, Modifier.fillMaxSize(), scale = if (g.image != null) ContentScale.Crop else ContentScale.Fit)
+                Art(g.image ?: g.cover ?: g.thumb, Modifier.fillMaxSize(), scale = if (g.image != null) ContentScale.Crop else ContentScale.Fit)
             }
         }
         Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.5f).background(Brush.verticalGradient(listOf(Color.Transparent, Sov.Surface.copy(alpha = 0.8f)))))
-        if (g.image != null && g.thumb != null) {
-            Art(g.thumb, Modifier.align(Alignment.BottomStart).padding(start = 20.dp, bottom = 12.dp).fillMaxHeight(0.5f).aspectRatio(3 / 4f).clip(RoundedCornerShape(6.dp)), scale = ContentScale.Fit)
+        if (g.image != null && (g.cover ?: g.thumb) != null) {
+            Art(g.cover ?: g.thumb, Modifier.align(Alignment.BottomStart).padding(start = 20.dp, bottom = 12.dp).fillMaxHeight(0.5f).aspectRatio(3 / 4f).clip(RoundedCornerShape(6.dp)), scale = ContentScale.Fit)
         }
     }
 }

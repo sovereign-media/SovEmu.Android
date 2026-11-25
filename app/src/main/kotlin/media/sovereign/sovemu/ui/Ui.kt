@@ -188,6 +188,7 @@ fun Art(
     alpha: Float = 1f,
     sizePx: Int? = null,
     onLoaded: ((Boolean) -> Unit)? = null,
+    onShape: ((Float) -> Unit)? = null,
 ) {
     val api = LocalApi.current
     val context = LocalContext.current
@@ -201,7 +202,14 @@ fun Art(
     }
     AsyncImage(
         model = request, contentDescription = null, contentScale = scale, alpha = alpha, modifier = modifier,
-        onState = onLoaded?.let { report -> { state: AsyncImagePainter.State -> report(state is AsyncImagePainter.State.Success) } },
+        onState = if (onLoaded == null && onShape == null) null else { state: AsyncImagePainter.State ->
+            onLoaded?.invoke(state is AsyncImagePainter.State.Success)
+            // The picture's own shape (width over height), once it has loaded.
+            if (state is AsyncImagePainter.State.Success) {
+                val size = state.painter.intrinsicSize
+                if (size.width > 0f && size.height > 0f) onShape?.invoke(size.width / size.height)
+            }
+        },
     )
 }
 

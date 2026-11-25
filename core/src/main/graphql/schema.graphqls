@@ -206,6 +206,10 @@ type ArtworkStatus {
 	done: Int!
 	downloaded: Int!
 	failed: Int!
+	"""
+	Of `downloaded`, the gameplay videos.
+	"""
+	videos: Int!
 }
 
 """
@@ -1254,9 +1258,12 @@ type Game {
 	media: [MediaKind!]!
 	"""
 	Where to load a kind of artwork from, if the game has it: a URL signed for this user
-	(valid `SOVEMU_ASSET_URL_HOURS`; ask again for a fresh one).
+	(valid `SOVEMU_ASSET_URL_HOURS`; ask again for a fresh one). With `width` (the box it is
+	shown in, in device pixels), a lossy WebP copy at most that wide: the width is rounded up
+	to the grid copies are made on (16 px steps, from 144), and a picture narrower than it is
+	not enlarged. Without it, the original. Videos are always the original.
 	"""
-	mediaUrl(kind: MediaKind!): String
+	mediaUrl(kind: MediaKind!, width: Int): String
 	description: String
 	"""
 	`YYYY-MM-DD`, `YYYY-MM` or `YYYY`.
@@ -1707,6 +1714,121 @@ enum MediaKind {
 }
 
 """
+A source's account: its level and the limits that come with it.
+"""
+type MetadataAccount {
+	user: String
+	"""
+	The service's own level number.
+	"""
+	level: Int
+	"""
+	ScreenScraper: 2 adds a thread, 3 or more add five.
+	"""
+	contribution: Int
+	maxThreads: Int
+	maxRequestsPerMinute: Int
+	maxRequestsPerDay: Float
+	maxMissesPerDay: Float
+	"""
+	KB/s.
+	"""
+	maxDownloadKbps: Int
+}
+
+"""
+The game a lookup is on.
+"""
+type MetadataCurrent {
+	gameId: Int!
+	title: String!
+	system: String!
+	"""
+	The source being asked, if one is.
+	"""
+	provider: String
+	step: MetadataStep!
+}
+
+"""
+A field of game information, to refresh only some.
+"""
+enum MetadataField {
+	TITLE
+	DESCRIPTION
+	RELEASE_DATE
+	DEVELOPER
+	PUBLISHER
+	GENRE
+	PLAYERS
+	RATING
+	BOX_ART
+	VIDEO
+}
+
+enum MetadataOutcome {
+	FOUND
+	NOT_FOUND
+	"""
+	Not stored: asked again by the next lookup.
+	"""
+	FAILED
+}
+
+type MetadataProviderProgress {
+	id: String!
+	name: String!
+	asked: Int!
+	found: Int!
+	notFound: Int!
+	errors: Int!
+	quota: MetadataQuota
+	"""
+	The account the source uses, as the service last described it.
+	"""
+	account: MetadataAccount
+	"""
+	Lookups the source takes at once, from its account's limits (and
+	`SOVEMU_SCREENSCRAPER_THREADS`).
+	"""
+	threads: Int!
+}
+
+"""
+A service's own count of today's requests.
+"""
+type MetadataQuota {
+	requestsToday: Float!
+	maxRequestsPerDay: Float
+	"""
+	Lookups today that found nothing, which the service caps on its own.
+	"""
+	missesToday: Float!
+	maxMissesPerDay: Float
+}
+
+"""
+A game a lookup has just looked up.
+"""
+type MetadataRecent {
+	gameId: Int!
+	"""
+	Its title after the lookup.
+	"""
+	title: String!
+	system: String!
+	outcome: MetadataOutcome!
+	"""
+	The sources that found something.
+	"""
+	sources: [String!]!
+	"""
+	Why it failed, if it did.
+	"""
+	detail: String
+}
+
+"""
 A game-information lookup's progress.
 """
 type MetadataStatus {
@@ -1717,17 +1839,63 @@ type MetadataStatus {
 	notFound: Int!
 	failed: Int!
 	"""
-	The configured sources.
+	The configured sources, in the order they are asked.
 	"""
 	sources: [String!]!
 	"""
-	Why a source stopped early (bad credentials, quota), if one did.
+	Why a source stopped early (bad credentials, quota) or is not used, if one did.
 	"""
 	notes: [String!]!
 	"""
 	The box art downloads that follow a lookup, in the background.
 	"""
 	artwork: ArtworkStatus!
+	"""
+	The games being looked up now: several at once when a source's account allows it.
+	"""
+	working: [MetadataCurrent!]!
+	"""
+	When the current (or last) lookup started and finished, Unix seconds.
+	"""
+	startedAt: Float
+	finishedAt: Float
+	"""
+	Seconds left, from the time per game so far.
+	"""
+	etaSeconds: Float
+	"""
+	Each system's share of the lookup.
+	"""
+	systems: [MetadataSystemProgress!]!
+	"""
+	What each source answered.
+	"""
+	providers: [MetadataProviderProgress!]!
+	"""
+	The last games looked up, most recent first.
+	"""
+	recent: [MetadataRecent!]!
+}
+
+"""
+What a source is doing for the game being looked up.
+"""
+enum MetadataStep {
+	"""
+	Hashing the game's file, for a source that matches by hash.
+	"""
+	HASHING
+	ASKING
+	"""
+	Pacing between requests, or backing off a busy service.
+	"""
+	WAITING
+}
+
+type MetadataSystemProgress {
+	system: String!
+	total: Int!
+	done: Int!
 }
 
 """
@@ -1872,9 +2040,12 @@ type Mutation {
 	syncLibrary: Boolean!
 	"""
 	Admins: starts looking up game information in the background: games without it, or
-	with `force` every game; one system, or all.
+	with `force` every game, or with `staleAfterDays` the games last looked up longer ago;
+	one system, or all. `fields` refreshes only those fields (the rest are kept) and
+	`sources` asks only those sources (ids, as `metadataStatus.sources` lists them). What a
+	game has is never cleared by a source that finds nothing.
 	"""
-	fetchMetadata(system: ID, force: Boolean! = false): MetadataStatus!
+	fetchMetadata(system: ID, force: Boolean! = false, fields: [MetadataField!]! = [], sources: [String!]! = [], staleAfterDays: Int): MetadataStatus!
 	"""
 	Plays a game with one of its soft patches from now on (`Game.patches`), or the original
 	(`patchId` null). Its next session loads it so; a patched game keeps its own saves.
@@ -2823,7 +2994,7 @@ enum Stick {
 
 type StorageArea {
 	"""
-	`database`, `saves`, `cache`, `discs`, `mirror`, `artwork`, `launchbox`, `metadata`,
+	`database`, `saves`, `cache`, `discs`, `mirror`, `artwork`, `metadata`,
 	`decorations`, `builtin_decorations`, `roms`, `bios` or `other`.
 	"""
 	id: String!
@@ -2991,7 +3162,10 @@ type System {
 	playable: Boolean!
 	"""
 	A 3D system: its cores render with OpenGL and read analog sticks.
+	The shape of its games' boxes, width over height (US and European releases): game cards
+	take it so box art fills them.
 	"""
+	boxAspect: Float!
 	needsGpu: Boolean!
 	"""
 	For a 3D system, where it renders here.

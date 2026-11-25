@@ -95,7 +95,7 @@ private fun LeftOff(g: Game, system: SystemSummary?) {
             val brush = remember(system?.color) { tile(system?.colour() ?: Sov.Accent) }
             Box(Modifier.fillMaxSize().background(brush), contentAlignment = Alignment.Center) {
                 Text(system?.short ?: g.system.uppercase(), color = Color.White.copy(alpha = 0.8f), fontSize = 60.sp, fontWeight = FontWeight.Black)
-                Art(g.image ?: g.thumb, Modifier.fillMaxSize(), scale = if (g.image != null) ContentScale.Crop else ContentScale.Fit)
+                Art(g.image ?: g.cover ?: g.thumb, Modifier.fillMaxSize(), scale = if (g.image != null) ContentScale.Crop else ContentScale.Fit)
             }
         }
     }

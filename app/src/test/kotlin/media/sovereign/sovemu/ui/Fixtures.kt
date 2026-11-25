@@ -21,7 +21,7 @@ fun game(
     autoSave: GameFields.AutoSave? = null,
 ): Game = Game(
     id = id, system = "nes", title = title, fileTitle = null, tags = emptyList(), path = "nes/$title.nes", size = 0.0,
-    lastPlayedAt = null, playCount = playCount, image = null, thumb = null, video = null, description = null,
+    lastPlayedAt = null, playCount = playCount, image = null, imageSmall = null, cover = null, thumb = null, video = null, description = null,
     releaseDate = null, developer = null, publisher = null, genre = null, players = null, rating = null,
     discs = discs, partKind = null, favourite = favourite, release = release, patch = patch, autoSave = autoSave,
 )
@@ -29,7 +29,7 @@ fun game(
 fun system(): SystemSummary = SystemSummary(
     id = "nes", name = "Nintendo Entertainment System", short = "NES", manufacturer = "Nintendo", year = 1983,
     color = "#c0392b", photoUrl = null, gameCount = 1, playable = true, needsGpu = false, rendering = null,
-    biosMissing = false,
+    biosMissing = false, boxAspect = 0.72,
 )
 
 /**
