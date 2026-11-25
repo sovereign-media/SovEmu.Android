@@ -25,7 +25,10 @@ import org.junit.Test
 
 /** The OAuth token client and the sign-in over it, against a server answering as SovEmu.Server's `/oauth/…`. */
 class AuthTest {
-    private class MemoryStore(override var refreshToken: String? = null) : TokenStore
+    private class MemoryStore(
+        override var refreshToken: String? = null,
+        override var tokenClientId: String? = null,
+    ) : TokenStore
 
     private val server = MockWebServer()
     private val http = OkHttpClient()
@@ -65,12 +68,15 @@ class AuthTest {
             if (!available) {
                 """{"data":{"bootstrapConfig":{"signInAvailable":false,"address":"10.0.0.5:8080","deviceClientId":null,""" +
                     """"tokenEndpoint":null,"revocationEndpoint":null,"deviceAuthorizationEndpoint":null,""" +
-                    """"verificationUri":null,"passwordEndpoint":null}}}"""
+                    """"verificationUri":null,"passwordEndpoint":null,"authorizationEndpoint":null,""" +
+                    """"mobileClientId":null,"mobileRedirectUri":null}}}"""
             } else {
                 // Elsewhere than SovEmu's own paths, and another client id: the app must use these.
                 """{"data":{"bootstrapConfig":{"signInAvailable":true,"address":"10.0.0.5:8080","deviceClientId":"tv-app",""" +
                     """"tokenEndpoint":"${server.url("/auth/token")}","revocationEndpoint":"/auth/revoke",""" +
                     """"deviceAuthorizationEndpoint":"/auth/device","verificationUri":"http://10.0.0.5:8080/device",""" +
+                    """"authorizationEndpoint":"/auth/authorize","mobileClientId":"phone-app",""" +
+                    """"mobileRedirectUri":"media.sovereign.sovemu:/oauth2redirect",""" +
                     """"passwordEndpoint":${password?.let { "\"$it\"" } ?: "null"}}}}"""
             },
         )
@@ -419,6 +425,41 @@ class AuthTest {
         assertEquals(TokenClient.DEVICE_CODE_GRANT, poll["grant_type"])
         assertEquals("sovemu-native", poll["client_id"])
         assertEquals("dc", poll["device_code"])
+    }
+
+    @Test
+    fun aBrowserSignInRefreshesAndSignsOutAsTheMobileClient() = runBlocking {
+        config = config!!.copy(
+            authorizationEndpoint = "/oauth/authorize",
+            mobileClientId = "phone-app",
+            mobileRedirectUri = "media.sovereign.sovemu:/oauth2redirect",
+        )
+        val request = BrowserSignInRequest.create(address(), config!!)!!
+        server.enqueue(tokens("a1", "r1"))
+        val got = TokenClient(http, ::address, { config }).exchangeCode("the-code", request)
+        val exchange = server.takeRequest().form()
+        assertEquals(
+            mapOf(
+                "grant_type" to "authorization_code",
+                "client_id" to "phone-app",
+                "code" to "the-code",
+                "redirect_uri" to "media.sovereign.sovemu:/oauth2redirect",
+                "code_verifier" to request.pkce.verifier,
+            ),
+            exchange,
+        )
+        auth.signedInWith(got, clientId = "phone-app")
+        assertEquals("phone-app", store.tokenClientId)
+
+        // A refresh token is good only with its own client: the browser's is the mobile client's.
+        server.enqueue(tokens("a2", "r2"))
+        clock += 3_600_000
+        assertEquals("a2", auth.accessToken())
+        assertEquals("phone-app", server.takeRequest().form()["client_id"])
+        server.enqueue(MockResponse.Builder().code(200).build())
+        auth.signOut()
+        assertEquals("phone-app", server.takeRequest().form()["client_id"])
+        assertNull(store.tokenClientId)
     }
 
     @Test

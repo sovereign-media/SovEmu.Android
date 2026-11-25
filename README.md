@@ -46,9 +46,11 @@ checkout this is a submodule of, and the build tells you which operations no lon
 
 1. First-run setup (the admin account) happens in a browser at the server's address.
 2. In the app, enter the server address (for example `http://192.168.1.20:8080`); the app asks it
-   how to sign in (its address must be in the server's `SOVEMU_PUBLIC_URL`), then sign in: *Sign in
-   with your phone* shows a code (and a QR code) to approve at the server's `/device` page in a
-   signed-in browser, or use a password, where the server allows one. The app keeps
+   how to sign in (its address must be in the server's `SOVEMU_PUBLIC_URL`), then sign in. On a
+   phone or tablet, *Sign in* opens the server's own sign-in page in the browser; on a TV, *Sign in
+   with your phone* shows a code (and a QR code) to approve at the server's `/device` page, or
+   approve it from the app on a phone (account menu, *Sign in a TV*). The password works too,
+   where the server allows it. The app keeps
    the sign-in's refresh token in its private preferences (not backed up) and the access token in
    memory; signing out revokes the sign-in on the server.
 3. The server must advertise an address the phone can reach (`SOVEMU_ADVERTISE_IP`, the host's

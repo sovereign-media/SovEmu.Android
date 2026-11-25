@@ -1,5 +1,6 @@
 package media.sovereign.sovemu
 
+import android.content.Intent
 import android.os.Bundle
 import media.sovereign.sovemu.ui.Screensaver
 import kotlinx.coroutines.delay
@@ -56,6 +57,7 @@ import media.sovereign.sovemu.ui.SovTheme
 import media.sovereign.sovemu.ui.Start
 import media.sovereign.sovemu.ui.LocalForm
 import media.sovereign.sovemu.ui.SearchScreen
+import media.sovereign.sovemu.ui.SignInTvScreen
 import media.sovereign.sovemu.ui.SystemScreen
 import media.sovereign.sovemu.ui.TvKeyboardHost
 import media.sovereign.sovemu.ui.scanlines
@@ -79,6 +81,11 @@ sealed interface Route {
     data class Play(val system: SystemSummary, val game: Game, val start: Start) : Route {
         override val key = "play:${game.id}"
     }
+
+    /** *Sign in a TV*, from the account menu on a phone or tablet. */
+    data object SignInTv : Route {
+        override val key = "sign-in-tv"
+    }
 }
 
 class MainActivity : ComponentActivity() {
@@ -101,6 +108,20 @@ class MainActivity : ComponentActivity() {
     /** True while a game is playing: controller input goes to the game, not the UI. */
     private var playing = false
 
+    /** A browser sign-in's redirect (`media.sovereign.sovemu:/oauth2redirect?…`), for the sign-in screen. */
+    private fun takeBrowserRedirect(intent: Intent?) {
+        val uri = intent?.data ?: return
+        if (uri.scheme == "media.sovereign.sovemu" && uri.path == "/oauth2redirect") {
+            api.browserRedirect.value = uri.toString()
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        takeBrowserRedirect(intent)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -119,6 +140,7 @@ class MainActivity : ComponentActivity() {
         controller.start(this)
         presence = InputPresence(this, controller)
         music = MenuMusic(this, lifecycleScope)
+        takeBrowserRedirect(intent)
         if (settings.serverUrl.isNotEmpty() && api.auth.signedIn.value) {
             // The server's sign-in details, asked again on each launch it can be reached (the
             // stored copy lets a sign-in refresh when it cannot).
@@ -213,6 +235,7 @@ class MainActivity : ComponentActivity() {
                     store.clear()
                     lifecycleScope.launch { api.signOut() }
                 },
+                signInTv = { push(Route.SignInTv) },
             )
         }
 
@@ -281,6 +304,16 @@ class MainActivity : ComponentActivity() {
                                     server = settings.serverUrl,
                                     onRetry = store::refresh,
                                     onSignOut = nav.signOut,
+                                )
+                            }
+                        }
+                        entry<Route.SignInTv>({ it.key }) {
+                            NavFrame(Section.Home, nav, user, systems) {
+                                SignInTvScreen(
+                                    server = settings.serverUrl,
+                                    name = user?.username.orEmpty(),
+                                    approve = api::approveDeviceCode,
+                                    onDone = ::pop,
                                 )
                             }
                         }

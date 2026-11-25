@@ -3,6 +3,8 @@ agp = "9.5.1"
 kotlin = "2.4.21"
 compose-bom = "2026.09.00"
 activity-compose = "1.13.0"
+# Custom Tabs: a phone signs in on the server's own page in the system browser.
+browser = "1.9.0"
 core-ktx = "1.19.1"
 lifecycle = "2.11.0"
 navigation = "2.10.2"
@@ -22,6 +24,7 @@ androidx-test-core = "1.7.0"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "core-ktx" }
+androidx-browser = { module = "androidx.browser:browser", version.ref = "browser" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity-compose" }
 androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
 androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }

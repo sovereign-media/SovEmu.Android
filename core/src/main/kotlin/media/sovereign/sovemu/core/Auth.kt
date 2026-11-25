@@ -39,6 +39,13 @@ class OAuthException(val error: String, description: String, val status: Int) : 
 /** Where the refresh token is kept across launches; "signed in" means there is one. */
 interface TokenStore {
     var refreshToken: String?
+
+    /**
+     * The client the refresh token was issued to: the device client (a code or a password) or
+     * the mobile client (the browser). A refresh token is good only with its own client. Null
+     * for one kept before this was: the device client's.
+     */
+    var tokenClientId: String?
 }
 
 /**
@@ -60,7 +67,17 @@ data class SignInConfig(
     val deviceAuthorizationEndpoint: String? = null,
     /** Where the person approves that code, in a signed-in browser. */
     val verificationUri: String? = null,
+    /** Where a browser sign-in starts (the code flow with PKCE). */
+    val authorizationEndpoint: String? = null,
+    /** The mobile client: what a phone signs in as through the browser. */
+    val mobileClientId: String? = null,
+    /** Where the browser's sign-in comes back to, the app's own scheme. */
+    val mobileRedirectUri: String? = null,
 ) {
+    /** Whether a phone can sign in through the system browser here. */
+    val browser: Boolean
+        get() = authorizationEndpoint != null && mobileClientId != null && mobileRedirectUri != null
+
     /** Whether the app can sign in by showing a code to approve on another screen. */
     val pairing: Boolean get() = deviceAuthorizationEndpoint != null
 
@@ -103,6 +120,9 @@ fun BootstrapQuery.BootstrapConfig.toSignInConfig(): SignInConfig = SignInConfig
     passwordEndpoint = passwordEndpoint,
     deviceAuthorizationEndpoint = deviceAuthorizationEndpoint,
     verificationUri = verificationUri,
+    authorizationEndpoint = authorizationEndpoint,
+    mobileClientId = mobileClientId,
+    mobileRedirectUri = mobileRedirectUri,
 )
 
 /**
@@ -136,10 +156,11 @@ class TokenClient(
         )
     }
 
-    suspend fun refresh(refreshToken: String): Tokens {
+    /** A new access token for [refreshToken], as [client] (null: the device client) it was issued to. */
+    suspend fun refresh(refreshToken: String, client: String? = null): Tokens {
         val c = config()
         val endpoint = c?.tokenEndpoint
-        val clientId = c?.clientId
+        val clientId = client ?: c?.clientId
         if (endpoint == null || clientId == null) throw unavailable("The server sent no sign-in details.")
         return token(
             endpoint,
@@ -218,11 +239,30 @@ class TokenClient(
         }
     }
 
+    /**
+     * Exchanges the code a browser sign-in came back with, as the mobile client, with the
+     * verifier only this app holds (RFC 7636).
+     */
+    suspend fun exchangeCode(code: String, request: BrowserSignInRequest): Tokens {
+        val c = config() ?: throw unavailable("Check the server address first.")
+        val endpoint = c.tokenEndpoint ?: throw unavailable("The server sent no sign-in details.")
+        return token(
+            endpoint,
+            FormBody.Builder()
+                .add("grant_type", "authorization_code")
+                .add("client_id", request.clientId)
+                .add("code", code)
+                .add("redirect_uri", request.redirectUri)
+                .add("code_verifier", request.pkce.verifier)
+                .build(),
+        )
+    }
+
     /** Revokes the sign-in [refreshToken] belongs to (the server always answers 200). */
-    suspend fun revoke(refreshToken: String) {
+    suspend fun revoke(refreshToken: String, client: String? = null) {
         val c = config()
         val endpoint = c?.revocationEndpoint ?: return
-        val clientId = c.clientId ?: return
+        val clientId = client ?: c.clientId ?: return
         val form = FormBody.Builder().add("token", refreshToken).add("client_id", clientId).build()
         withContext(io) { http.newCall(post(endpoint, form)).execute().close() }
     }
@@ -323,12 +363,18 @@ class Auth(
         signedInWith(client.signIn(username, password))
     }
 
-    /** Keeps the tokens a sign-in got (a password, or an approved code): signed in from now. */
-    suspend fun signedInWith(tokens: Tokens) {
+    /**
+     * Keeps the tokens a sign-in got: signed in from now. [clientId] is the client they were
+     * issued to; null for the device client (a password, or an approved code).
+     */
+    suspend fun signedInWith(tokens: Tokens, clientId: String? = null) {
         if (tokens.refreshToken == null) {
             throw OAuthException("invalid_response", "The server granted no refresh token", 200)
         }
-        lock.withLock { keep(tokens) }
+        lock.withLock {
+            store.tokenClientId = clientId
+            keep(tokens)
+        }
         _signedIn.value = true
     }
 
@@ -349,7 +395,7 @@ class Auth(
         access?.let { if (it.token != stale && it.fresh()) return@withLock it.token }
         val refreshToken = store.refreshToken ?: return@withLock null
         val tokens = try {
-            client.refresh(refreshToken)
+            client.refresh(refreshToken, store.tokenClientId)
         } catch (e: OAuthException) {
             if (!e.invalidGrant) throw e
             forget()
@@ -375,9 +421,10 @@ class Auth(
 
     /** Revokes the sign-in on the server, then forgets it here whatever happened (offline too). */
     suspend fun signOut() {
+        val tokenClient = store.tokenClientId
         val refreshToken = lock.withLock { store.refreshToken.also { forget() } } ?: return
         try {
-            client.revoke(refreshToken)
+            client.revoke(refreshToken, tokenClient)
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
@@ -389,6 +436,7 @@ class Auth(
     fun forget() {
         access = null
         store.refreshToken = null
+        store.tokenClientId = null
         _signedIn.value = false
     }
 

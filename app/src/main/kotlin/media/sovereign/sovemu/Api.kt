@@ -25,7 +25,13 @@ import media.sovereign.sovemu.core.IceServer
 import media.sovereign.sovemu.core.PadLayout
 import media.sovereign.sovemu.core.SaveSlot
 import media.sovereign.sovemu.core.SessionInfo
+import kotlinx.coroutines.flow.MutableStateFlow
+import media.sovereign.sovemu.core.BrowserRedirect
+import media.sovereign.sovemu.core.BrowserSignInRequest
 import media.sovereign.sovemu.core.DeviceCode
+import media.sovereign.sovemu.core.OAuthException
+import media.sovereign.sovemu.core.graphql.ApproveDeviceCodeMutation
+import media.sovereign.sovemu.core.message
 import media.sovereign.sovemu.core.DevicePoll
 import media.sovereign.sovemu.core.SignInConfig
 import media.sovereign.sovemu.core.Tokens
@@ -117,6 +123,10 @@ class Settings(context: Context) : TokenStore {
             token.value = value
         }
 
+    override var tokenClientId: String?
+        get() = prefs.getString("token_client", null)
+        set(value) = prefs.edit().putString("token_client", value).apply()
+
     /** The device name last given to this sign-in (`nameDevice`); null after signing in anew. */
     var namedDevice: String?
         get() = prefs.getString("named_device", null)
@@ -135,6 +145,9 @@ class Settings(context: Context) : TokenStore {
                 passwordEndpoint = prefs.getString("signin.password", null),
                 deviceAuthorizationEndpoint = prefs.getString("signin.device", null),
                 verificationUri = prefs.getString("signin.verify", null),
+                authorizationEndpoint = prefs.getString("signin.authorize", null),
+                mobileClientId = prefs.getString("signin.mobile", null),
+                mobileRedirectUri = prefs.getString("signin.mobile_redirect", null),
             )
         }
         set(value) {
@@ -148,6 +161,9 @@ class Settings(context: Context) : TokenStore {
                 .putString("signin.password", value?.passwordEndpoint)
                 .putString("signin.device", value?.deviceAuthorizationEndpoint)
                 .putString("signin.verify", value?.verificationUri)
+                .putString("signin.authorize", value?.authorizationEndpoint)
+                .putString("signin.mobile", value?.mobileClientId)
+                .putString("signin.mobile_redirect", value?.mobileRedirectUri)
                 .apply()
         }
 }
@@ -223,6 +239,44 @@ class SovEmuApi(
         auth.signIn(username, password)
         // A new sign-in on the server: it has no name yet.
         settings.namedDevice = null
+    }
+
+    /**
+     * The browser sign-in in flight, from opening the browser to its redirect. Only in memory: a
+     * process the system ends while the browser is up loses it, and the person signs in again.
+     */
+    @Volatile private var browserRequest: BrowserSignInRequest? = null
+
+    /** The redirect the app was opened with, for the sign-in screen to finish with; null once taken. */
+    val browserRedirect = MutableStateFlow<String?>(null)
+
+    /** A browser sign-in to open (the server's own page), kept for its redirect; null when the server offers none. */
+    fun startBrowserSignIn(): BrowserSignInRequest? =
+        settings.signInConfig?.let { BrowserSignInRequest.create(settings.serverUrl, it) }.also { browserRequest = it }
+
+    /**
+     * Finishes a browser sign-in with the redirect [uri]: the code exchanged, as the mobile
+     * client, and signed in. Anything else is an [OAuthException] saying why, for people.
+     */
+    suspend fun finishBrowserSignIn(uri: String) {
+        val request = browserRequest
+            ?: throw OAuthException("no_request", "The browser came back after the app had closed. Sign in again.", 0)
+        when (val back = BrowserRedirect.parse(uri, request)) {
+            is BrowserRedirect.Code -> {
+                browserRequest = null
+                auth.signedInWith(tokenClient.exchangeCode(back.code, request), request.clientId)
+                settings.namedDevice = null
+            }
+            else -> {
+                if (back !is BrowserRedirect.StateMismatch) browserRequest = null
+                throw OAuthException("browser", back.message(), 0)
+            }
+        }
+    }
+
+    /** Signs a TV in as this account: the code its screen shows (*Sign in a TV*). */
+    suspend fun approveDeviceCode(code: String) {
+        mutate(ApproveDeviceCodeMutation(code))
     }
 
     /** A code to show, to sign in by approving it elsewhere (after [bootstrap]). */

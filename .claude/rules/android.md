@@ -34,7 +34,15 @@ repository's root.
   `KEYCODE_BUTTON_A` is the bottom face.
 - **Signalling** is one `sessionOffer` mutation carrying the complete offer (non-trickle: wait for
   ICE gathering), as on the other clients.
-- **Sign-in follows Sovereign's TVs**: *Sign in with your phone* (the device grant: a code and
+- **On a phone or tablet, sign-in follows Sovereign's phones first**: *Sign in* opens the
+  server's own page in a Custom Tab (`BrowserSignIn.kt`: the code flow with PKCE as the
+  **mobile client**, back to `media.sovereign.sovemu:/oauth2redirect`, which `MainActivity`
+  receives; the redirect's `state` is checked before anything in it is believed), with a code
+  and the password as the other ways in. A stored sign-in remembers its client
+  (`TokenStore.tokenClientId`): refresh and sign-out use it. *Sign in a TV* (account menu, not on
+  a TV) approves a TV's code with the `approveDeviceCode` mutation; its field keeps the text as
+  typed (rewriting it as it is typed drops keystrokes).
+- **Sign-in on a TV follows Sovereign's TVs**: *Sign in with your phone* (the device grant: a code and
   its QR code, approved at the server's `/device` page, polled at the server's `interval`,
   `slow_down` widening it, waiting never shown as an error) with the password as the fallback,
   and only the code when the server has the password off. The app signs in as the **device

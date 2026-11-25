@@ -26,6 +26,13 @@ object Lucide {
             }
             .build()
 
+    val Tv: ImageVector by lazy {
+        icon(
+            "M4 7h16a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z",
+            "M17 2l-5 5-5-5",
+        )
+    }
+
     val Smartphone: ImageVector by lazy {
         icon(
             "M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z",

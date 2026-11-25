@@ -35,7 +35,11 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.content.ActivityNotFoundException
+import android.net.Uri
 import android.os.SystemClock
+import androidx.browser.customtabs.CustomTabsIntent
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.geometry.Offset
@@ -76,9 +80,16 @@ fun LoginScreen(settings: Settings, api: SovEmuApi, onSignedIn: () -> Unit) {
     var config by remember { mutableStateOf<SignInConfig?>(settings.signInConfig) }
     val ready = config?.problem == null && config != null
     val scope = rememberCoroutineScope()
-    // Signing in with a code: shown on asking, or always when there is no password sign-in.
+    val onTv = LocalForm.current.tv
+    // A phone signs in on the server's own page in the browser first, as Sovereign's phones do;
+    // a TV, where that page cannot be reached, with its password form and a code.
+    var passwordAsked by remember { mutableStateOf(false) }
+    val browserFirst = ready && !onTv && config!!.browser && !passwordAsked
+    // Signing in with a code: shown on asking, or when it is the only way in here.
     var pairingAsked by remember { mutableStateOf(false) }
-    val pairing = ready && config!!.pairing && (pairingAsked || !config!!.password)
+    val pairing = ready && config!!.pairing &&
+        (pairingAsked || (!config!!.password && !(!onTv && config!!.browser)))
+    val context = LocalContext.current
     var attempt by remember { mutableStateOf(0) }
     var pairingState by remember { mutableStateOf<PairingUi>(PairingUi.Asking) }
 
@@ -111,6 +122,37 @@ fun LoginScreen(settings: Settings, api: SovEmuApi, onSignedIn: () -> Unit) {
     // A stored address is asked again on every launch, so its sign-in details stay current.
     LaunchedEffect(Unit) {
         if (settings.serverUrl.isNotEmpty()) check(settings.serverUrl, quiet = true)
+    }
+
+    // The browser comes back with a code (or why not): exchanged, and signed in.
+    LaunchedEffect(api) {
+        api.browserRedirect.collect { uri ->
+            if (uri == null) return@collect
+            api.browserRedirect.value = null
+            busy = true
+            error = null
+            try {
+                api.finishBrowserSignIn(uri)
+                onSignedIn()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                failed(e)
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    /** Opens the server's own sign-in page in a Custom Tab, for the code flow with PKCE. */
+    fun signInWithBrowser() {
+        val request = api.startBrowserSignIn() ?: return
+        error = null
+        try {
+            CustomTabsIntent.Builder().setShowTitle(true).build().launchUrl(context, Uri.parse(request.authorizeUrl))
+        } catch (_: ActivityNotFoundException) {
+            error = "There is no browser on this device to sign in with."
+        }
     }
 
     fun submit() {
@@ -177,7 +219,12 @@ fun LoginScreen(settings: Settings, api: SovEmuApi, onSignedIn: () -> Unit) {
         PairingScreen(
             pairingState,
             onNewCode = { attempt++ },
-            onUsePassword = if (config!!.password) ({ pairingAsked = false }) else null,
+            onUsePassword = when {
+                config!!.password -> ({ pairingAsked = false; passwordAsked = true })
+                !onTv && config!!.browser -> ({ pairingAsked = false })
+                else -> null
+            },
+            back = if (config!!.password) PairingText.USE_PASSWORD else BROWSER,
             onChangeServer = {
                 pairingAsked = false
                 config = null
@@ -232,7 +279,7 @@ fun LoginScreen(settings: Settings, api: SovEmuApi, onSignedIn: () -> Unit) {
                     type = KeyboardType.Uri,
                 )
             }
-            if (ready) {
+            if (ready && !browserFirst) {
                 if (shown(LoginField.USERNAME)) {
                     Field(
                         "Username", username, { username = it; error = null },
@@ -269,7 +316,10 @@ fun LoginScreen(settings: Settings, api: SovEmuApi, onSignedIn: () -> Unit) {
                         busy -> "Signing in…"
                         else -> "Sign in"
                     },
-                    ::submit,
+                    {
+                        val address = server.trim().let { if ("://" in it) it else "http://$it" }
+                        if (browserFirst && address.trimEnd('/') == settings.serverUrl) signInWithBrowser() else submit()
+                    },
                     Modifier.fillMaxWidth(),
                     icon = Lucide.LogIn,
                     enabled = !busy,
@@ -277,7 +327,7 @@ fun LoginScreen(settings: Settings, api: SovEmuApi, onSignedIn: () -> Unit) {
                 // The other way in, which needs no typing on a TV: a code to approve elsewhere.
                 if (ready && config!!.pairing) {
                     SovButton(
-                        PairingText.USE_CODE,
+                        if (onTv) PairingText.USE_CODE else CODE,
                         { pairingAsked = true; error = null },
                         Modifier.fillMaxWidth(),
                         variant = Variant.Outline,
@@ -285,10 +335,22 @@ fun LoginScreen(settings: Settings, api: SovEmuApi, onSignedIn: () -> Unit) {
                         enabled = !busy,
                     )
                 }
+                if (browserFirst && config!!.password) {
+                    SovButton(
+                        PairingText.USE_PASSWORD, { passwordAsked = true; error = null }, Modifier.fillMaxWidth(),
+                        variant = Variant.Ghost, enabled = !busy,
+                    )
+                } else if (ready && !onTv && config!!.browser) {
+                    SovButton(BROWSER, { passwordAsked = false; error = null }, Modifier.fillMaxWidth(), variant = Variant.Ghost, enabled = !busy)
+                }
             }
         }
     }
 }
+
+/** A phone's way back to the browser sign-in, and its name for signing in with a code. */
+private const val BROWSER = "Sign in with your browser"
+private const val CODE = "Sign in with a code"
 
 /** The sign-in form's fields, one of which may be being typed in. */
 enum class LoginField { SERVER, USERNAME, PASSWORD }
@@ -350,6 +412,7 @@ fun PairingScreen(
     onUsePassword: (() -> Unit)?,
     onChangeServer: () -> Unit,
     modifier: Modifier = Modifier,
+    back: String = PairingText.USE_PASSWORD,
 ) {
     val first = remember { FocusRequester() }
     LaunchedEffect(state is PairingUi.Failed) { runCatching { first.requestFocus() } }
@@ -391,7 +454,7 @@ fun PairingScreen(
                 }
                 if (onUsePassword != null) {
                     SovButton(
-                        PairingText.USE_PASSWORD, onUsePassword,
+                        back, onUsePassword,
                         if (state is PairingUi.Failed) Modifier.fillMaxWidth() else Modifier.fillMaxWidth().focusRequester(first),
                         variant = Variant.Outline, icon = Lucide.LogIn,
                     )
