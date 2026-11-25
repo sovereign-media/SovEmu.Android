@@ -7,6 +7,8 @@ import com.apollographql.apollo.api.Optional
 import com.apollographql.apollo.api.Query
 import com.apollographql.apollo.network.okHttpClient
 import java.util.concurrent.TimeUnit
+import media.sovereign.sovemu.core.SealedToken
+import media.sovereign.sovemu.core.KeyValue
 import media.sovereign.sovemu.core.ApiException
 import media.sovereign.sovemu.core.Auth
 import media.sovereign.sovemu.core.BearerInterceptor
@@ -77,11 +79,21 @@ import okhttp3.OkHttpClient
 
 /**
  * The server address, how to sign in there (its `bootstrapConfig`) and the sign-in's refresh
- * token, kept across launches. The token is in the app's private preferences (excluded from
- * backups by `allowBackup="false"`); the access token lives only in memory.
+ * token, kept across launches. The token is sealed with a key in the Android Keystore
+ * ([KeystoreSealer], [SealedToken]) in the app's private preferences, and nothing the app
+ * stores leaves the device (`allowBackup="false"` and the data-extraction rules); the access
+ * token lives only in memory.
  */
 class Settings(context: Context) : TokenStore {
     internal val prefs = context.getSharedPreferences("sovemu", Context.MODE_PRIVATE)
+    private val token = SealedToken(
+        object : KeyValue {
+            override fun get(key: String) = prefs.getString(key, null)
+            override fun put(key: String, value: String) = prefs.edit().putString(key, value).apply()
+            override fun remove(key: String) = prefs.edit().remove(key).apply()
+        },
+        KeystoreSealer,
+    )
 
     init {
         // Before OAuth the app signed in with a session cookie, which the server no longer
@@ -97,8 +109,10 @@ class Settings(context: Context) : TokenStore {
         set(value) = prefs.edit().putString("server", value.trim().trimEnd('/')).apply()
 
     override var refreshToken: String?
-        get() = prefs.getString("refresh_token", null)
-        set(value) = prefs.edit().putString("refresh_token", value).apply()
+        get() = token.value
+        set(value) {
+            token.value = value
+        }
 
     /** The device name last given to this sign-in (`nameDevice`); null after signing in anew. */
     var namedDevice: String?
