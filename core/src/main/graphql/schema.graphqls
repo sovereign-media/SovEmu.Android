@@ -1319,6 +1319,12 @@ type Game {
 	"""
 	esrb: EsrbRating
 	"""
+	The ESRB rating's icon (PNG), if the game has a rating and the decoration folders an icon
+	for it: the built-in set's `ratings/esrb/<rating>.png`, or an admin's own at that path in
+	an earlier decorations folder. A URL signed for this user.
+	"""
+	esrbBadgeUrl: String
+	"""
 	Ways to play: "Single player", "Multiplayer (simultaneous)" …
 	"""
 	modes: [String!]!

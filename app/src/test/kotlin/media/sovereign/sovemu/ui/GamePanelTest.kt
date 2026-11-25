@@ -178,7 +178,7 @@ class GamePanelTest {
     fun theRatingsShowWhenTheGameHasThem() {
         show()
         rule.waitForIdle()
-        open = game(rating = 0.72, esrb = EsrbRating.TEEN, modes = listOf("Single player", "Co-op"), series = listOf("Chozo", "Zebes"))
+        open = game(rating = 0.72, esrb = EsrbRating.TEEN, esrbBadgeUrl = "/media/decorations/sovemu/ratings/esrb/t.png?Sov-UserId=1", modes = listOf("Single player", "Co-op"), series = listOf("Chozo", "Zebes"))
         rule.onNodeWithText("3.5 out of 5").assertExists()
         rule.onNodeWithText("Single player, Co-op").assertExists()
         rule.onNodeWithText("Chozo, Zebes").assertExists()

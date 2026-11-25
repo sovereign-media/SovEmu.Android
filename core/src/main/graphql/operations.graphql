@@ -39,6 +39,8 @@ fragment GameFields on Game {
   players
   rating
   esrb
+  # The rating's icon, from the server's decoration set (an admin may replace it).
+  esrbBadgeUrl
   modes
   series
   themes

@@ -22,13 +22,14 @@ fun game(
     autoSave: GameFields.AutoSave? = null,
     rating: Double? = null,
     esrb: EsrbRating? = null,
+    esrbBadgeUrl: String? = null,
     modes: List<String> = emptyList(),
     series: List<String> = emptyList(),
     themes: List<String> = emptyList(),
 ): Game = Game(
     id = id, system = "nes", title = title, fileTitle = null, tags = emptyList(), path = "nes/$title.nes", size = 0.0,
     lastPlayedAt = null, playCount = playCount, image = null, imageSmall = null, cover = null, thumb = null, video = null, description = null,
-    releaseDate = null, developer = null, publisher = null, genre = null, genres = emptyList(), players = null, rating = rating, esrb = esrb,
+    releaseDate = null, developer = null, publisher = null, genre = null, genres = emptyList(), players = null, rating = rating, esrb = esrb, esrbBadgeUrl = esrbBadgeUrl,
     modes = modes, series = series, themes = themes,
     discs = discs, partKind = null, favourite = favourite, release = release, patch = patch, autoSave = autoSave,
 )

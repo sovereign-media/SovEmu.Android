@@ -534,7 +534,7 @@ internal fun GamePanel(
                         if (g.themes.isNotEmpty()) Fact(Lucide.Sparkles, g.themes.joinToString(", "))
                     }
                 }
-                g.esrb?.let { EsrbBadge(it) }
+                g.esrb?.let { rating -> g.esrbBadgeUrl?.let { EsrbBadge(rating, it) } }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (auto) {

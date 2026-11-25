@@ -1,51 +1,44 @@
 package media.sovereign.sovemu.ui
 
-import androidx.annotation.DrawableRes
-import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import media.sovereign.sovemu.R
 import media.sovereign.sovemu.core.esrbInfo
 import media.sovereign.sovemu.core.graphql.type.EsrbRating
 
 object EsrbBadgeDefaults {
-    /** As tall as the web client's (`h-14`); the badge is 2:3. */
+    /** As tall as the web client's (`h-14`); the icons are 2:3. */
     val Height: Dp = 56.dp
 }
 
 /**
- * The badge image for an ESRB rating, or null for one this build does not know (a newer
- * server's): the ESRB's own icon (the 2013 set, from Wikimedia Commons), a WebP file rendered
- * by the web client's `npm run esrb-badges` and copied into `res/drawable-nodpi/`, so every
- * client shows the same.
+ * An ESRB rating's icon, from the server ([url]: `Game.esrbBadgeUrl`, the built-in decoration
+ * set's `ratings/esrb/<rating>.png`, which an admin may replace), named for screen readers
+ * ("ESRB: Teen (T)"). Loaded and cached as artwork is ([Art]). Nothing for a rating this build
+ * does not know.
  */
-@DrawableRes
-fun esrbBadge(rating: EsrbRating): Int? = when (rating) {
-    EsrbRating.EARLY_CHILDHOOD -> R.drawable.esrb_ec
-    EsrbRating.EVERYONE -> R.drawable.esrb_e
-    EsrbRating.EVERYONE_10_PLUS -> R.drawable.esrb_e10
-    EsrbRating.TEEN -> R.drawable.esrb_t
-    EsrbRating.MATURE -> R.drawable.esrb_m
-    EsrbRating.ADULTS_ONLY -> R.drawable.esrb_ao
-    EsrbRating.RATING_PENDING -> R.drawable.esrb_rp
-    EsrbRating.UNKNOWN__ -> null
-}
-
-/** An ESRB rating's badge, named for screen readers ("ESRB: Teen (T)"); nothing for one this
- *  build does not know. */
 @Composable
-fun EsrbBadge(rating: EsrbRating, modifier: Modifier = Modifier) {
+fun EsrbBadge(rating: EsrbRating, url: String, modifier: Modifier = Modifier) {
     val info = esrbInfo(rating) ?: return
-    val badge = esrbBadge(rating) ?: return
-    Image(
-        painterResource(badge),
-        contentDescription = info.label,
-        modifier = modifier.height(EsrbBadgeDefaults.Height),
-        contentScale = ContentScale.Fit,
-    )
+    Box(
+        modifier
+            .height(EsrbBadgeDefaults.Height)
+            .aspectRatio(2f / 3f)
+            .semantics {
+                contentDescription = info.label
+                role = Role.Image
+            },
+    ) {
+        Art(url, Modifier.fillMaxSize(), scale = ContentScale.Fit)
+    }
 }
