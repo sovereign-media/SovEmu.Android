@@ -14,7 +14,7 @@ import media.sovereign.sovemu.core.esrbInfo
 import media.sovereign.sovemu.core.graphql.type.EsrbRating
 
 object EsrbBadgeDefaults {
-    /** As tall as the web client's (`h-14`); the badge is 3:4. */
+    /** As tall as the web client's (`h-14`); the badge is 2:3. */
     val Height: Dp = 56.dp
 }
 
