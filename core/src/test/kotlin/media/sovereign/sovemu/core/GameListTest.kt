@@ -1,5 +1,6 @@
 package media.sovereign.sovemu.core
 
+import media.sovereign.sovemu.core.graphql.type.EsrbRating
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -43,7 +44,7 @@ class GameListTest {
     @Test
     fun filtersCombine() {
         assertEquals(listOf(2, 1), ids(index.query("", GameFilters(played = PlayedFilter.PLAYED), GameSort.TITLE)))
-        assertEquals(listOf(5, 1), ids(index.query("", GameFilters(multiplayer = true), GameSort.TITLE)))
+        assertEquals(listOf(5, 1), ids(index.query("", GameFilters(minPlayers = 2), GameSort.TITLE)))
         assertEquals(listOf(4, 3, 1), ids(index.query("", GameFilters(genres = setOf("Platform")), GameSort.TITLE)))
         assertEquals(listOf(6), ids(index.query("", GameFilters(favourites = true), GameSort.TITLE)))
         assertEquals(2, GameFilters(played = PlayedFilter.UNPLAYED, genres = setOf("RPG")).count)
@@ -55,6 +56,42 @@ class GameListTest {
         assertEquals(listOf(2, 1), ids(index.query("", GameFilters(), GameSort.RECENT)).take(2))
         assertEquals(listOf(1, 4, 2), ids(index.query("", GameFilters(), GameSort.YEAR)).take(3))
         assertEquals(listOf(1, 2, 5), ids(index.query("", GameFilters(), GameSort.PLAYS)).take(3))
+    }
+
+    private val rated = GameIndex(
+        listOf(
+            game(1, "A", rating = 0.9, esrb = EsrbRating.TEEN, modes = listOf("Single player", "Co-op"), series = listOf("Saga")),
+            game(2, "B", rating = 0.5, esrb = EsrbRating.EVERYONE, modes = listOf("Single player")),
+            game(3, "C", rating = 0.8, esrb = EsrbRating.MATURE, themes = listOf("Horror"), series = listOf("Saga")),
+            game(4, "D", players = "1-4"),
+        ),
+    )
+
+    @Test
+    fun theNewFiltersPickByRatingAgeAndLists() {
+        assertEquals(listOf(1, 3), ids(rated.query("", GameFilters(minStars = 4.0), GameSort.TITLE)))
+        assertEquals(listOf(1, 2), ids(rated.query("", GameFilters(esrb = setOf(EsrbRating.TEEN, EsrbRating.EVERYONE)), GameSort.TITLE)))
+        assertEquals(listOf(1), ids(rated.query("", GameFilters(modes = setOf("Co-op")), GameSort.TITLE)))
+        assertEquals(listOf(1, 3), ids(rated.query("", GameFilters(series = setOf("Saga")), GameSort.TITLE)))
+        assertEquals(listOf(3), ids(rated.query("", GameFilters(themes = setOf("Horror"), series = setOf("Saga")), GameSort.TITLE)))
+        assertEquals(listOf(4), ids(rated.query("", GameFilters(minPlayers = 3), GameSort.TITLE)))
+        assertEquals(listOf(3), ids(rated.query("horror", GameFilters(), GameSort.TITLE)))
+        assertEquals(5, GameFilters(minStars = 4.0, esrb = setOf(EsrbRating.TEEN), series = setOf("Saga", "Other"), favourites = true).count)
+    }
+
+    @Test
+    fun ratingAndAgeSortsPutTheUnknownLast() {
+        assertEquals(listOf(1, 3, 2, 4), ids(rated.query("", GameFilters(), GameSort.RATING)))
+        assertEquals(listOf(2, 1, 3, 4), ids(rated.query("", GameFilters(), GameSort.AGE)))
+    }
+
+    @Test
+    fun valuesAndRatingsAreCounted() {
+        assertEquals(listOf(EsrbRating.EVERYONE to 1, EsrbRating.TEEN to 1, EsrbRating.MATURE to 1), rated.esrbCounts)
+        assertEquals(listOf("Single player" to 2, "Co-op" to 1), rated.valueCounts.getValue(ListFilter.MODES))
+        assertEquals(listOf("Saga" to 2), rated.valueCounts.getValue(ListFilter.SERIES))
+        assertTrue(rated.knowsRatings)
+        assertFalse(index.knowsRatings)
     }
 
     @Test

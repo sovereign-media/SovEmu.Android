@@ -104,6 +104,12 @@ object Lucide {
         )
     }
 
+    val ChevronDown: ImageVector by lazy {
+        icon(
+            "m6 9 6 6 6-6",
+        )
+    }
+
     val ChevronRight: ImageVector by lazy {
         icon(
             "m9 18 6-6-6-6",

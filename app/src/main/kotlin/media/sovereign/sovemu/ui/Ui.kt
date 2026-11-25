@@ -31,6 +31,7 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -279,7 +280,7 @@ fun ChipDivider() = Box(Modifier.padding(horizontal = 4.dp).width(1.dp).height(2
 
 /** A chip: quiet at rest, filled when its action is in effect ([on]). */
 @Composable
-fun Chip(label: String, icon: ImageVector, onClick: () -> Unit, on: Boolean = false, modifier: Modifier = Modifier) {
+fun Chip(label: String, icon: ImageVector, onClick: () -> Unit, on: Boolean = false, modifier: Modifier = Modifier, enabled: Boolean = true) {
     val source = remember { MutableInteractionSource() }
     val focused by source.collectIsFocusedAsState()
     val bg = when {
@@ -294,7 +295,8 @@ fun Chip(label: String, icon: ImageVector, onClick: () -> Unit, on: Boolean = fa
             .clip(CircleShape)
             .borderIf(focused, 2.dp, Color.White.copy(alpha = 0.6f), CircleShape)
             .background(bg)
-            .clickable(interactionSource = source, indication = null, onClick = onClick)
+            .clickable(interactionSource = source, indication = null, enabled = enabled, onClick = onClick)
+            .alpha(if (enabled) 1f else 0.4f)
             .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
