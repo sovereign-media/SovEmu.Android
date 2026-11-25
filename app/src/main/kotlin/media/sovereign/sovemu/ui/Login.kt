@@ -35,17 +35,39 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.content.ActivityNotFoundException
+import android.net.Uri
+import android.os.SystemClock
+import androidx.browser.customtabs.CustomTabsIntent
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import media.sovereign.sovemu.Settings
 import media.sovereign.sovemu.SovEmuApi
 import media.sovereign.sovemu.core.ApiException
+import media.sovereign.sovemu.core.DeviceCode
 import media.sovereign.sovemu.core.OAuthException
+import media.sovereign.sovemu.core.PairingResult
+import media.sovereign.sovemu.core.PairingText
+import media.sovereign.sovemu.core.QrCode
 import media.sovereign.sovemu.core.SignInConfig
+import media.sovereign.sovemu.core.awaitApproval
 
 /**
  * The server's address, then sign in. The address is checked first (its `bootstrapConfig`: is
- * there a SovEmu server, and can this app sign in there); only then does the form ask for a
- * username and password. First-run setup (the admin account) happens in a browser.
+ * there a SovEmu server, and can this app sign in there); then, as on Sovereign's TVs, the app
+ * signs in either with a code approved on a phone or computer (*Sign in with your phone*, the
+ * device grant), or with a username and password, the fallback. A server that has turned the
+ * password off offers only the code. First-run setup (the admin account) happens in a browser.
  */
 @Composable
 fun LoginScreen(settings: Settings, api: SovEmuApi, onSignedIn: () -> Unit) {
@@ -58,6 +80,18 @@ fun LoginScreen(settings: Settings, api: SovEmuApi, onSignedIn: () -> Unit) {
     var config by remember { mutableStateOf<SignInConfig?>(settings.signInConfig) }
     val ready = config?.problem == null && config != null
     val scope = rememberCoroutineScope()
+    val onTv = LocalForm.current.tv
+    // A phone signs in on the server's own page in the browser first, as Sovereign's phones do;
+    // a TV, where that page cannot be reached, with its password form and a code.
+    var passwordAsked by remember { mutableStateOf(false) }
+    val browserFirst = ready && !onTv && config!!.browser && !passwordAsked
+    // Signing in with a code: shown on asking, or when it is the only way in here.
+    var pairingAsked by remember { mutableStateOf(false) }
+    val pairing = ready && config!!.pairing &&
+        (pairingAsked || (!config!!.password && !(!onTv && config!!.browser)))
+    val context = LocalContext.current
+    var attempt by remember { mutableStateOf(0) }
+    var pairingState by remember { mutableStateOf<PairingUi>(PairingUi.Asking) }
 
     fun failed(e: Exception) {
         // The server's error_description (wrong password, wait N minutes …) as it is.
@@ -90,6 +124,37 @@ fun LoginScreen(settings: Settings, api: SovEmuApi, onSignedIn: () -> Unit) {
         if (settings.serverUrl.isNotEmpty()) check(settings.serverUrl, quiet = true)
     }
 
+    // The browser comes back with a code (or why not): exchanged, and signed in.
+    LaunchedEffect(api) {
+        api.browserRedirect.collect { uri ->
+            if (uri == null) return@collect
+            api.browserRedirect.value = null
+            busy = true
+            error = null
+            try {
+                api.finishBrowserSignIn(uri)
+                onSignedIn()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                failed(e)
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    /** Opens the server's own sign-in page in a Custom Tab, for the code flow with PKCE. */
+    fun signInWithBrowser() {
+        val request = api.startBrowserSignIn() ?: return
+        error = null
+        try {
+            CustomTabsIntent.Builder().setShowTitle(true).build().launchUrl(context, Uri.parse(request.authorizeUrl))
+        } catch (_: ActivityNotFoundException) {
+            error = "There is no browser on this device to sign in with."
+        }
+    }
+
     fun submit() {
         if (busy) return
         busy = true
@@ -111,6 +176,61 @@ fun LoginScreen(settings: Settings, api: SovEmuApi, onSignedIn: () -> Unit) {
                 busy = false
             }
         }
+    }
+
+    // Each new code (on opening the panel, or asking again) asks the server and waits for it
+    // to be approved. Leaving the panel cancels the wait, so nothing polls behind it.
+    LaunchedEffect(pairing, attempt) {
+        if (!pairing) return@LaunchedEffect
+        pairingState = PairingUi.Asking
+        val code = try {
+            api.requestDeviceCode()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            pairingState = PairingUi.Failed(
+                (e as? OAuthException)?.message ?: "Cannot reach the server: ${e.message}",
+            )
+            return@LaunchedEffect
+        }
+        val deadline = SystemClock.elapsedRealtime() + code.expiresInSeconds * 1_000
+        pairingState = PairingUi.Showing(code, deadline)
+        val result = awaitApproval(
+            code,
+            poll = { api.pollDeviceCode(code) },
+            now = SystemClock::elapsedRealtime,
+            sleep = { delay(it) },
+            reachable = { ok -> (pairingState as? PairingUi.Showing)?.let { pairingState = it.copy(trouble = !ok) } },
+        )
+        when (result) {
+            is PairingResult.Approved -> try {
+                api.signedInWith(result.tokens)
+                onSignedIn()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                pairingState = PairingUi.Failed(e.message ?: "Signing in failed.")
+            }
+            is PairingResult.Failed -> pairingState = PairingUi.Failed(result.failure.message)
+        }
+    }
+
+    if (pairing) {
+        PairingScreen(
+            pairingState,
+            onNewCode = { attempt++ },
+            onUsePassword = when {
+                config!!.password -> ({ pairingAsked = false; passwordAsked = true })
+                !onTv && config!!.browser -> ({ pairingAsked = false })
+                else -> null
+            },
+            back = if (config!!.password) PairingText.USE_PASSWORD else BROWSER,
+            onChangeServer = {
+                pairingAsked = false
+                config = null
+            },
+        )
+        return
     }
 
     // The field being typed in, if any. On a TV each field is picked on its own (A opens the
@@ -159,7 +279,7 @@ fun LoginScreen(settings: Settings, api: SovEmuApi, onSignedIn: () -> Unit) {
                     type = KeyboardType.Uri,
                 )
             }
-            if (ready) {
+            if (ready && !browserFirst) {
                 if (shown(LoginField.USERNAME)) {
                     Field(
                         "Username", username, { username = it; error = null },
@@ -196,15 +316,41 @@ fun LoginScreen(settings: Settings, api: SovEmuApi, onSignedIn: () -> Unit) {
                         busy -> "Signing in…"
                         else -> "Sign in"
                     },
-                    ::submit,
+                    {
+                        val address = server.trim().let { if ("://" in it) it else "http://$it" }
+                        if (browserFirst && address.trimEnd('/') == settings.serverUrl) signInWithBrowser() else submit()
+                    },
                     Modifier.fillMaxWidth(),
                     icon = Lucide.LogIn,
                     enabled = !busy,
                 )
+                // The other way in, which needs no typing on a TV: a code to approve elsewhere.
+                if (ready && config!!.pairing) {
+                    SovButton(
+                        if (onTv) PairingText.USE_CODE else CODE,
+                        { pairingAsked = true; error = null },
+                        Modifier.fillMaxWidth(),
+                        variant = Variant.Outline,
+                        icon = Lucide.Smartphone,
+                        enabled = !busy,
+                    )
+                }
+                if (browserFirst && config!!.password) {
+                    SovButton(
+                        PairingText.USE_PASSWORD, { passwordAsked = true; error = null }, Modifier.fillMaxWidth(),
+                        variant = Variant.Ghost, enabled = !busy,
+                    )
+                } else if (ready && !onTv && config!!.browser) {
+                    SovButton(BROWSER, { passwordAsked = false; error = null }, Modifier.fillMaxWidth(), variant = Variant.Ghost, enabled = !busy)
+                }
             }
         }
     }
 }
+
+/** A phone's way back to the browser sign-in, and its name for signing in with a code. */
+private const val BROWSER = "Sign in with your browser"
+private const val CODE = "Sign in with a code"
 
 /** The sign-in form's fields, one of which may be being typed in. */
 enum class LoginField { SERVER, USERNAME, PASSWORD }
@@ -236,5 +382,138 @@ private fun Field(
             keyboardType = type,
             secret = secret,
         )
+    }
+}
+
+/** Where signing in with a code stands, for [PairingScreen]. */
+sealed interface PairingUi {
+    /** Asking the server for a code. */
+    data object Asking : PairingUi
+
+    /**
+     * A code on screen, waiting for approval until [deadline] (`elapsedRealtime`). [trouble]: the
+     * last poll got no answer; the code is still good and the next poll is the retry.
+     */
+    data class Showing(val code: DeviceCode, val deadline: Long, val trouble: Boolean = false) : PairingUi
+
+    /** Stopped: why, for people. */
+    data class Failed(val message: String) : PairingUi
+}
+
+/**
+ * *Sign in with your phone*: the code to approve, where to approve it (also as a QR code), and
+ * how long it has left. Waiting is the normal state, not an error, and is never shown as one.
+ * [onUsePassword] is null when the server has no password sign-in.
+ */
+@Composable
+fun PairingScreen(
+    state: PairingUi,
+    onNewCode: () -> Unit,
+    onUsePassword: (() -> Unit)?,
+    onChangeServer: () -> Unit,
+    modifier: Modifier = Modifier,
+    back: String = PairingText.USE_PASSWORD,
+) {
+    val first = remember { FocusRequester() }
+    LaunchedEffect(state is PairingUi.Failed) { runCatching { first.requestFocus() } }
+    Box(
+        modifier.fillMaxSize()
+            .background(Brush.verticalGradient(listOf(Color(0xFF1E2A4A), Sov.Surface), endY = 1100f))
+            .safeDrawingPadding()
+            .verticalScroll(rememberScrollState()),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            Modifier.padding(24.dp).widthIn(max = 640.dp).fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(Sov.Panel.copy(alpha = 0.8f))
+                .border(1.dp, Sov.Edge, RoundedCornerShape(16.dp))
+                .padding(32.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            Text(PairingText.TITLE, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+            when (state) {
+                PairingUi.Asking -> Text(PairingText.ASKING, color = Sov.Muted, fontSize = 16.sp)
+                is PairingUi.Showing -> PairingCode(state)
+                is PairingUi.Failed -> Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(Color(0x26EF4444))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    LucideIcon(Lucide.CircleAlert, tint = Sov.Red300, size = 16.dp)
+                    Text(state.message, color = Sov.Red300, fontSize = 14.sp)
+                }
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (state is PairingUi.Failed) {
+                    SovButton(
+                        PairingText.NEW_CODE, onNewCode, Modifier.fillMaxWidth().focusRequester(first),
+                        icon = Lucide.RotateCcw,
+                    )
+                }
+                if (onUsePassword != null) {
+                    SovButton(
+                        back, onUsePassword,
+                        if (state is PairingUi.Failed) Modifier.fillMaxWidth() else Modifier.fillMaxWidth().focusRequester(first),
+                        variant = Variant.Outline, icon = Lucide.LogIn,
+                    )
+                }
+                SovButton(
+                    "Change server", onChangeServer,
+                    if (state is PairingUi.Failed || onUsePassword != null) Modifier.fillMaxWidth()
+                    else Modifier.fillMaxWidth().focusRequester(first),
+                    variant = Variant.Ghost, icon = Lucide.Server,
+                )
+            }
+        }
+    }
+}
+
+/** The code, where to enter it, its QR code, and the line under it. */
+@Composable
+private fun PairingCode(state: PairingUi.Showing) {
+    var secondsLeft by remember(state.deadline) {
+        mutableStateOf((state.deadline - SystemClock.elapsedRealtime()) / 1_000)
+    }
+    LaunchedEffect(state.deadline) {
+        while (secondsLeft > 0) {
+            delay(1_000)
+            secondsLeft = (state.deadline - SystemClock.elapsedRealtime()) / 1_000
+        }
+    }
+    val qr = remember(state.code.qrContent) { QrCode.encode(state.code.qrContent) }
+    Row(horizontalArrangement = Arrangement.spacedBy(28.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(PairingText.GO_TO, color = Sov.Slate300, fontSize = 16.sp)
+            Text(state.code.shownUri, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+            Text(PairingText.ENTER, color = Sov.Slate300, fontSize = 16.sp, modifier = Modifier.padding(top = 8.dp))
+            Text(
+                state.code.grouped,
+                color = Color.White,
+                fontSize = 40.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Start,
+            )
+            Text(
+                (if (state.trouble) PairingText.TROUBLE else PairingText.WAITING) + " · " +
+                    PairingText.expiresIn(secondsLeft),
+                color = if (state.trouble) Sov.Amber200 else Sov.Muted,
+                fontSize = 14.sp,
+            )
+        }
+        QrImage(qr, Modifier.size(168.dp).semantics { contentDescription = "QR code for ${state.code.qrContent}" })
+    }
+}
+
+/** A QR code, one square per module, dark on a light margin so a phone's camera reads it. */
+@Composable
+private fun QrImage(qr: QrCode, modifier: Modifier = Modifier) {
+    Canvas(modifier.clip(RoundedCornerShape(8.dp)).background(Color.White).padding(10.dp)) {
+        val cell = size.minDimension / qr.size
+        for (y in 0 until qr.size) for (x in 0 until qr.size) {
+            if (qr.isDark(x, y)) drawRect(Color.Black, Offset(x * cell, y * cell), Size(cell + 0.5f, cell + 0.5f))
+        }
     }
 }

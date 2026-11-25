@@ -37,6 +37,8 @@ dependencies {
     // The OAuth token client (`Auth.kt`): plain HTTP form posts, outside Apollo.
     api(libs.okhttp)
     api(libs.kotlinx.coroutines.core)
+    // The pairing screen's QR code (`Qr.kt`).
+    implementation(libs.zxing.core)
     testImplementation(libs.junit)
     testImplementation(libs.okhttp.mockwebserver)
 }

@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import media.sovereign.sovemu.core.SystemSummary
+import media.sovereign.sovemu.core.TvSignIn
 import media.sovereign.sovemu.core.User
 import media.sovereign.sovemu.core.badge
 import media.sovereign.sovemu.core.groupByMaker
@@ -78,6 +79,8 @@ class Nav(
     val gameMode: () -> Boolean,
     val toggleGameMode: () -> Unit,
     val signOut: () -> Unit,
+    /** *Sign in a TV*: approve a TV's code with this sign-in (phones and tablets). */
+    val signInTv: () -> Unit = {},
 )
 
 /** A fixed [height] and the width [width] has now, read at layout time (not in composition). */
@@ -289,6 +292,14 @@ private fun AccountMenu(username: String?, nav: Nav, anchor: @Composable (show: 
                 leading = { LucideIcon(Lucide.Gamepad2, tint = Sov.Slate300, size = 16.dp) },
                 detail = GAME_MODE_DETAIL,
             )
+            // A TV signs itself in with a code; this approves one from a phone or tablet.
+            if (!LocalForm.current.tv) {
+                MenuRow(
+                    TvSignIn.TITLE,
+                    onClick = { expanded = false; nav.signInTv() },
+                    leading = { LucideIcon(Lucide.Tv, tint = Sov.Slate300, size = 16.dp) },
+                )
+            }
             MenuRow("Sign out", onClick = { expanded = false; nav.signOut() }, leading = { LucideIcon(Lucide.LogOut, tint = Sov.Slate300, size = 16.dp) })
         }
     }

@@ -25,7 +25,10 @@ import org.junit.Test
 
 /** The OAuth token client and the sign-in over it, against a server answering as SovEmu.Server's `/oauth/…`. */
 class AuthTest {
-    private class MemoryStore(override var refreshToken: String? = null) : TokenStore
+    private class MemoryStore(
+        override var refreshToken: String? = null,
+        override var tokenClientId: String? = null,
+    ) : TokenStore
 
     private val server = MockWebServer()
     private val http = OkHttpClient()
@@ -63,12 +66,17 @@ class AuthTest {
         .setHeader("Content-Type", "application/json")
         .body(
             if (!available) {
-                """{"data":{"bootstrapConfig":{"signInAvailable":false,"address":"10.0.0.5:8080","nativeClientId":null,""" +
-                    """"tokenEndpoint":null,"revocationEndpoint":null,"passwordEndpoint":null}}}"""
+                """{"data":{"bootstrapConfig":{"signInAvailable":false,"address":"10.0.0.5:8080","deviceClientId":null,""" +
+                    """"tokenEndpoint":null,"revocationEndpoint":null,"deviceAuthorizationEndpoint":null,""" +
+                    """"verificationUri":null,"passwordEndpoint":null,"authorizationEndpoint":null,""" +
+                    """"mobileClientId":null,"mobileRedirectUri":null}}}"""
             } else {
                 // Elsewhere than SovEmu's own paths, and another client id: the app must use these.
-                """{"data":{"bootstrapConfig":{"signInAvailable":true,"address":"10.0.0.5:8080","nativeClientId":"tv-app",""" +
+                """{"data":{"bootstrapConfig":{"signInAvailable":true,"address":"10.0.0.5:8080","deviceClientId":"tv-app",""" +
                     """"tokenEndpoint":"${server.url("/auth/token")}","revocationEndpoint":"/auth/revoke",""" +
+                    """"deviceAuthorizationEndpoint":"/auth/device","verificationUri":"http://10.0.0.5:8080/device",""" +
+                    """"authorizationEndpoint":"/auth/authorize","mobileClientId":"phone-app",""" +
+                    """"mobileRedirectUri":"media.sovereign.sovemu:/oauth2redirect",""" +
                     """"passwordEndpoint":${password?.let { "\"$it\"" } ?: "null"}}}}"""
             },
         )
@@ -342,13 +350,125 @@ class AuthTest {
     }
 
     @Test
-    fun passwordSignInOffNeedsTheDeviceCode() = runBlocking {
+    fun passwordSignInOffLeavesTheCode() = runBlocking {
         server.enqueue(bootstrapAnswer(password = null))
         config = fetchBootstrap()
-        val why = "This server signs in with a code shown on the screen, which this version of the app can't do yet."
-        assertEquals(why, config!!.problem)
+        assertNull("a code still signs in", config!!.problem)
+        assertTrue(config!!.pairing)
+        assertFalse(config!!.password)
+        val why = "This server signs in only with a code shown on the screen."
         assertEquals(why, assertThrows(OAuthException::class.java) { runBlocking { auth.signIn("ada", "pw") } }.message)
         assertEquals(1, server.requestCount)
+    }
+
+    private fun json(code: Int, body: String) =
+        MockResponse.Builder().code(code).setHeader("Content-Type", "application/json").body(body).build()
+
+    private fun pairingConfig() {
+        config = config!!.copy(
+            deviceAuthorizationEndpoint = server.url("/oauth/device_authorization").toString(),
+            verificationUri = server.url("/device").toString(),
+        )
+    }
+
+    private val client get() = TokenClient(http, ::address, { config })
+
+    @Test
+    fun aCodeIsAskedForAsTheDeviceClient() = runBlocking {
+        pairingConfig()
+        server.enqueue(
+            json(
+                200,
+                """{"device_code":"secret-device-code","user_code":"BCDF-GHJK","verification_uri":"http://tv.local/device",""" +
+                    """"verification_uri_complete":"http://tv.local/device?user_code=BCDF-GHJK","expires_in":600,"interval":5}""",
+            ),
+        )
+        val code = client.requestDeviceCode()
+        val asked = server.takeRequest()
+        assertEquals("/oauth/device_authorization", asked.url.encodedPath)
+        assertEquals(mapOf("client_id" to "sovemu-native", "scope" to TokenClient.SCOPE), asked.form())
+        assertEquals("BCDF-GHJK", code.grouped)
+        assertEquals("tv.local/device", code.shownUri)
+        assertEquals("http://tv.local/device?user_code=BCDF-GHJK", code.qrContent)
+        assertEquals(600L, code.expiresInSeconds)
+        assertEquals(5L, code.intervalSeconds)
+        assertFalse("the credential never goes in a log line", code.toString().contains("secret"))
+    }
+
+    @Test
+    fun aPollSaysWhatTheServerSaid() = runBlocking {
+        pairingConfig()
+        val code = DeviceCode("dc", "BCDFGHJK", "http://x/device", null, 600, 5)
+        server.enqueue(json(400, """{"error":"authorization_pending"}"""))
+        server.enqueue(json(400, """{"error":"slow_down"}"""))
+        server.enqueue(json(429, """{"error":"too_many_requests"}"""))
+        server.enqueue(json(503, "<html>"))
+        server.enqueue(json(400, """{"error":"access_denied"}"""))
+        server.enqueue(json(400, """{"error":"expired_token"}"""))
+        server.enqueue(json(400, """{"error":"invalid_grant"}"""))
+        server.enqueue(json(200, """{"access_token":"a1","token_type":"Bearer","expires_in":3600,"refresh_token":"r1"}"""))
+        val answers = List(8) { client.pollDeviceCode(code) }
+        assertEquals(
+            listOf(
+                DevicePoll.Pending,
+                DevicePoll.SlowDown,
+                DevicePoll.SlowDown,
+                DevicePoll.NoAnswer,
+                DevicePoll.Refused(PairingFailure.Denied),
+                DevicePoll.Refused(PairingFailure.Expired),
+                DevicePoll.Refused(PairingFailure.Failed),
+                DevicePoll.Approved(Tokens("a1", 3600, "r1")),
+            ),
+            answers,
+        )
+        val poll = server.takeRequest().form()
+        assertEquals(TokenClient.DEVICE_CODE_GRANT, poll["grant_type"])
+        assertEquals("sovemu-native", poll["client_id"])
+        assertEquals("dc", poll["device_code"])
+    }
+
+    @Test
+    fun aBrowserSignInRefreshesAndSignsOutAsTheMobileClient() = runBlocking {
+        config = config!!.copy(
+            authorizationEndpoint = "/oauth/authorize",
+            mobileClientId = "phone-app",
+            mobileRedirectUri = "media.sovereign.sovemu:/oauth2redirect",
+        )
+        val request = BrowserSignInRequest.create(address(), config!!)!!
+        server.enqueue(tokens("a1", "r1"))
+        val got = TokenClient(http, ::address, { config }).exchangeCode("the-code", request)
+        val exchange = server.takeRequest().form()
+        assertEquals(
+            mapOf(
+                "grant_type" to "authorization_code",
+                "client_id" to "phone-app",
+                "code" to "the-code",
+                "redirect_uri" to "media.sovereign.sovemu:/oauth2redirect",
+                "code_verifier" to request.pkce.verifier,
+            ),
+            exchange,
+        )
+        auth.signedInWith(got, clientId = "phone-app")
+        assertEquals("phone-app", store.tokenClientId)
+
+        // A refresh token is good only with its own client: the browser's is the mobile client's.
+        server.enqueue(tokens("a2", "r2"))
+        clock += 3_600_000
+        assertEquals("a2", auth.accessToken())
+        assertEquals("phone-app", server.takeRequest().form()["client_id"])
+        server.enqueue(MockResponse.Builder().code(200).build())
+        auth.signOut()
+        assertEquals("phone-app", server.takeRequest().form()["client_id"])
+        assertNull(store.tokenClientId)
+    }
+
+    @Test
+    fun anApprovedCodeSignsIn() = runBlocking<Unit> {
+        auth.signedInWith(Tokens("a1", 3600, "r1"))
+        assertTrue(auth.signedIn.value)
+        assertEquals("r1", store.refreshToken)
+        assertEquals("a1", auth.accessToken())
+        assertThrows(OAuthException::class.java) { runBlocking { auth.signedInWith(Tokens("a2", 3600, null)) } }
     }
 
     @Test

@@ -127,11 +127,25 @@ query Bootstrap {
   bootstrapConfig {
     signInAvailable
     address
-    nativeClientId
+    # The client a TV, or an app signing in with a code or a password, signs in as.
+    deviceClientId
     tokenEndpoint
     revocationEndpoint
+    # Where to ask for a code to show, and where the person approves it.
+    deviceAuthorizationEndpoint
+    verificationUri
     passwordEndpoint
+    # A phone's sign-in through the system browser: the code flow with PKCE, as the mobile
+    # client, back to the app's own scheme.
+    authorizationEndpoint
+    mobileClientId
+    mobileRedirectUri
   }
+}
+
+# Signs a TV in as this user: the code its "Sign in with your phone" screen shows.
+mutation ApproveDeviceCode($code: String!) {
+  approveDeviceCode(userCode: $code)
 }
 
 query Viewer {
