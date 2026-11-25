@@ -11,6 +11,7 @@ import media.sovereign.sovemu.core.graphql.HomeQuery
 import media.sovereign.sovemu.core.graphql.StopSessionMutation
 import media.sovereign.sovemu.core.graphql.SystemGamesQuery
 import media.sovereign.sovemu.core.graphql.fragment.MappingFields
+import media.sovereign.sovemu.core.graphql.type.EsrbRating
 import media.sovereign.sovemu.core.graphql.type.MappingSource as SchemaMappingSource
 import media.sovereign.sovemu.core.graphql.type.PadButton
 import okio.Buffer
@@ -29,13 +30,13 @@ class ApiTest {
         val text = """{"data":{"home":{
             "featured":[{"__typename":"Game","id":7,"system":"snes","title":"Chrono Trigger","fileTitle":null,"tags":["USA"],
               "path":"snes/ct.sfc","size":4194304.0,"lastPlayedAt":null,"playCount":0,"image":null,"thumb":"/media/games/7/thumb",
-              "video":null,"description":null,"releaseDate":"1995-03-11","developer":"Square","publisher":null,"genre":"RPG",
-              "players":"1","rating":null,"discs":1,"partKind":null,"favourite":true,"release":"Translation","patch":"IPS patch","autoSave":null}],
+              "video":null,"description":null,"releaseDate":"1995-03-11","developer":"Square","publisher":null,"genre":"RPG","genres":["RPG"],
+              "players":"1","rating":0.9,"esrb":"EVERYONE","modes":["Single player"],"series":["Chrono"],"themes":["Fantasy"],"discs":1,"partKind":null,"favourite":true,"release":"Translation","patch":"IPS patch","autoSave":null}],
             "recent":[{"__typename":"Game","id":8,"system":"nes","title":"Metroid","fileTitle":null,"tags":[],"path":"nes/m.nes",
               "size":131088.0,"lastPlayedAt":"2026-11-19 16:05:56","playCount":2,"image":null,"thumb":null,"video":null,
-              "description":null,"releaseDate":null,"developer":null,"publisher":null,"genre":null,"players":null,"rating":null,"discs":2,"partKind":"DISC","favourite":false,"release":null,"patch":null,
+              "description":null,"releaseDate":null,"developer":null,"publisher":null,"genre":null,"genres":[],"players":null,"rating":null,"esrb":null,"modes":[],"series":[],"themes":[],"discs":2,"partKind":"DISC","favourite":false,"release":null,"patch":null,
               "autoSave":{"slot":0,"savedAt":1.7e9,"screenshotUrl":"/media/games/8/saves/0?t=1"}}],
-            "added":[],"favourites":[]},
+            "added":[],"favourites":[],"topRated":[]},
           "collections":[{"__typename":"Collection","id":3,"name":"Co-op","games":[]}]}}"""
         val data = HomeQuery().parseResponse(json(text)).orThrow()
         val home = data.home
@@ -44,6 +45,12 @@ class ApiTest {
         assertEquals("1995 · Square · RPG", featured.byline)
         assertEquals("/media/games/8/saves/0?t=1", home.recent[0].gameFields.autoSave?.screenshotUrl)
         assertTrue(home.added.isEmpty())
+        assertTrue(home.topRated.isEmpty())
+        assertEquals(EsrbRating.EVERYONE, featured.esrb)
+        assertEquals(listOf("Single player"), featured.modes)
+        assertEquals(listOf("Chrono"), featured.series)
+        assertEquals(listOf("Fantasy"), featured.themes)
+        assertEquals(listOf("RPG"), featured.genres)
         assertTrue(featured.favourite)
         assertEquals("Translation", featured.release)
         assertEquals("Co-op", data.collections.single().name)

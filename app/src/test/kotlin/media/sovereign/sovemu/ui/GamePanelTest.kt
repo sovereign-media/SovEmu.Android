@@ -19,6 +19,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -27,6 +28,7 @@ import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.unit.dp
 import media.sovereign.sovemu.core.Game
 import media.sovereign.sovemu.core.GamePatch
+import media.sovereign.sovemu.core.graphql.type.EsrbRating
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -170,5 +172,24 @@ class GamePanelTest {
         rule.waitForIdle()
         rule.onNodeWithText("Patch: IPS patch").performClick()
         assertEquals("Hard Mode", chosen?.name)
+    }
+
+    @Test
+    fun theRatingsShowWhenTheGameHasThem() {
+        show()
+        rule.waitForIdle()
+        open = game(rating = 0.72, esrb = EsrbRating.TEEN, modes = listOf("Single player", "Co-op"), series = listOf("Chozo", "Zebes"))
+        rule.onNodeWithText("3.5 out of 5").assertExists()
+        rule.onNodeWithText("Single player, Co-op").assertExists()
+        rule.onNodeWithText("Chozo, Zebes").assertExists()
+        rule.onNodeWithContentDescription("ESRB: Teen (T)").assertExists()
+    }
+
+    @Test
+    fun aGameWithoutRatingsShowsNone() {
+        show()
+        rule.waitForIdle()
+        rule.onNodeWithText("out of 5", substring = true).assertDoesNotExist()
+        rule.onNodeWithContentDescription("ESRB", substring = true).assertDoesNotExist()
     }
 }

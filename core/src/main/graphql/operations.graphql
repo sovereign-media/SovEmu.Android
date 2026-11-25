@@ -35,8 +35,13 @@ fragment GameFields on Game {
   developer
   publisher
   genre
+  genres
   players
   rating
+  esrb
+  modes
+  series
+  themes
   discs
   partKind
   favourite
@@ -160,6 +165,9 @@ query Home {
       ...GameFields
     }
     favourites {
+      ...GameFields
+    }
+    topRated {
       ...GameFields
     }
   }
