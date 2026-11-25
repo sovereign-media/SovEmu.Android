@@ -5,6 +5,7 @@ import java.text.Normalizer
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.util.Locale
+import media.sovereign.sovemu.core.graphql.type.EsrbRating
 
 // A system's game list: searching, filtering, sorting and the A–Z jump, after SovEmu.Web's
 // src/lib/games.ts, so the screen only draws what these return.
@@ -14,23 +15,75 @@ enum class GameSort(val label: String) {
     RECENT("Recently played"),
     YEAR("Release year"),
     PLAYS("Most played"),
+    RATING("Highest rated"),
+    AGE("Age rating"),
 }
 
 enum class PlayedFilter { PLAYED, UNPLAYED }
 
 data class GameFilters(
     val played: PlayedFilter? = null,
-    /** Only games for at least two players. */
-    val multiplayer: Boolean = false,
-    /** Only games in any of these genres. */
-    val genres: Set<String> = emptySet(),
     /** Only this user's favourites. */
     val favourites: Boolean = false,
+    /** Only games for at least this many players. */
+    val minPlayers: Int? = null,
+    /** Only games rated at least this many stars out of 5. */
+    val minStars: Double? = null,
+    /** Only games with any of these ESRB ratings. */
+    val esrb: Set<EsrbRating> = emptySet(),
+    /** Only games in any of these genres. */
+    val genres: Set<String> = emptySet(),
+    /** Only games with any of these play modes ("Co-op" …). */
+    val modes: Set<String> = emptySet(),
+    /** Only games in any of these series ("Castlevania" …). */
+    val series: Set<String> = emptySet(),
+    /** Only games with any of these themes ("Horror" …). */
+    val themes: Set<String> = emptySet(),
 ) {
-    /** How many filters are on, for the Filters chip. */
+    /** How many filters are on, for the Filters chip: one per choice, one per value picked. */
     val count: Int get() =
-        (if (played != null) 1 else 0) + (if (multiplayer) 1 else 0) + (if (favourites) 1 else 0) + genres.size
+        (if (played != null) 1 else 0) + (if (favourites) 1 else 0) + (if (minPlayers != null) 1 else 0) +
+            (if (minStars != null) 1 else 0) + esrb.size + ListFilter.entries.sumOf { it.selected(this).size }
 }
+
+/** The filters that pick any number of a game's values, each with its own list of them, as the web's `LIST_FILTERS`. */
+enum class ListFilter(val label: String) {
+    GENRES("Genre"),
+    MODES("Play modes"),
+    SERIES("Series"),
+    THEMES("Themes"),
+    ;
+
+    /** The values picked for this filter. */
+    fun selected(f: GameFilters): Set<String> = when (this) {
+        GENRES -> f.genres
+        MODES -> f.modes
+        SERIES -> f.series
+        THEMES -> f.themes
+    }
+
+    /** [f] with this filter's values set to [values]. */
+    fun with(f: GameFilters, values: Set<String>): GameFilters = when (this) {
+        GENRES -> f.copy(genres = values)
+        MODES -> f.copy(modes = values)
+        SERIES -> f.copy(series = values)
+        THEMES -> f.copy(themes = values)
+    }
+
+    /** A game's values for this filter. */
+    fun values(g: Game): List<String> = when (this) {
+        GENRES -> genresOf(g.genre)
+        MODES -> g.modes
+        SERIES -> g.series
+        THEMES -> g.themes
+    }
+}
+
+/** The ESRB ratings from the youngest audience to the oldest, as the age sort and its filter list them. */
+val ESRB_ORDER: List<EsrbRating> = listOf(
+    EsrbRating.EARLY_CHILDHOOD, EsrbRating.EVERYONE, EsrbRating.EVERYONE_10_PLUS, EsrbRating.TEEN,
+    EsrbRating.MATURE, EsrbRating.ADULTS_ONLY, EsrbRating.RATING_PENDING,
+)
 
 /** A game's genres: the metadata lists them comma-separated ("Platform, Action"). */
 fun genresOf(genre: String?): List<String> = genre.orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }
@@ -57,31 +110,53 @@ fun letterOf(title: String): String {
 
 /**
  * One system's games, indexed once: each game's folded search text, genres, players, year and
- * letter are worked out here rather than on every keystroke or sort.
+ * age rating are worked out here rather than on every keystroke or sort.
  */
 class GameIndex(val games: List<Game>) {
-    private class Entry(val game: Game, val text: String, val genres: List<String>, val players: Int?, val year: Int, val played: Long, val letter: Int)
+    private class Entry(
+        val game: Game,
+        val text: String,
+        val values: Map<ListFilter, List<String>>,
+        val players: Int?,
+        val year: Int,
+        val played: Long,
+        val age: Int,
+    )
 
     // In title order, worked out once (collation is the slow part): every other sort is stable,
     // so its ties stay in title order too.
     private val entries = games.map { g ->
         Entry(
             game = g,
-            text = fold(listOfNotNull(g.title, g.fileTitle, g.genre, g.developer, g.publisher).plus(g.tags).joinToString(" ")),
-            genres = genresOf(g.genre),
+            text = fold(
+                (listOfNotNull(g.title, g.fileTitle, g.genre, g.developer, g.publisher) + g.tags + g.series + g.themes).joinToString(" "),
+            ),
+            values = ListFilter.entries.associateWith { it.values(g) },
             players = maxPlayers(g.players),
             year = g.year?.toIntOrNull() ?: 0,
             played = playedAt(g.lastPlayedAt),
-            letter = LETTERS.indexOf(letterOf(g.title)),
+            age = g.esrb?.let(ESRB_ORDER::indexOf)?.takeIf { it >= 0 } ?: ESRB_ORDER.size,
         )
     }.sortedWith { a, b -> titleOrder.compare(a.game.title, b.game.title) }
 
-    /** Every genre with its count, most common first: empty until game information is fetched. */
-    val genreCounts: List<Pair<String, Int>> = entries.flatMap { it.genres }.groupingBy { it }.eachCount().toList()
-        .sortedWith(compareByDescending<Pair<String, Int>> { it.second }.thenBy { it.first })
+    /** Each [ListFilter]'s values with their counts, most common first: empty until game information is fetched. */
+    val valueCounts: Map<ListFilter, List<Pair<String, Int>>> = ListFilter.entries.associateWith { f ->
+        entries.flatMap { it.values.getValue(f) }.groupingBy { it }.eachCount().toList()
+            .sortedWith(compareByDescending<Pair<String, Int>> { it.second }.thenBy { it.first })
+    }
+
+    /** Every genre with its count, most common first. */
+    val genreCounts: List<Pair<String, Int>> get() = valueCounts.getValue(ListFilter.GENRES)
+
+    /** The ESRB ratings the games have, youngest audience first, with how many have each. */
+    val esrbCounts: List<Pair<EsrbRating, Int>> = games.mapNotNull { it.esrb }.groupingBy { it }.eachCount().toList()
+        .sortedBy { (r, _) -> ESRB_ORDER.indexOf(r).takeIf { it >= 0 } ?: ESRB_ORDER.size }
 
     /** Whether any game says how many players it takes, so the players filter can do something. */
     val knowsPlayers: Boolean = entries.any { it.players != null }
+
+    /** Whether any game has a rating, so the minimum-rating filter can do something. */
+    val knowsRatings: Boolean = games.any { it.rating != null }
 
     /** The games matching every word of [query] and every filter, sorted by [sort] (ties by title). */
     fun query(query: String, filters: GameFilters, sort: GameSort): List<Game> {
@@ -90,9 +165,14 @@ class GameIndex(val games: List<Game>) {
             when {
                 filters.played == PlayedFilter.PLAYED && e.game.playCount == 0 -> false
                 filters.played == PlayedFilter.UNPLAYED && e.game.playCount > 0 -> false
-                filters.multiplayer && (e.players ?: 1) < 2 -> false
                 filters.favourites && !e.game.favourite -> false
-                filters.genres.isNotEmpty() && filters.genres.none { it in e.genres } -> false
+                filters.minPlayers != null && (e.players ?: 1) < filters.minPlayers -> false
+                filters.minStars != null && (e.game.rating ?: -1.0) * 5 < filters.minStars - 0.001 -> false
+                filters.esrb.isNotEmpty() && e.game.esrb !in filters.esrb -> false
+                ListFilter.entries.any { f ->
+                    val picked = f.selected(filters)
+                    picked.isNotEmpty() && e.values.getValue(f).none { it in picked }
+                } -> false
                 else -> words.all { it in e.text }
             }
         }
@@ -101,6 +181,8 @@ class GameIndex(val games: List<Game>) {
             GameSort.RECENT -> kept.sortedByDescending { it.played }
             GameSort.YEAR -> kept.sortedBy { if (it.year == 0) 9999 else it.year }
             GameSort.PLAYS -> kept.sortedByDescending { it.game.playCount }
+            GameSort.RATING -> kept.sortedByDescending { it.game.rating ?: -1.0 }
+            GameSort.AGE -> kept.sortedBy { it.age }
         }
         return sorted.map { it.game }
     }

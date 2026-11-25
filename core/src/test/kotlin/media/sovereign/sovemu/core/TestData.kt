@@ -1,5 +1,6 @@
 package media.sovereign.sovemu.core
 
+import media.sovereign.sovemu.core.graphql.type.EsrbRating
 import media.sovereign.sovemu.core.graphql.type.Rendering
 
 /** A game with only what a test cares about set (the generated model has no defaults). */
@@ -16,11 +17,16 @@ fun game(
     fileTitle: String? = null,
     tags: List<String> = emptyList(),
     favourite: Boolean = false,
+    rating: Double? = null,
+    esrb: EsrbRating? = null,
+    modes: List<String> = emptyList(),
+    series: List<String> = emptyList(),
+    themes: List<String> = emptyList(),
 ): Game = Game(
     id = id, system = system, title = title, fileTitle = fileTitle, tags = tags, path = "$system/$title", size = 0.0,
     lastPlayedAt = lastPlayedAt, playCount = playCount, image = null, imageSmall = null, cover = null, thumb = null, video = null, description = null,
-    releaseDate = releaseDate, developer = developer, publisher = null, genre = genre, genres = emptyList(), players = players, rating = null, esrb = null, esrbBadgeUrl = null,
-    modes = emptyList(), series = emptyList(), themes = emptyList(),
+    releaseDate = releaseDate, developer = developer, publisher = null, genre = genre, genres = emptyList(), players = players, rating = rating, esrb = esrb, esrbBadgeUrl = null,
+    modes = modes, series = series, themes = themes,
     discs = 1, partKind = null, favourite = favourite, release = null, patch = null, autoSave = null,
 )
 

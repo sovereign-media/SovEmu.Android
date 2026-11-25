@@ -91,6 +91,9 @@ import media.sovereign.sovemu.core.graphql.type.PartKind
 import media.sovereign.sovemu.core.GamePatch
 import media.sovereign.sovemu.core.nextPatch
 import media.sovereign.sovemu.core.GameSort
+import media.sovereign.sovemu.core.ListFilter
+import media.sovereign.sovemu.core.esrbInfo
+import media.sovereign.sovemu.core.graphql.type.EsrbRating
 import media.sovereign.sovemu.core.PlayedFilter
 import media.sovereign.sovemu.core.SaveSlot
 import media.sovereign.sovemu.core.SystemSummary
@@ -104,10 +107,29 @@ import media.sovereign.sovemu.core.maxPlayers
 /** How long the jump strip rests on a letter before the grid follows it. */
 private const val FOLLOW_DELAY_MS = 300L
 
+// Saved as "key=value" lines, one per pick, so a value with any characters survives.
 private val FiltersSaver: Saver<GameFilters, Any> = listSaver(
-    save = { listOf(it.played?.name ?: "", it.multiplayer.toString(), it.favourites.toString()) + it.genres },
-    restore = { l ->
-        GameFilters(l[0].ifEmpty { null }?.let(PlayedFilter::valueOf), l[1].toBoolean(), l.drop(3).toSet(), favourites = l[2].toBoolean())
+    save = { f ->
+        listOfNotNull(
+            f.played?.let { "played=${it.name}" },
+            "favourites=${f.favourites}",
+            f.minPlayers?.let { "players=$it" },
+            f.minStars?.let { "stars=$it" },
+        ) + f.esrb.map { "esrb=${it.rawValue}" } + ListFilter.entries.flatMap { l -> l.selected(f).map { "${l.name}=$it" } }
+    },
+    restore = { lines ->
+        val pairs = lines.map { it.substringBefore('=') to it.substringAfter('=') }
+        fun all(key: String) = pairs.filter { it.first == key }.mapTo(LinkedHashSet()) { it.second }
+        fun one(key: String) = pairs.firstOrNull { it.first == key }?.second
+        ListFilter.entries.fold(
+            GameFilters(
+                played = one("played")?.let(PlayedFilter::valueOf),
+                favourites = one("favourites").toBoolean(),
+                minPlayers = one("players")?.toIntOrNull(),
+                minStars = one("stars")?.toDoubleOrNull(),
+                esrb = all("esrb").mapTo(LinkedHashSet(), EsrbRating::safeValueOf),
+            ),
+        ) { f, l -> l.with(f, all(l.name)) }
     },
 )
 
@@ -265,10 +287,11 @@ private fun Games(
                 Header(
                     system, shown.size, index.games.size, sort, onSort, filters.count + if (query.isNotBlank()) 1 else 0,
                     { filtersOpen = true },
-                    if (sort == GameSort.TITLE && shown.size > 12 && stops.size > 1) {
+                    if (shown.size > 12 && stops.size > 1) {
                         { jump = stops.indexOf(shown.getOrNull(grid.firstVisibleItemIndex)?.title?.let(::letterOf)).coerceAtLeast(0) }
                     } else null,
                     Modifier.statusBarsPadding().padding(top = 40.dp, bottom = 8.dp),
+                    canJump = sort == GameSort.TITLE,
                 )
             }
             if (shown.isEmpty()) {
@@ -348,6 +371,7 @@ private fun Header(
     onFilters: () -> Unit,
     onJump: (() -> Unit)?,
     modifier: Modifier,
+    canJump: Boolean = true,
 ) {
     val form = LocalForm.current
     val title = @Composable {
@@ -375,7 +399,9 @@ private fun Header(
                 SortChip(sort, onSort)
                 ChipDivider()
                 Chip(if (filterCount > 0) "Filters ($filterCount)" else "Filters", Lucide.SlidersHorizontal, onFilters, on = filterCount > 0)
-                if (onJump != null) Chip("Jump", Lucide.BookA, onJump)
+                // Kept in place outside title order, dimmed, so the strip does not redraw without it:
+                // letters only mean something in title order.
+                if (onJump != null) Chip("Jump", Lucide.BookA, onJump, enabled = canJump)
             }
         }
     }
@@ -637,8 +663,11 @@ private fun SaveThumb(s: SaveSlot, onClick: () -> Unit) {
     }
 }
 
-/** Search and filters, in a drawer from the right: search, favourites, played or not, players and genres. */
-@OptIn(ExperimentalLayoutApi::class)
+/**
+ * Search and filters, in a drawer from the right, as the web client's: search, then dropdowns
+ * with one choice (played, favourites, players, rating) and with any number of values (age
+ * rating, genres, play modes, series, themes), each listing only what these games have.
+ */
 @Composable
 private fun FilterDrawer(
     index: GameIndex,
@@ -649,7 +678,7 @@ private fun FilterDrawer(
     onClose: () -> Unit,
 ) {
     val tv = LocalForm.current.tv
-    val genres = remember(index) { index.genreCounts.take(24) }
+    val lists = remember(index) { ListFilter.entries.associateWith { index.valueCounts.getValue(it).take(MAX_VALUES) } }
     val n = filters.count + if (query.isNotBlank()) 1 else 0
     val first = remember { FocusRequester() }
     var typing by remember { mutableStateOf(false) }
@@ -697,38 +726,52 @@ private fun FilterDrawer(
                         action = ImeAction.Search,
                         onAction = { typing = false },
                     )
-                    FilterSection("Lists") {
-                        Toggle(filters.favourites, { onFilters(filters.copy(favourites = !filters.favourites)) }, if (tv) Modifier.focusRequester(first) else Modifier) {
-                            LucideIcon(Lucide.Heart, tint = if (filters.favourites) Color.White else Sov.Red300, size = 16.dp)
-                            ToggleText("Favourites")
-                        }
+                    val head = if (tv) Modifier.focusRequester(first) else Modifier
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        ChoiceField(
+                            "Played", PLAYED_OPTIONS, filters.played, { onFilters(filters.copy(played = it)) },
+                            head.weight(1f),
+                        )
+                        ChoiceField(
+                            "Favourites", FAVOURITE_OPTIONS, filters.favourites, { onFilters(filters.copy(favourites = it)) },
+                            Modifier.weight(1f),
+                        )
                     }
-                    FilterSection("Played") {
-                        Toggle(filters.played == PlayedFilter.PLAYED, {
-                            onFilters(filters.copy(played = if (filters.played == PlayedFilter.PLAYED) null else PlayedFilter.PLAYED))
-                        }) { ToggleText("Played before") }
-                        Toggle(filters.played == PlayedFilter.UNPLAYED, {
-                            onFilters(filters.copy(played = if (filters.played == PlayedFilter.UNPLAYED) null else PlayedFilter.UNPLAYED))
-                        }) { ToggleText("Not played yet") }
-                    }
-                    if (index.knowsPlayers) {
-                        FilterSection("Players") {
-                            Toggle(filters.multiplayer, { onFilters(filters.copy(multiplayer = !filters.multiplayer)) }) { ToggleText("2 players or more") }
-                        }
-                    }
-                    if (genres.isNotEmpty()) {
-                        FilterSection("Genre") {
-                            for ((genre, count) in genres) {
-                                val on = genre in filters.genres
-                                Toggle(on, { onFilters(filters.copy(genres = if (on) filters.genres - genre else filters.genres + genre)) }) {
-                                    ToggleText(genre)
-                                    Text("$count", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp)
-                                }
+                    if (index.knowsPlayers || index.knowsRatings) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            if (index.knowsPlayers) {
+                                ChoiceField(
+                                    "Players", PLAYER_OPTIONS, filters.minPlayers, { onFilters(filters.copy(minPlayers = it)) },
+                                    Modifier.weight(1f),
+                                )
+                            }
+                            if (index.knowsRatings) {
+                                ChoiceField(
+                                    "Rating", STAR_OPTIONS, filters.minStars, { onFilters(filters.copy(minStars = it)) },
+                                    Modifier.weight(1f),
+                                )
                             }
                         }
                     }
-                    if (!index.knowsPlayers && genres.isEmpty()) {
-                        Text("Player and genre filters appear once game information has been fetched for these games.", color = Sov.Slate500, fontSize = 14.sp)
+                    if (index.esrbCounts.isNotEmpty()) {
+                        MultiSelectField(
+                            "Age rating (ESRB)",
+                            index.esrbCounts.mapNotNull { (r, count) -> esrbInfo(r)?.let { FilterOption(r, "${it.name} (${it.code})", count) } },
+                            filters.esrb, { onFilters(filters.copy(esrb = it)) },
+                        )
+                    }
+                    for ((list, values) in lists) {
+                        if (values.isEmpty()) continue
+                        MultiSelectField(
+                            list.label, values.map { (v, count) -> FilterOption(v, v, count) },
+                            list.selected(filters), { onFilters(list.with(filters, it)) },
+                        )
+                    }
+                    if (!index.knowsPlayers && !index.knowsRatings && lists.values.all { it.isEmpty() }) {
+                        Text(
+                            "Rating, player, genre and series filters appear once game information has been fetched for these games.",
+                            color = Sov.Slate500, fontSize = 14.sp,
+                        )
                     }
                 }
                 if (n > 0) {
@@ -745,16 +788,27 @@ private fun FilterDrawer(
     }
 }
 
-@Composable
-private fun ToggleText(text: String) = Text(text, color = Sov.Slate200, fontSize = 14.sp)
+/** The most values a list filter's menu offers: past that it is easier to search. */
+private const val MAX_VALUES = 60
 
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun FilterSection(title: String, content: @Composable () -> Unit) =
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Eyebrow(title)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { content() }
-    }
+private val PLAYED_OPTIONS = listOf<FilterOption<PlayedFilter?>>(
+    FilterOption<PlayedFilter?>(null, "Any"),
+    FilterOption(PlayedFilter.PLAYED, "Played before"),
+    FilterOption(PlayedFilter.UNPLAYED, "Not played yet"),
+)
+private val FAVOURITE_OPTIONS = listOf(FilterOption(false, "Any"), FilterOption(true, "Favourites only"))
+private val PLAYER_OPTIONS = listOf<FilterOption<Int?>>(
+    FilterOption<Int?>(null, "Any"),
+    FilterOption(2, "2 or more"),
+    FilterOption(3, "3 or more"),
+    FilterOption(4, "4 or more"),
+)
+private val STAR_OPTIONS = listOf<FilterOption<Double?>>(
+    FilterOption<Double?>(null, "Any"),
+    FilterOption(3.0, "3 stars or more"),
+    FilterOption(4.0, "4 stars or more"),
+    FilterOption(4.5, "4.5 stars or more"),
+)
 
 /** Jump to a letter: a carousel of letter discs, the current one large in the middle. */
 @Composable
