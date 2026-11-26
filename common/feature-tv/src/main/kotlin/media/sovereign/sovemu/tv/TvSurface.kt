@@ -18,6 +18,8 @@ import media.sovereign.sovemu.ui.NavFrame
 import media.sovereign.sovemu.ui.SearchScreen
 import media.sovereign.sovemu.ui.SearchViewModel
 import media.sovereign.sovemu.ui.Section
+import media.sovereign.sovemu.ui.SystemScreen
+import media.sovereign.sovemu.ui.SystemViewModel
 
 /** The TV apps' screens, over the shared app. */
 object TvSurface : Surface {
@@ -66,15 +68,23 @@ object TvSurface : Surface {
                 })
             }
         }
-        sharedRoutes(app) { section, paints, content ->
-            NavFrame(
-                section,
-                app.nav,
-                app.user,
-                app.systems,
-                paintsBackground = paints,
-                content = content,
-            )
+        entry<Route.System>({ it.key }) { r ->
+            NavFrame(Section.Systems, nav, user, systems, paintsBackground = true) {
+                val games = hiltViewModel<
+                    SystemViewModel,
+                    SystemViewModel.Factory,
+                    >(creationCallback = { it.create(r.system.id) })
+                val index by games.games.collectAsStateWithLifecycle()
+                val sort by games.sort.collectAsStateWithLifecycle()
+                SystemScreen(
+                    games, r.system, index, r.open, sort,
+                    onSort = games::setSort,
+                    onPlay = { game, start -> push(Route.Play(r.system, game, start)) },
+                    onFavourite = games::setFavourite,
+                    onPatch = games::setPatch,
+                )
+            }
         }
+        sharedRoutes(app)
     }
 }
