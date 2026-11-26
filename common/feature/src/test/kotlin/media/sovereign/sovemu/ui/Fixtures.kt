@@ -5,7 +5,12 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.test.core.app.ApplicationProvider
 import media.sovereign.sovemu.Settings
 import media.sovereign.sovemu.SovEmuApi
+import media.sovereign.sovemu.core.CollectionChoice
+import media.sovereign.sovemu.core.CollectionService
+import media.sovereign.sovemu.core.CollectionsModel
 import media.sovereign.sovemu.core.Game
+import media.sovereign.sovemu.core.GamePatch
+import media.sovereign.sovemu.core.SaveSlot
 import media.sovereign.sovemu.core.SystemSummary
 import media.sovereign.sovemu.core.graphql.fragment.GameFields
 import media.sovereign.sovemu.core.graphql.type.EsrbRating
@@ -57,5 +62,22 @@ fun TestApp(tv: Boolean = true, content: @Composable () -> Unit) {
         LocalApi provides api,
         LocalForm provides Form(tv = tv, wide = true),
         content = content,
+    )
+}
+
+/** A game panel with nothing to show: no patches, no saves, no collections. */
+object NoPanelData : GamePanelData {
+    override val patches = kotlinx.coroutines.flow.MutableStateFlow(emptyList<GamePatch>())
+    override val saves = kotlinx.coroutines.flow.MutableStateFlow(emptyList<SaveSlot>())
+    override fun show(gameId: Int?, patch: String?) = Unit
+    override fun collections(gameId: Int) = CollectionsModel(
+        object : CollectionService {
+            override suspend fun collectionChoices(gameId: Int) = emptyList<CollectionChoice>()
+            override suspend fun createCollection(name: String) = 0
+            override suspend fun setInCollection(collectionId: Int, gameId: Int, member: Boolean) =
+                Unit
+        },
+        gameId,
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined),
     )
 }

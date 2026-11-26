@@ -31,6 +31,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Color
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
@@ -51,6 +52,7 @@ import media.sovereign.sovemu.core.Game
 import media.sovereign.sovemu.core.IdlePicker
 import media.sovereign.sovemu.core.SystemSummary
 import media.sovereign.sovemu.ui.HomeScreen
+import media.sovereign.sovemu.ui.HomeViewModel
 import media.sovereign.sovemu.ui.LaunchPage
 import media.sovereign.sovemu.ui.LaunchScreens
 import media.sovereign.sovemu.ui.LocalApi
@@ -63,11 +65,14 @@ import media.sovereign.sovemu.ui.QuitConfirm
 import media.sovereign.sovemu.ui.QuitOnRootBack
 import media.sovereign.sovemu.ui.Screensaver
 import media.sovereign.sovemu.ui.SearchScreen
+import media.sovereign.sovemu.ui.SearchViewModel
 import media.sovereign.sovemu.ui.Section
 import media.sovereign.sovemu.ui.SignInTvScreen
+import media.sovereign.sovemu.ui.SignInTvViewModel
 import media.sovereign.sovemu.ui.SovTheme
 import media.sovereign.sovemu.ui.Start
 import media.sovereign.sovemu.ui.SystemScreen
+import media.sovereign.sovemu.ui.SystemViewModel
 import media.sovereign.sovemu.ui.TvKeyboardHost
 import media.sovereign.sovemu.ui.rememberViewModelStoreOwner
 import media.sovereign.sovemu.ui.scanlines
@@ -358,7 +363,9 @@ abstract class SovEmuActivity : ComponentActivity() {
                         entryProvider = entryProvider {
                             entry<Route.Home>({ it.key }) {
                                 NavFrame(Section.Home, nav, user, systems) {
-                                    val feed by store.home.collectAsStateWithLifecycle()
+                                    val home = hiltViewModel<HomeViewModel>()
+                                    val feed by home.feed.collectAsStateWithLifecycle()
+                                    val server by home.server.collectAsStateWithLifecycle()
                                     HomeScreen(
                                         feed,
                                         systems,
@@ -368,8 +375,8 @@ abstract class SovEmuActivity : ComponentActivity() {
                                         },
                                         onSystem = { s, open -> push(Route.System(s, open)) },
                                         onSearch = nav.search,
-                                        server = settings.serverUrl,
-                                        onRetry = store::refresh,
+                                        server = server,
+                                        onRetry = home::retry,
                                         onSignOut = nav.signOut,
                                     )
                                 }
@@ -385,17 +392,22 @@ abstract class SovEmuActivity : ComponentActivity() {
                             }
                             entry<Route.SignInTv>({ it.key }) {
                                 NavFrame(Section.Home, nav, user, systems) {
+                                    val signInTv = hiltViewModel<SignInTvViewModel>()
+                                    val server by signInTv.server.collectAsStateWithLifecycle()
+                                    val name by signInTv.userName.collectAsStateWithLifecycle()
                                     SignInTvScreen(
-                                        server = settings.serverUrl,
-                                        name = user?.username.orEmpty(),
-                                        approve = api::approveDeviceCode,
+                                        server = server,
+                                        name = name,
+                                        approve = signInTv::approve,
                                         onDone = ::pop,
                                     )
                                 }
                             }
                             entry<Route.Search>({ it.key }) {
                                 NavFrame(Section.Search, nav, user, systems) {
-                                    SearchScreen(api, systems, onOpen = { game ->
+                                    val search = hiltViewModel<SearchViewModel>()
+                                    val results by search.results.collectAsStateWithLifecycle()
+                                    SearchScreen(results, search::query, systems, onOpen = { game ->
                                         systems.firstOrNull { it.id == game.system }
                                             ?.let { push(Route.System(it, game.id)) }
                                     })
@@ -409,21 +421,20 @@ abstract class SovEmuActivity : ComponentActivity() {
                                     systems,
                                     paintsBackground = true,
                                 ) {
-                                    val index by remember(r.system.id) { store.games(r.system.id) }
-                                        .collectAsStateWithLifecycle()
-                                    var sort by remember { mutableStateOf(settings.sort) }
+                                    val games = hiltViewModel<
+                                        SystemViewModel,
+                                        SystemViewModel.Factory,
+                                        >(creationCallback = { it.create(r.system.id) })
+                                    val index by games.games.collectAsStateWithLifecycle()
+                                    val sort by games.sort.collectAsStateWithLifecycle()
                                     SystemScreen(
-                                        api, r.system, index, r.open, sort,
-                                        onSort = {
-                                            sort = it
-                                            settings.sort = it
-                                        },
+                                        games, r.system, index, r.open, sort,
+                                        onSort = games::setSort,
                                         onPlay = { game, start ->
                                             push(Route.Play(r.system, game, start))
                                         },
-                                        onFavourite = store::setFavourite,
-                                        onCollectionsChanged = store::collectionsChanged,
-                                        onPatch = store::setPatch,
+                                        onFavourite = games::setFavourite,
+                                        onPatch = games::setPatch,
                                     )
                                 }
                             }
