@@ -7,13 +7,13 @@ import com.apollographql.apollo.api.Optional
 import com.apollographql.apollo.api.Query
 import com.apollographql.apollo.network.okHttpClient
 import java.util.concurrent.TimeUnit
-import kotlinx.coroutines.flow.MutableStateFlow
 import media.sovereign.sovemu.core.AccountStore
 import media.sovereign.sovemu.core.ApiException
 import media.sovereign.sovemu.core.BearerInterceptor
 import media.sovereign.sovemu.core.Binding
 import media.sovereign.sovemu.core.BrowserRedirect
 import media.sovereign.sovemu.core.BrowserSignInRequest
+import media.sovereign.sovemu.core.BrowserSignInText
 import media.sovereign.sovemu.core.Cheat
 import media.sovereign.sovemu.core.CheatService
 import media.sovereign.sovemu.core.CollectionChoice
@@ -118,6 +118,30 @@ class Settings(context: Context) {
     var serverUrl: String
         get() = prefs.getString("server", "") ?: ""
         set(value) = prefs.edit().putString("server", value.trim().trimEnd('/')).apply()
+
+    /**
+     * The browser sign-in in flight, from opening the browser to its redirect: kept here, in the
+     * app's private storage, because Android may end the app while the person is in the browser,
+     * and the redirect that starts it again must still be checked and exchanged. Its verifier is
+     * a one-shot secret bound to a code only this app can see.
+     */
+    var browserSignIn: BrowserSignInRequest?
+        get() = BrowserSignInRequest.restore(
+            clientId = prefs.getString("browser.client", null) ?: return null,
+            redirectUri = prefs.getString("browser.redirect", null) ?: return null,
+            authorizationEndpoint = prefs.getString("browser.authorize", null) ?: return null,
+            state = prefs.getString("browser.state", null) ?: return null,
+            verifier = prefs.getString("browser.verifier", null) ?: return null,
+        )
+        set(value) {
+            prefs.edit()
+                .putString("browser.client", value?.clientId)
+                .putString("browser.redirect", value?.redirectUri)
+                .putString("browser.authorize", value?.authorizationEndpoint)
+                .putString("browser.state", value?.state)
+                .putString("browser.verifier", value?.pkce?.verifier)
+                .apply()
+        }
 
     /** The sign-in details last fetched from [serverUrl]; null for another address, or none yet. */
     var signInConfig: SignInConfig?
@@ -272,49 +296,33 @@ class SovEmuApi(
     }
 
     /**
-     * The browser sign-in in flight, from opening the browser to its redirect. Only in memory: a
-     * process the system ends while the browser is up loses it, and the person signs in again.
-     */
-    @Volatile private var browserRequest: BrowserSignInRequest? = null
-
-    /**
-     * The redirect the app was opened with, for the sign-in screen to finish with; null once taken.
-     */
-    val browserRedirect = MutableStateFlow<String?>(null)
-
-    /**
-     * A browser sign-in to open (the server's own page), kept for its redirect; null when the
-     * server offers none.
+     * A browser sign-in to open (the server's own page), kept for its redirect
+     * ([Settings.browserSignIn]); null when the server offers none.
      */
     override fun startBrowserSignIn(): BrowserSignInRequest? = settings.signInConfig
         ?.let { BrowserSignInRequest.create(settings.serverUrl, it) }
-        .also { browserRequest = it }
+        .also { settings.browserSignIn = it }
 
     /**
      * Finishes a browser sign-in with the redirect [uri]: the code exchanged, as the mobile
-     * client, and signed in. Anything else is an [OAuthException] saying why, for people.
+     * client, and signed in. Anything else is an [OAuthException] in the app's own words
+     * ([BrowserSignInText]); a full device ([AccountRefusal]) says so.
      */
     override suspend fun finishBrowserSignIn(uri: String) {
-        val request = browserRequest
-            ?: throw OAuthException(
-                "no_request",
-                "The browser came back after the app had closed. Sign in again.",
-                0,
-            )
-        when (val back = BrowserRedirect.parse(uri, request)) {
-            is BrowserRedirect.Code -> {
-                browserRequest = null
-                session.signedInWith(
-                    tokenClient.exchangeCode(back.code, request),
-                    request.clientId,
-                )
-            }
-
-            else -> {
-                if (back !is BrowserRedirect.StateMismatch) browserRequest = null
-                throw OAuthException("browser", back.message(), 0)
-            }
+        val request = settings.browserSignIn
+            ?: throw OAuthException("no_request", BrowserSignInText.FAILED, 0)
+        val back = BrowserRedirect.parse(uri, request)
+        // A redirect that is not this request's leaves it waiting for its own.
+        if (back !is BrowserRedirect.StateMismatch) settings.browserSignIn = null
+        if (back !is BrowserRedirect.Code) throw OAuthException("browser", back.message(), 0)
+        val tokens = try {
+            tokenClient.exchangeCode(back.code, request)
+        } catch (e: OAuthException) {
+            // A spent or mismatched code: protocol prose. A proxy's page or a 5xx says itself.
+            if (e.status == 0 || e.status >= 500 || e.error.startsWith("http_")) throw e
+            throw OAuthException(e.error, BrowserSignInText.FAILED, e.status)
         }
+        session.signedInWith(tokens, request.clientId)
     }
 
     /** Signs a TV in as this account: the code its screen shows (*Sign in a TV*). */

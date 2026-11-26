@@ -71,14 +71,18 @@ A module depends only on those below it; the graph is in `settings.gradle.kts`.
   bottom face.
 - **Signalling** is one `sessionOffer` mutation carrying the complete offer (non-trickle: wait for
   ICE gathering), as on the other clients.
-- **On a phone or tablet, sign-in follows Sovereign's phones first**: *Sign in* opens the server's
-  own page in a Custom Tab (`BrowserSignIn.kt`: the code flow with PKCE as the **mobile client**,
-  back to `media.sovereign.sovemu:/oauth2redirect`, which the phone app's `MainActivity`
-  (`SovEmuActivity`) receives; the redirect's `state` is checked before anything in it is believed),
-  with a code and the password as the other ways in. A stored account remembers its client
-  (`StoredAccount.clientId`): refresh and sign-out use it. *Sign in a TV* (account menu, not on a
-  TV) approves a TV's code with the `approveDeviceCode` mutation; its field keeps the text as typed
-  (rewriting it as it is typed drops keystrokes).
+- **On a phone or tablet, sign-in follows Sovereign's phones**: *Sign in* opens the server's own
+  page in a Custom Tab (`BrowserSignIn.kt`: the code flow with PKCE as the **mobile client**),
+  with a code as the other way in and no password typed into the app (the form only on a server
+  with no browser sign-in). `BrowserSignInActivity` opens the tab and `BrowserRedirectActivity`
+  takes `media.sovereign.sovemu:/oauth2redirect`, both declared only in `:apps:mobile`; the request
+  in flight is kept in the app's preferences (`Settings.browserSignIn`), so a redirect that
+  restarts an ended app is still exchanged. The redirect's `state` is checked before anything in
+  it is believed, and every failure says the app's own sentence (`BrowserSignInText`), never an
+  `error_description`. *Add user* asks the server's page who is signing in (`prompt=login`). A
+  stored account remembers its client (`StoredAccount.clientId`): refresh and sign-out use it.
+  *Sign in a TV* (account menu, not on a TV) approves a TV's code with the `approveDeviceCode`
+  mutation; its field keeps the text as typed (rewriting it as it is typed drops keystrokes).
 - **Sign-in on a TV follows Sovereign's TVs**: *Sign in with your phone* (the device grant: a code
   and its QR code, approved at the server's `/device` page, polled at the server's `interval`,
   `slow_down` widening it, waiting never shown as an error) with the password as the fallback, and

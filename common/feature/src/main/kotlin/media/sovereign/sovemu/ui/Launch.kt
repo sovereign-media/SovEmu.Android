@@ -12,6 +12,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
+import media.sovereign.sovemu.BrowserSignIn
 import media.sovereign.sovemu.Settings
 import media.sovereign.sovemu.SovEmuApi
 import media.sovereign.sovemu.core.AuthState
@@ -48,7 +49,24 @@ sealed interface LaunchPage {
          * after a sign-in ended, the sign-in form with its username (over the picker when others
          * remain here); else the sign-in form.
          */
-        fun start(state: AuthState, api: SovEmuApi): List<LaunchPage> = when (state) {
+        fun start(state: AuthState, api: SovEmuApi): List<LaunchPage> =
+            waitingForBrowser(startFor(state, api))
+
+        /** Opened over the app (*Change user or server*): the picker. */
+        fun overApp(): List<LaunchPage> = waitingForBrowser(listOf(Picker))
+
+        /**
+         * A browser sign-in that came back after the app was ended needs a sign-in form to take
+         * its redirect: one goes on top when [pages] end without one.
+         */
+        private fun waitingForBrowser(pages: List<LaunchPage>): List<LaunchPage> =
+            if (BrowserSignIn.redirect.value != null && pages.last() !is SignIn) {
+                pages + SignIn(addUser = true)
+            } else {
+                pages
+            }
+
+        private fun startFor(state: AuthState, api: SovEmuApi): List<LaunchPage> = when (state) {
             AuthState.Choosing -> listOf(Picker)
 
             AuthState.Expired -> {
@@ -184,7 +202,7 @@ fun LaunchScreens(
                 // Signing in again as the account signed in now moves nothing: back to where it was.
                 onSignedIn = { if (fromAccount) onReturn() },
                 modifier = modifier,
-                title = LaunchText.ADD_A_USER.takeIf { page.addUser },
+                addUser = page.addUser,
                 username = page.username,
                 notice = LaunchText.EXPIRED.takeIf { page.expired },
                 newServer = page.newServer,
