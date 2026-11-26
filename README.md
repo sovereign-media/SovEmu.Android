@@ -24,6 +24,12 @@ Needs JDK 21 and the Android SDK (platform 37). Put the SDK path in `local.prope
 git config core.hooksPath .githooks         # once per clone: the format is checked before a push
 ```
 
+Iterate on the debug build (`./gradlew :app:installDebug`, or Run in Android Studio): it skips R8,
+and packages WebRTC only for `arm64-v8a` and the `x86_64` emulator; add `-Pabi=armeabi-v7a` for a
+32-bit device such as a Fire TV Stick, or `-Pabi=all`. Gradle's build cache is on, so a clean
+build, a branch switch or a new worktree reuses what an earlier build compiled. Keep the release
+build below for using the app and for judging its speed.
+
 To use the app, install the release build: R8 makes Compose several times faster than a debug
 build, which matters on a TV. It is signed with the debug key so it sideloads over a debug
 install. A sideloaded app starts out interpreted; compile it with its bundled profiles once:

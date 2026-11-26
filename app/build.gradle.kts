@@ -18,6 +18,15 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Native code (WebRTC's, ~12 MB an ABI) only for 64-bit ARM and the x86_64
+            // emulator, so a debug build merges and packages two ABIs rather than four.
+            // `-Pabi=armeabi-v7a` (a 32-bit device such as a Fire TV Stick; a comma-separated
+            // list for several) or `-Pabi=all` builds others. Android Studio's Run already
+            // packages only the ABI of the device it installs on. Release keeps every ABI.
+            val abi = providers.gradleProperty("abi").getOrElse("arm64-v8a,x86_64")
+            if (abi != "all") ndk.abiFilters += abi.split(',').map(String::trim)
+        }
         release {
             // Compose is much faster shrunk and optimised by R8 than in a debug build: install
             // this one to use the app (assembleRelease), the debug build to debug it. Signed with
