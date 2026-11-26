@@ -40,8 +40,8 @@ the end). "(judgement)" marks a rule that is ours rather than the docs'. Compose
 
 - **Native resources** (PeerConnection, renderers, codecs, audio) have one owner and an idempotent
   `close()`: closing a PeerConnection twice crashes. (judgement)
-- **Business logic lives in `core`** or a plain class in `app`, not in a composable, so a JVM test
-  can reach it. [UI]
+- **Business logic lives in `:common:core`** or a plain class in `:common:data` or
+  `:common:stream`, not in a composable, so a JVM test can reach it. [UI]
 
 ## Sources
 

@@ -63,7 +63,7 @@ class BaselineProfileGenerator {
     }
 
     private companion object {
-        const val PACKAGE = "media.sovereign.sovemu"
+        const val PACKAGE = "media.sovereign.sovemu.tv"
         val GAMES: Pattern = Pattern.compile(".* · \\d+ games?")
     }
 }

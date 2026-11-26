@@ -10,8 +10,17 @@ Checked out as a submodule of `SovEmu` (unpinned, `branch = main`); it builds on
 
 | Module | What |
 |---|---|
-| `core` | Plain Kotlin/JVM: the input wire protocol (`Protocol.kt`), controller IDs, input names, mappings, hotkeys and players (`Controllers.kt`, after SovEmu's `docs/CONTROLLERS.md`), the GraphQL operations (`src/main/graphql/operations.graphql`, generated into typed Kotlin by Apollo from a copy of the server's `schema.graphql`), the sign-in (`Auth.kt`: the server's `bootstrapConfig` first, then, as its device client, a code to approve elsewhere (`DevicePairing.kt`, the device grant, with its QR code in `Qr.kt`) or the password fallback, and the OAuth refresh-token grant, at the URLs and client id it names, one refresh at a time, the bearer interceptor), and the game-list logic (`GameList.kt`). Its tests use the same byte vectors as `SovEmu.Protocol` (Rust) and `SovEmu.Web` (TypeScript). |
-| `app` | Navigation 3 over a back stack of routes, and Jetpack Compose UI after the web client's (sign-in; home with the featured hero and rows of games to continue, systems and new arrivals; a system's cover grid with sort, filters, A–Z jump and a game panel; the player), Apollo Kotlin over OkHttp for the API (`POST /graphql`), Coil for artwork, and Stream's libwebrtc build for the stream. |
+| `common/core` | Plain Kotlin/JVM: the input wire protocol (`Protocol.kt`), controller IDs, input names, mappings, hotkeys and players (`Controllers.kt`, after SovEmu's `docs/CONTROLLERS.md`), the GraphQL operations (`src/main/graphql/operations.graphql`, generated into typed Kotlin by Apollo from a copy of the server's `schema.graphql`), the sign-in (`Auth.kt`: the server's `bootstrapConfig` first, then, as its device client, a code to approve elsewhere (`DevicePairing.kt`, the device grant, with its QR code in `Qr.kt`) or the password fallback, and the OAuth refresh-token grant, at the URLs and client id it names, one refresh at a time, the bearer interceptor), and the game-list logic (`GameList.kt`). Its tests use the same byte vectors as `SovEmu.Protocol` (Rust) and `SovEmu.Web` (TypeScript). |
+| `common/data` | The API on Android: Apollo Kotlin over OkHttp (`POST /graphql`) with its sign-in (`SovEmuApi`), the settings and the Keystore-sealed refresh token, the library's state (`Store`), game sessions and client events. |
+| `common/stream` | The game's stream: Stream's libwebrtc build (`Stream`, `StreamView`, the low-latency decoder factory) and the controllers (`Controller`, `InputPresence`). The only module with WebRTC. |
+| `common/designsystem` | The theme, colours, Lucide icons, focus, and the widgets that know nothing of the server (buttons, chips, filter fields, the side panel, the TV keyboard and text field). |
+| `common/feature` | Navigation 3 over a back stack of routes, and Jetpack Compose UI after the web client's (sign-in; home with the featured hero and rows of games to continue, systems and new arrivals; a system's cover grid with sort, filters, A–Z jump and a game panel; the player), Coil for artwork, and `SovEmuActivity`, which every app's `MainActivity` extends. |
+| `apps/mobile` | The phone and tablet app (`media.sovereign.sovemu.mobile`): touch, the touch controller, the browser sign-in. |
+| `apps/androidtv` | The Android TV and Google TV app (`media.sovereign.sovemu.tv`): the D-pad, the TV keyboard, sign-in with a code. Its baseline profile (`:baselineprofile`) is shared by all three. |
+| `apps/firetv` | The Fire TV app (`media.sovereign.sovemu.firetv`): the Android TV app with a manifest for Fire OS. |
+
+The apps are thin shells over `common/`, as in Sovereign.Android: a module depends only on those
+above it in the table, and `build-logic/` holds the convention plugins that configure them.
 
 ## Building
 
@@ -19,12 +28,14 @@ Needs JDK 21 and the Android SDK (platform 37). Put the SDK path in `local.prope
 (`sdk.dir=…`), then:
 
 ```bash
-./gradlew spotlessCheck :core:test :app:testDebugUnitTest :app:assembleDebug   # what CI runs
+./gradlew spotlessCheck :common:core:test testDebugUnitTest \
+  :apps:mobile:assembleDebug :apps:androidtv:assembleDebug :apps:firetv:assembleDebug   # what CI runs
 ./gradlew spotlessApply                     # formats every Kotlin and Gradle file (ktlint)
 git config core.hooksPath .githooks         # once per clone: the format is checked before a push
 ```
 
-Iterate on the debug build (`./gradlew :app:installDebug`, or Run in Android Studio): it skips R8,
+Iterate on the debug build of the app for the device (`./gradlew :apps:androidtv:installDebug`,
+`:apps:firetv:installDebug` or `:apps:mobile:installDebug`, or Run in Android Studio): it skips R8,
 and packages WebRTC only for `arm64-v8a` and the `x86_64` emulator; add `-Pabi=armeabi-v7a` for a
 32-bit device such as a Fire TV Stick, or `-Pabi=all`. Gradle's build cache is on, so a clean
 build, a branch switch or a new worktree reuses what an earlier build compiled. Keep the release
@@ -35,19 +46,19 @@ build, which matters on a TV. It is signed with the debug key so it sideloads ov
 install. A sideloaded app starts out interpreted; compile it with its bundled profiles once:
 
 ```bash
-./gradlew :app:assembleRelease
-adb install -r app/build/outputs/apk/release/app-release.apk
-adb shell cmd package compile -f -m speed-profile media.sovereign.sovemu
+./gradlew :apps:firetv:assembleRelease          # or :apps:androidtv, :apps:mobile
+adb install -r apps/firetv/build/outputs/apk/release/firetv-release.apk
+adb shell cmd package compile -f -m speed-profile media.sovereign.sovemu.firetv
 ```
 
 ### The API schema
 
-`core/src/main/graphql/schema.graphqls` is a copy of SovEmu's `SovEmu.Backend/SovEmu.Server/schema.graphql`
+`common/core/src/main/graphql/schema.graphqls` is a copy of SovEmu's `SovEmu.Backend/SovEmu.Server/schema.graphql`
 (this repository builds on its own). When the server's schema changes, refresh it from the SovEmu
 checkout this is a submodule of, and the build tells you which operations no longer fit:
 
 ```bash
-./gradlew :core:syncSchema :core:test
+./gradlew :common:core:syncSchema :common:core:test
 ```
 
 ## Using it
@@ -139,7 +150,7 @@ checkout this is a submodule of, and the build tells you which operations no lon
 
 
 **Menus:**
-- **Music:** every MP3 in `app/src/main/assets/music/` plays in the menus, shuffled; it stops in a
+- **Music:** every MP3 in `common/feature/src/main/assets/music/` plays in the menus, shuffled; it stops in a
   game and in the screensaver. Switch it off in the account menu.
 - **Screensaver:** after 5 minutes without input (3, 5, 10 or off, in the account menu), random
   games' video snaps play with their name, system, release date and players along the bottom.

@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.spotless)
     alias(libs.plugins.android.application) apply false
+    alias(libs.plugins.android.library) apply false
     alias(libs.plugins.kotlin.jvm) apply false
     alias(libs.plugins.kotlin.compose) apply false
     alias(libs.plugins.apollo) apply false
@@ -13,13 +14,13 @@ plugins {
 spotless {
     kotlin {
         target("**/*.kt")
-        targetExclude("**/build/**")
+        targetExclude("**/build/**", "build-logic/.kotlin/**")
         ktlint(libs.versions.ktlint.get())
             .setEditorConfigPath(rootProject.file(".editorconfig"))
     }
     kotlinGradle {
         target("**/*.gradle.kts")
-        targetExclude("**/build/**")
+        targetExclude("**/build/**", "build-logic/.kotlin/**")
         ktlint(libs.versions.ktlint.get())
             .setEditorConfigPath(rootProject.file(".editorconfig"))
     }
