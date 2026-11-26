@@ -100,4 +100,37 @@ class BrowserSignInTest {
             BrowserRedirect.parse("$back?state=${request.state}", request),
         )
     }
+
+    @Test
+    fun aFailureSaysTheAppsOwnWordsNeverTheRedirects() {
+        val back = "media.sovereign.sovemu:/oauth2redirect"
+        val forged = BrowserRedirect.parse(
+            "$back?state=${request.state}&error=server_error&error_description=Call+0800+now",
+            request,
+        )
+        assertEquals(BrowserSignInText.FAILED, forged.message())
+        assertEquals(
+            BrowserSignInText.CANCELLED,
+            BrowserRedirect.Refused("access_denied", "The user said no").message(),
+        )
+        assertEquals(BrowserSignInText.FAILED, BrowserRedirect.StateMismatch.message())
+    }
+
+    @Test
+    fun aRequestReadBackAfterTheAppEndedIsTheSameRequest() {
+        val back = BrowserSignInRequest.restore(
+            request.clientId,
+            request.redirectUri,
+            request.authorizationEndpoint,
+            request.state,
+            request.pkce.verifier,
+        )
+        assertEquals(request, back)
+        assertEquals(request.authorizeUrl, back.authorizeUrl)
+    }
+
+    @Test
+    fun addingAUserAsksWhoIsSigningInAgain() {
+        assertEquals(request.authorizeUrl + "&prompt=login", request.authorizeUrlForAnotherUser)
+    }
 }

@@ -1,9 +1,6 @@
 package media.sovereign.sovemu.ui
 
-import android.content.ActivityNotFoundException
-import android.net.Uri
 import android.os.SystemClock
-import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -51,9 +48,12 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
+import media.sovereign.sovemu.BrowserSignIn
 import media.sovereign.sovemu.Settings
 import media.sovereign.sovemu.SovEmuApi
+import media.sovereign.sovemu.core.BrowserSignInText
 import media.sovereign.sovemu.core.DeviceCode
 import media.sovereign.sovemu.core.LaunchText
 import media.sovereign.sovemu.core.PairingText
@@ -69,7 +69,8 @@ import media.sovereign.sovemu.core.SignInFlow
  * device grant), or with a username and password, the fallback. A server that has turned the
  * password off offers only the code. First-run setup (the admin account) happens in a browser.
  *
- * As the account screens open it: [title] heads the form (*Add a user*); [username] fills its
+ * As the account screens open it: [addUser] heads the form *Add a user*, and makes the browser
+ * ask who is signing in even when it is signed in already; [username] fills its
  * field and [notice] says why (a sign-in that ended); [newServer] starts with an empty address
  * (*Add a server*), without asking the stored one; [onChangeServer] opens *Choose a server*, when the device holds other servers.
  */
@@ -79,7 +80,7 @@ fun LoginScreen(
     api: SovEmuApi,
     onSignedIn: () -> Unit,
     modifier: Modifier = Modifier,
-    title: String? = null,
+    addUser: Boolean = false,
     username: String = "",
     notice: String? = null,
     newServer: Boolean = false,
@@ -108,10 +109,11 @@ fun LoginScreen(
     val pairingState by flow.pairing.collectAsStateWithLifecycle()
     val ready = config?.problem == null && config != null
     val onTv = LocalForm.current.tv
-    // A phone signs in on the server's own page in the browser first, as Sovereign's phones do;
-    // a TV, where that page cannot be reached, with its password form and a code.
-    var passwordAsked by remember { mutableStateOf(false) }
-    val browserFirst = ready && !onTv && config!!.browser && !passwordAsked
+    // A phone signs in on the server's own page in the browser, as Sovereign's phones do, with a
+    // code as the other way in and no password typed into the app; a TV, where that page cannot
+    // be reached, with its password form and a code. (A phone uses the form only on a server
+    // with no browser sign-in.)
+    val browserFirst = ready && !onTv && config!!.browser
     // Signing in with a code: shown on asking, or when it is the only way in here.
     var pairingAsked by remember { mutableStateOf(false) }
     val pairing = ready && config!!.pairing &&
@@ -125,26 +127,24 @@ fun LoginScreen(
         }
     }
 
-    // The browser comes back with a code (or why not): exchanged, and signed in.
+    // The browser comes back with a code (or why not): exchanged, and signed in. Taken once,
+    // also when it arrived before this screen (the app was ended while the browser was open).
     LaunchedEffect(flow) {
-        api.browserRedirect.collect { uri ->
-            if (uri == null) return@collect
-            api.browserRedirect.value = null
-            flow.finishBrowserSignIn(uri)
+        BrowserSignIn.redirect.collect {
+            if (it != null) BrowserSignIn.take()?.let(flow::finishBrowserSignIn)
         }
+    }
+    LaunchedEffect(flow) {
+        BrowserSignIn.noBrowser.drop(1).collect { flow.fail(BrowserSignInText.NO_BROWSER) }
     }
 
     /** Opens the server's own sign-in page in a Custom Tab, for the code flow with PKCE. */
     fun signInWithBrowser() {
         val request = flow.startBrowserSignIn() ?: return
-        try {
-            CustomTabsIntent.Builder()
-                .setShowTitle(true)
-                .build()
-                .launchUrl(context, Uri.parse(request.authorizeUrl))
-        } catch (_: ActivityNotFoundException) {
-            flow.fail("There is no browser on this device to sign in with.")
-        }
+        BrowserSignIn.open(
+            context,
+            if (addUser) request.authorizeUrlForAnotherUser else request.authorizeUrl,
+        )
     }
 
     fun submit() {
@@ -162,18 +162,10 @@ fun LoginScreen(
             modifier = modifier,
             onNewCode = flow::startPairing,
             onUsePassword = when {
-                config!!.password -> (
-                    {
-                        pairingAsked = false
-                        passwordAsked = true
-                    }
-                    )
-
-                !onTv && config!!.browser -> ({ pairingAsked = false })
-
+                browserFirst || config!!.password -> ({ pairingAsked = false })
                 else -> null
             },
-            back = if (config!!.password) PairingText.USE_PASSWORD else BROWSER,
+            back = if (browserFirst) BROWSER else PairingText.USE_PASSWORD,
             onChangeServer = {
                 pairingAsked = false
                 flow.forgetServer()
@@ -214,7 +206,7 @@ fun LoginScreen(
                 Column {
                     Brand(size = 30)
                     Text(
-                        title ?: "Sign in to play.",
+                        if (addUser) LaunchText.ADD_A_USER else "Sign in to play.",
                         color = Sov.Muted,
                         fontSize = 14.sp,
                         modifier = Modifier.padding(top = 4.dp),
@@ -313,29 +305,6 @@ fun LoginScreen(
                         Modifier.fillMaxWidth(),
                         variant = Variant.Outline,
                         icon = Lucide.Smartphone,
-                        enabled = !busy,
-                    )
-                }
-                if (browserFirst && config!!.password) {
-                    SovButton(
-                        PairingText.USE_PASSWORD,
-                        {
-                            passwordAsked = true
-                            flow.clearError()
-                        },
-                        Modifier.fillMaxWidth(),
-                        variant = Variant.Ghost,
-                        enabled = !busy,
-                    )
-                } else if (ready && !onTv && config!!.browser) {
-                    SovButton(
-                        BROWSER,
-                        {
-                            passwordAsked = false
-                            flow.clearError()
-                        },
-                        Modifier.fillMaxWidth(),
-                        variant = Variant.Ghost,
                         enabled = !busy,
                     )
                 }

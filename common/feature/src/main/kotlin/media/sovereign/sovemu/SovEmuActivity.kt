@@ -1,6 +1,5 @@
 package media.sovereign.sovemu
 
-import android.content.Intent
 import android.os.Bundle
 import android.os.SystemClock
 import android.view.KeyEvent
@@ -138,23 +137,6 @@ abstract class SovEmuActivity : ComponentActivity() {
     /** True while a game is playing: controller input goes to the game, not the UI. */
     private var playing = false
 
-    /**
-     * A browser sign-in's redirect (`media.sovereign.sovemu:/oauth2redirect?…`), for the sign-in
-     * screen.
-     */
-    private fun takeBrowserRedirect(intent: Intent?) {
-        val uri = intent?.data ?: return
-        if (uri.scheme == "media.sovereign.sovemu" && uri.path == "/oauth2redirect") {
-            api.browserRedirect.value = uri.toString()
-        }
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        takeBrowserRedirect(intent)
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -175,7 +157,6 @@ abstract class SovEmuActivity : ComponentActivity() {
         controller.start(this)
         presence = InputPresence(this, controller, tv)
         music = MenuMusic(this, lifecycleScope)
-        takeBrowserRedirect(intent)
         // Where the app opens, from the accounts stored for the server (no request): undispatched,
         // so the state is decided before the first frame.
         lifecycleScope.launch(start = CoroutineStart.UNDISPATCHED) { api.session.launch() }
@@ -332,6 +313,11 @@ abstract class SovEmuActivity : ComponentActivity() {
             }
         }
         QuitOnRootBack(atRoot = stack.size == 1 && !confirmQuit) { confirmQuit = true }
+        // A browser sign-in that came back after the app was ended (Add user, from the account
+        // menu): its sign-in form opens again to take it.
+        LaunchedEffect(Unit) {
+            if (BrowserSignIn.redirect.value != null) push(Route.Accounts)
+        }
         val background by store.background.collectAsStateWithLifecycle()
         Box(Modifier.fillMaxSize().scanlines(crt && (route !is Route.Play || idle.on))) {
             Box(Modifier.fillMaxSize().focusRequester(screenFocus).focusRestorer().focusGroup()) {
@@ -373,7 +359,7 @@ abstract class SovEmuActivity : ComponentActivity() {
                                 LaunchScreens(
                                     settings,
                                     api,
-                                    listOf(LaunchPage.Picker),
+                                    LaunchPage.overApp(),
                                     fromAccount = true,
                                     onReturn = ::pop,
                                 )

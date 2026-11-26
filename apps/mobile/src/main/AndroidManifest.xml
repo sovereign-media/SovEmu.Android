@@ -25,20 +25,39 @@
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode|fontScale|keyboard|keyboardHidden|navigation"
             android:exported="true"
             android:launchMode="singleTask">
-            <!-- One instance: the browser sign-in's redirect comes back to it. -->
+            <!-- One instance: a second launch reuses it rather than stacking another. -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- A phone's browser sign-in comes back here: the mobile client's redirect URI,
-                 media.sovereign.sovemu:/oauth2redirect, as the server registers it. singleTask
-                 brings this activity back over the Custom Tab, which closes. Only this app
-                 signs in in a browser, so only it registers the scheme. -->
+        </activity>
+
+        <!--
+          The browser sign-in, as Sovereign's phones do it, declared only here so neither TV app
+          registers the redirect scheme. BrowserSignInActivity opens the Custom Tab and waits:
+          singleTask, so a redirect from a full browser's own task brings it forward; not
+          exported. BrowserRedirectActivity takes the redirect,
+          media.sovereign.sovemu:/oauth2redirect, the mobile client's redirect URI: exported, so a
+          browser can open it. The filter names the scheme alone (the URI has no host, and
+          Android ignores a path filter without one); the state and the code are checked against
+          the request, so a stray URI on the scheme is refused there.
+        -->
+        <activity
+            android:name="media.sovereign.sovemu.BrowserSignInActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <activity
+            android:name="media.sovereign.sovemu.BrowserRedirectActivity"
+            android:exported="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="media.sovereign.sovemu" android:path="/oauth2redirect" />
+                <data android:scheme="media.sovereign.sovemu" />
             </intent-filter>
         </activity>
     </application>

@@ -66,10 +66,35 @@ data class BrowserSignInRequest(
             "state" to state,
         ).joinToString("&") { (k, v) -> "$k=${encode(v)}" }
 
+    /**
+     * [authorizeUrl] with OpenID Connect's `prompt=login`: the server's page asks who is signing
+     * in even when the browser is signed in there already. For *Add user*, where a browser still
+     * signed in as someone on the device would otherwise only sign them in again.
+     */
+    val authorizeUrlForAnotherUser: String get() = "$authorizeUrl&prompt=login"
+
     /** Never the verifier. */
     override fun toString() = "BrowserSignInRequest(clientId=$clientId, state=$state)"
 
     companion object {
+        /**
+         * The request kept while the browser was open, read back (the app may have been ended
+         * meanwhile): its challenge follows from its verifier.
+         */
+        fun restore(
+            clientId: String,
+            redirectUri: String,
+            authorizationEndpoint: String,
+            state: String,
+            verifier: String,
+        ) = BrowserSignInRequest(
+            clientId,
+            redirectUri,
+            authorizationEndpoint,
+            state,
+            Pkce(verifier, Pkce.challengeOf(verifier)),
+        )
+
         /**
          * A request for the server [config] describes, at [server] (the address the user typed,
          * which a relative endpoint resolves against). Null when it offers no browser sign-in.
@@ -148,12 +173,27 @@ sealed interface BrowserRedirect {
     }
 }
 
-/** What a browser sign-in that did not sign in says, for people. */
+/**
+ * What a browser sign-in that did not sign in says, as Sovereign's phones say it: one sentence of
+ * the app's own whatever went wrong, since the next step is the same. Never the redirect's
+ * `error_description`: anything on the device can open the redirect URI, and its text is not the
+ * server's until the state proves it; nor a code exchange's, which is protocol prose written for a
+ * developer. A refusal the person made in the browser says only that it was cancelled.
+ */
 fun BrowserRedirect.message(): String = when (this) {
     is BrowserRedirect.Code -> ""
-    is BrowserRedirect.Refused -> description ?: "The sign-in was cancelled."
-    BrowserRedirect.StateMismatch -> "That sign-in was not this one. Try again."
-    BrowserRedirect.Malformed -> "The browser came back without signing in. Try again."
+
+    is BrowserRedirect.Refused ->
+        if (error == "access_denied") BrowserSignInText.CANCELLED else BrowserSignInText.FAILED
+
+    BrowserRedirect.StateMismatch, BrowserRedirect.Malformed -> BrowserSignInText.FAILED
+}
+
+/** The browser sign-in's own words. */
+object BrowserSignInText {
+    const val FAILED = "Signing in didn't finish. Sign in again."
+    const val CANCELLED = "The sign-in was cancelled."
+    const val NO_BROWSER = "There is no browser on this device to sign in with."
 }
 
 private fun token(random: SecureRandom, bytes: Int): String =
