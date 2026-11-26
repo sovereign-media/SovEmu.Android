@@ -53,14 +53,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import media.sovereign.sovemu.Settings
 import media.sovereign.sovemu.SovEmuApi
-import media.sovereign.sovemu.core.ApiException
 import media.sovereign.sovemu.core.DeviceCode
-import media.sovereign.sovemu.core.OAuthException
-import media.sovereign.sovemu.core.PairingResult
 import media.sovereign.sovemu.core.PairingText
 import media.sovereign.sovemu.core.QrCode
 import media.sovereign.sovemu.core.SignInConfig
-import media.sovereign.sovemu.core.awaitApproval
+import media.sovereign.sovemu.core.PairingUi
+import media.sovereign.sovemu.core.SignInFlow
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * The server's address, then sign in. The address is checked first (its `bootstrapConfig`: is
@@ -74,12 +73,17 @@ fun LoginScreen(settings: Settings, api: SovEmuApi, onSignedIn: () -> Unit) {
     var server by remember { mutableStateOf(settings.serverUrl.ifEmpty { "http://" }) }
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
-    var busy by remember { mutableStateOf(false) }
-    // How to sign in at the address in the field: null until it has been checked.
-    var config by remember { mutableStateOf<SignInConfig?>(settings.signInConfig) }
-    val ready = config?.problem == null && config != null
     val scope = rememberCoroutineScope()
+    // Signing in itself (checking the address, the password, the browser, a code) is the flow's;
+    // this screen keeps its fields and which way in it shows.
+    val flow = remember(api) {
+        SignInFlow(api, scope, settings.signInConfig, onSignedIn, now = SystemClock::elapsedRealtime)
+    }
+    val config by flow.config.collectAsStateWithLifecycle()
+    val error by flow.error.collectAsStateWithLifecycle()
+    val busy by flow.busy.collectAsStateWithLifecycle()
+    val pairingState by flow.pairing.collectAsStateWithLifecycle()
+    val ready = config?.problem == null && config != null
     val onTv = LocalForm.current.tv
     // A phone signs in on the server's own page in the browser first, as Sovereign's phones do;
     // a TV, where that page cannot be reached, with its password form and a code.
@@ -90,135 +94,44 @@ fun LoginScreen(settings: Settings, api: SovEmuApi, onSignedIn: () -> Unit) {
     val pairing = ready && config!!.pairing &&
         (pairingAsked || (!config!!.password && !(!onTv && config!!.browser)))
     val context = LocalContext.current
-    var attempt by remember { mutableStateOf(0) }
-    var pairingState by remember { mutableStateOf<PairingUi>(PairingUi.Asking) }
-
-    fun failed(e: Exception) {
-        // The server's error_description (wrong password, wait N minutes …) as it is.
-        error = when (e) {
-            is OAuthException, is ApiException -> e.message
-            else -> null
-        } ?: "Cannot reach the server: ${e.message}"
-    }
-
-    /** Asks the address how to sign in; [quiet] keeps a failure off the screen (on launch). */
-    suspend fun check(address: String, quiet: Boolean = false) {
-        settings.serverUrl = address
-        try {
-            val answer = api.bootstrap()
-            config = answer
-            error = answer.problem
-            if (answer.problem == null && api.status().setupRequired) {
-                config = null
-                error = "Finish first-run setup in a browser at $address first."
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            if (!quiet) failed(e)
-        }
-    }
 
     // A stored address is asked again on every launch, so its sign-in details stay current.
-    LaunchedEffect(Unit) {
-        if (settings.serverUrl.isNotEmpty()) check(settings.serverUrl, quiet = true)
+    LaunchedEffect(flow) {
+        if (settings.serverUrl.isNotEmpty()) flow.check(settings.serverUrl, quiet = true)
     }
 
     // The browser comes back with a code (or why not): exchanged, and signed in.
-    LaunchedEffect(api) {
+    LaunchedEffect(flow) {
         api.browserRedirect.collect { uri ->
             if (uri == null) return@collect
             api.browserRedirect.value = null
-            busy = true
-            error = null
-            try {
-                api.finishBrowserSignIn(uri)
-                onSignedIn()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                failed(e)
-            } finally {
-                busy = false
-            }
+            flow.finishBrowserSignIn(uri)
         }
     }
 
     /** Opens the server's own sign-in page in a Custom Tab, for the code flow with PKCE. */
     fun signInWithBrowser() {
-        val request = api.startBrowserSignIn() ?: return
-        error = null
+        val request = flow.startBrowserSignIn() ?: return
         try {
             CustomTabsIntent.Builder().setShowTitle(true).build().launchUrl(context, Uri.parse(request.authorizeUrl))
         } catch (_: ActivityNotFoundException) {
-            error = "There is no browser on this device to sign in with."
+            flow.fail("There is no browser on this device to sign in with.")
         }
     }
 
     fun submit() {
-        if (busy) return
-        busy = true
-        error = null
-        val address = server.trim().let { if ("://" in it) it else "http://$it" }
-        scope.launch {
-            try {
-                if (!ready || address.trimEnd('/') != settings.serverUrl) {
-                    check(address)
-                } else {
-                    api.signIn(username.trim(), password)
-                    onSignedIn()
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                failed(e)
-            } finally {
-                busy = false
-            }
-        }
+        flow.submit(server.trim().let { if ("://" in it) it else "http://$it" }, username, password)
     }
 
-    // Each new code (on opening the panel, or asking again) asks the server and waits for it
-    // to be approved. Leaving the panel cancels the wait, so nothing polls behind it.
-    LaunchedEffect(pairing, attempt) {
-        if (!pairing) return@LaunchedEffect
-        pairingState = PairingUi.Asking
-        val code = try {
-            api.requestDeviceCode()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            pairingState = PairingUi.Failed(
-                (e as? OAuthException)?.message ?: "Cannot reach the server: ${e.message}",
-            )
-            return@LaunchedEffect
-        }
-        val deadline = SystemClock.elapsedRealtime() + code.expiresInSeconds * 1_000
-        pairingState = PairingUi.Showing(code, deadline)
-        val result = awaitApproval(
-            code,
-            poll = { api.pollDeviceCode(code) },
-            now = SystemClock::elapsedRealtime,
-            sleep = { delay(it) },
-            reachable = { ok -> (pairingState as? PairingUi.Showing)?.let { pairingState = it.copy(trouble = !ok) } },
-        )
-        when (result) {
-            is PairingResult.Approved -> try {
-                api.signedInWith(result.tokens)
-                onSignedIn()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                pairingState = PairingUi.Failed(e.message ?: "Signing in failed.")
-            }
-            is PairingResult.Failed -> pairingState = PairingUi.Failed(result.failure.message)
-        }
+    // A code while the pairing screen shows; leaving it stops the poll.
+    LaunchedEffect(pairing) {
+        if (pairing) flow.startPairing() else flow.stopPairing()
     }
 
     if (pairing) {
         PairingScreen(
             pairingState,
-            onNewCode = { attempt++ },
+            onNewCode = flow::startPairing,
             onUsePassword = when {
                 config!!.password -> ({ pairingAsked = false; passwordAsked = true })
                 !onTv && config!!.browser -> ({ pairingAsked = false })
@@ -227,7 +140,7 @@ fun LoginScreen(settings: Settings, api: SovEmuApi, onSignedIn: () -> Unit) {
             back = if (config!!.password) PairingText.USE_PASSWORD else BROWSER,
             onChangeServer = {
                 pairingAsked = false
-                config = null
+                flow.forgetServer()
             },
         )
         return
@@ -270,8 +183,7 @@ fun LoginScreen(settings: Settings, api: SovEmuApi, onSignedIn: () -> Unit) {
                     "Server address", server,
                     {
                         server = it
-                        error = null
-                        config = null
+                        flow.forgetServer()
                     },
                     typing = typing == LoginField.SERVER,
                     onTyping = { typing = if (it) LoginField.SERVER else null },
@@ -282,7 +194,7 @@ fun LoginScreen(settings: Settings, api: SovEmuApi, onSignedIn: () -> Unit) {
             if (ready && !browserFirst) {
                 if (shown(LoginField.USERNAME)) {
                     Field(
-                        "Username", username, { username = it; error = null },
+                        "Username", username, { username = it; flow.clearError() },
                         typing = typing == LoginField.USERNAME,
                         onTyping = { typing = if (it) LoginField.USERNAME else null },
                         modifier = Modifier.focusRequester(first),
@@ -291,7 +203,7 @@ fun LoginScreen(settings: Settings, api: SovEmuApi, onSignedIn: () -> Unit) {
                 }
                 if (shown(LoginField.PASSWORD)) {
                     Field(
-                        "Password", password, { password = it; error = null },
+                        "Password", password, { password = it; flow.clearError() },
                         typing = typing == LoginField.PASSWORD,
                         onTyping = { typing = if (it) LoginField.PASSWORD else null },
                         type = KeyboardType.Password,
@@ -328,7 +240,7 @@ fun LoginScreen(settings: Settings, api: SovEmuApi, onSignedIn: () -> Unit) {
                 if (ready && config!!.pairing) {
                     SovButton(
                         if (onTv) PairingText.USE_CODE else CODE,
-                        { pairingAsked = true; error = null },
+                        { pairingAsked = true; flow.clearError() },
                         Modifier.fillMaxWidth(),
                         variant = Variant.Outline,
                         icon = Lucide.Smartphone,
@@ -337,11 +249,11 @@ fun LoginScreen(settings: Settings, api: SovEmuApi, onSignedIn: () -> Unit) {
                 }
                 if (browserFirst && config!!.password) {
                     SovButton(
-                        PairingText.USE_PASSWORD, { passwordAsked = true; error = null }, Modifier.fillMaxWidth(),
+                        PairingText.USE_PASSWORD, { passwordAsked = true; flow.clearError() }, Modifier.fillMaxWidth(),
                         variant = Variant.Ghost, enabled = !busy,
                     )
                 } else if (ready && !onTv && config!!.browser) {
-                    SovButton(BROWSER, { passwordAsked = false; error = null }, Modifier.fillMaxWidth(), variant = Variant.Ghost, enabled = !busy)
+                    SovButton(BROWSER, { passwordAsked = false; flow.clearError() }, Modifier.fillMaxWidth(), variant = Variant.Ghost, enabled = !busy)
                 }
             }
         }
@@ -383,21 +295,6 @@ private fun Field(
             secret = secret,
         )
     }
-}
-
-/** Where signing in with a code stands, for [PairingScreen]. */
-sealed interface PairingUi {
-    /** Asking the server for a code. */
-    data object Asking : PairingUi
-
-    /**
-     * A code on screen, waiting for approval until [deadline] (`elapsedRealtime`). [trouble]: the
-     * last poll got no answer; the code is still good and the next poll is the retry.
-     */
-    data class Showing(val code: DeviceCode, val deadline: Long, val trouble: Boolean = false) : PairingUi
-
-    /** Stopped: why, for people. */
-    data class Failed(val message: String) : PairingUi
 }
 
 /**

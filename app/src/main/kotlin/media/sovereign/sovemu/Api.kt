@@ -16,6 +16,7 @@ import media.sovereign.sovemu.core.Binding
 import media.sovereign.sovemu.core.Cheat
 import media.sovereign.sovemu.core.CheatService
 import media.sovereign.sovemu.core.CollectionService
+import media.sovereign.sovemu.core.SignInService
 import media.sovereign.sovemu.core.CollectionChoice
 import media.sovereign.sovemu.core.HomeCollection
 import media.sovereign.sovemu.core.ControllerMapping
@@ -179,7 +180,7 @@ class SovEmuApi(
     private val settings: Settings,
     /** What this app calls its device on the server ([ClientEvents.deviceName]). */
     private val device: String = "SovEmu for Android",
-) : CheatService, CollectionService {
+) : CheatService, CollectionService, SignInService {
     /** The sign-in's token client: plain HTTP, without the bearer interceptor. */
     private val plain: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
@@ -222,6 +223,15 @@ class SovEmuApi(
         return bootstrap(anonymous, settings.serverUrl).also { settings.signInConfig = it }
     }
 
+    override val server: String get() = settings.serverUrl
+
+    override suspend fun bootstrapAt(address: String): SignInConfig {
+        settings.serverUrl = address
+        return bootstrap()
+    }
+
+    override suspend fun setupRequired(): Boolean = status().setupRequired
+
     /** [bootstrap]'s Apollo client, per address: the plain HTTP client, without the bearer. */
     private var signedOut: Pair<String, ApolloClient>? = null
 
@@ -237,7 +247,7 @@ class SovEmuApi(
 
     suspend fun status(): Viewer = query(ViewerQuery()).viewer.let { Viewer(it.setupRequired, it.user?.userFields) }
     /** Signs in with a username and password (after [bootstrap]); a refusal is an `OAuthException` with the server's reason. */
-    suspend fun signIn(username: String, password: String) {
+    override suspend fun signIn(username: String, password: String) {
         auth.signIn(username, password)
         // A new sign-in on the server: it has no name yet.
         settings.namedDevice = null
@@ -253,14 +263,14 @@ class SovEmuApi(
     val browserRedirect = MutableStateFlow<String?>(null)
 
     /** A browser sign-in to open (the server's own page), kept for its redirect; null when the server offers none. */
-    fun startBrowserSignIn(): BrowserSignInRequest? =
+    override fun startBrowserSignIn(): BrowserSignInRequest? =
         settings.signInConfig?.let { BrowserSignInRequest.create(settings.serverUrl, it) }.also { browserRequest = it }
 
     /**
      * Finishes a browser sign-in with the redirect [uri]: the code exchanged, as the mobile
      * client, and signed in. Anything else is an [OAuthException] saying why, for people.
      */
-    suspend fun finishBrowserSignIn(uri: String) {
+    override suspend fun finishBrowserSignIn(uri: String) {
         val request = browserRequest
             ?: throw OAuthException("no_request", "The browser came back after the app had closed. Sign in again.", 0)
         when (val back = BrowserRedirect.parse(uri, request)) {
@@ -282,13 +292,13 @@ class SovEmuApi(
     }
 
     /** A code to show, to sign in by approving it elsewhere (after [bootstrap]). */
-    suspend fun requestDeviceCode(): DeviceCode = tokenClient.requestDeviceCode()
+    override suspend fun requestDeviceCode(): DeviceCode = tokenClient.requestDeviceCode()
 
     /** One poll for [code]'s approval. */
-    suspend fun pollDeviceCode(code: DeviceCode): DevicePoll = tokenClient.pollDeviceCode(code)
+    override suspend fun pollDeviceCode(code: DeviceCode): DevicePoll = tokenClient.pollDeviceCode(code)
 
     /** Signs in with the tokens an approved code got. */
-    suspend fun signedInWith(tokens: Tokens) {
+    override suspend fun signedInWith(tokens: Tokens) {
         auth.signedInWith(tokens)
         settings.namedDevice = null
     }

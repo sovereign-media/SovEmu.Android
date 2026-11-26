@@ -40,5 +40,6 @@ dependencies {
     // The pairing screen's QR code (`Qr.kt`).
     implementation(libs.zxing.core)
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
 }
