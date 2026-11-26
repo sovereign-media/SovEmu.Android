@@ -1,6 +1,7 @@
 ---
 paths:
-  - "app/src/main/**/*.kt"
+  - "common/*/src/main/**/*.kt"
+  - "apps/*/src/main/**/*.kt"
 ---
 
 # SovEmu.Android: Compose

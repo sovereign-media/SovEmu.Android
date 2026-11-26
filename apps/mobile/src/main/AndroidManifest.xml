@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Phones and tablets: touch, the touch controller, the browser sign-in. Permissions come from :common:feature's manifest. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- A tablet with a keyboard and no touch screen still installs it. -->
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+
+    <!--
+      usesCleartextTraffic: a SovEmu server on a home network is usually plain HTTP
+      (http://192.168.x.y:8080). Media is always encrypted (DTLS-SRTP) regardless.
+    -->
+    <application
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:theme="@android:style/Theme.Material.NoActionBar"
+        android:usesCleartextTraffic="true"
+        android:isGame="true"
+        android:appCategory="game">
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode|fontScale|keyboard|keyboardHidden|navigation"
+            android:exported="true"
+            android:launchMode="singleTask">
+            <!-- One instance: the browser sign-in's redirect comes back to it. -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- A phone's browser sign-in comes back here: the mobile client's redirect URI,
+                 media.sovereign.sovemu:/oauth2redirect, as the server registers it. singleTask
+                 brings this activity back over the Custom Tab, which closes. Only this app
+                 signs in in a browser, so only it registers the scheme. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="media.sovereign.sovemu" android:path="/oauth2redirect" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What every app needs, merged into each app's own manifest (apps/*), which declares the
+     application and its MainActivity. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- Identify rumbles a controller that has no lights to blink. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- The low-latency Wi-Fi lock held while a game is on screen (LowLatency.kt). -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Gamepads are optional: the phone app has a touch controller, a TV a remote. -->
+    <uses-feature android:name="android.hardware.gamepad" android:required="false" />
+</manifest>
