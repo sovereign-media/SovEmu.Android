@@ -55,7 +55,6 @@ import media.sovereign.sovemu.core.Game
 import media.sovereign.sovemu.core.IdlePicker
 import media.sovereign.sovemu.core.SystemSummary
 import media.sovereign.sovemu.core.User
-import media.sovereign.sovemu.ui.HomeScreen
 import media.sovereign.sovemu.ui.HomeViewModel
 import media.sovereign.sovemu.ui.LaunchPage
 import media.sovereign.sovemu.ui.LaunchScreens
@@ -63,13 +62,11 @@ import media.sovereign.sovemu.ui.LocalApi
 import media.sovereign.sovemu.ui.LocalBackground
 import media.sovereign.sovemu.ui.LocalForm
 import media.sovereign.sovemu.ui.Nav
-import media.sovereign.sovemu.ui.NavFrame
 import media.sovereign.sovemu.ui.PlayerScreen
 import media.sovereign.sovemu.ui.PlayerViewModel
 import media.sovereign.sovemu.ui.QuitConfirm
 import media.sovereign.sovemu.ui.QuitOnRootBack
 import media.sovereign.sovemu.ui.Screensaver
-import media.sovereign.sovemu.ui.SearchScreen
 import media.sovereign.sovemu.ui.SearchViewModel
 import media.sovereign.sovemu.ui.Section
 import media.sovereign.sovemu.ui.SignInTvViewModel
@@ -85,46 +82,18 @@ import media.sovereign.sovemu.ui.scanlines
  * The screens every surface draws alike, until each surface has its own (`TvSurface`,
  * `MobileSurface`).
  */
-fun EntryProviderScope<Route>.sharedRoutes(app: AppRoutes) = with(app) {
+fun EntryProviderScope<Route>.sharedRoutes(
+    app: AppRoutes,
+    /** The surface's frame around a screen: its navigation, for [Section]. */
+    frame: @Composable (
+        section: Section,
+        paintsBackground: Boolean,
+        content: @Composable () -> Unit,
+    ) -> Unit,
+) = with(app) {
     with(shell) {
-        entry<Route.Home>({ it.key }) {
-            NavFrame(Section.Home, nav, user, systems) {
-                val home = hiltViewModel<HomeViewModel>()
-                val feed by home.feed.collectAsStateWithLifecycle()
-                val server by home.server.collectAsStateWithLifecycle()
-                HomeScreen(
-                    feed,
-                    systems,
-                    onPlay = { game, start ->
-                        systems.firstOrNull { it.id == game.system }
-                            ?.let { push(Route.Play(it, game, start)) }
-                    },
-                    onSystem = { s, open -> push(Route.System(s, open)) },
-                    onSearch = nav.search,
-                    server = server,
-                    onRetry = home::retry,
-                    onSignOut = nav.signOut,
-                )
-            }
-        }
-        entry<Route.Search>({ it.key }) {
-            NavFrame(Section.Search, nav, user, systems) {
-                val search = hiltViewModel<SearchViewModel>()
-                val results by search.results.collectAsStateWithLifecycle()
-                SearchScreen(results, search::query, systems, onOpen = { game ->
-                    systems.firstOrNull { it.id == game.system }
-                        ?.let { push(Route.System(it, game.id)) }
-                })
-            }
-        }
         entry<Route.System>({ it.key }) { r ->
-            NavFrame(
-                Section.Systems,
-                nav,
-                user,
-                systems,
-                paintsBackground = true,
-            ) {
+            frame(Section.Systems, true) {
                 val games = hiltViewModel<
                     SystemViewModel,
                     SystemViewModel.Factory,

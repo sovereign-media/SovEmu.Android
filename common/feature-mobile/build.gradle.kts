@@ -16,6 +16,7 @@ dependencies {
     implementation(libs.androidx.browser)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.hilt.lifecycle.viewmodel.compose)
+    implementation(libs.coil.compose)
     implementation(libs.navigation3.runtime)
     testImplementation(libs.junit)
     testImplementation(libs.compose.ui.test.junit4)

@@ -412,7 +412,7 @@ private fun Hero(
                     icon = Lucide.Play,
                     filledIcon = true,
                     modifier = Modifier
-                        .remembersFocus(memory, "hero", initial = form.tv)
+                        .remembersFocus(memory, "hero", initial = false)
                         // The hero is the top of the page: focusing it shows all of it.
                         .onFocusChanged { if (it.isFocused) onFocus() }
                         .onPreviewKeyEvent {
@@ -432,7 +432,7 @@ private fun Hero(
                             }
                         },
                 )
-                if (!form.tv) {
+                if (true) {
                     SovButton("More $short games", {
                         onBrowse(game)
                     }, variant = Variant.Glass, icon = Lucide.LayoutGrid)
@@ -441,7 +441,7 @@ private fun Hero(
         }
 
         if (n > 1) {
-            if (form.wide && !form.tv) {
+            if (form.wide) {
                 Arrow(
                     Lucide.ChevronLeft,
                     Modifier.align(Alignment.CenterStart).padding(start = 12.dp),
@@ -638,26 +638,6 @@ internal fun GameCard(
             )
         }
     }
-}
-
-/** A save's screenshot: console pixels, scaled without smoothing. */
-@Composable
-fun Screenshot(path: String, modifier: Modifier) {
-    val api = LocalApi.current
-    val context = LocalContext.current
-    val url = api.media(path) ?: return
-    val request = remember(url) {
-        val key = assetCacheKey(url)
-        ImageRequest.Builder(context).data(url).memoryCacheKey(key).diskCacheKey(key).build()
-    }
-    // Fitted, never cropped: a console frame's edges (a HUD, a score) are part of the picture.
-    AsyncImage(
-        request,
-        null,
-        modifier,
-        contentScale = ContentScale.Fit,
-        filterQuality = FilterQuality.None,
-    )
 }
 
 @Composable

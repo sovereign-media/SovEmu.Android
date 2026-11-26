@@ -59,36 +59,6 @@ import media.sovereign.sovemu.core.User
 import media.sovereign.sovemu.core.badge
 import media.sovereign.sovemu.core.groupByMaker
 
-/** Which section a screen belongs to, lit in the navigation. */
-enum class Section { Home, Search, Systems }
-
-/** Where the navigation can go. */
-class Nav(
-    val home: () -> Unit,
-    val search: () -> Unit,
-    val system: (SystemSummary) -> Unit,
-    /** Whether the CRT scan lines are on, and the switch. */
-    val scanlines: () -> Boolean,
-    val toggleScanlines: () -> Unit,
-    /** Whether the menus' background music is on, and the switch. */
-    val music: () -> Boolean,
-    val toggleMusic: () -> Unit,
-    /**
-     * Minutes without input before the screensaver (0: never), and the switch through the
-     * choices.
-     */
-    val screensaver: () -> Int,
-    val nextScreensaver: () -> Unit,
-    /** Whether games ask the TV for its game picture mode, and the switch. */
-    val gameMode: () -> Boolean,
-    val toggleGameMode: () -> Unit,
-    val signOut: () -> Unit,
-    /** *Sign in a TV*: approve a TV's code with this sign-in (phones and tablets). */
-    val signInTv: () -> Unit = {},
-    /** *Change user or server*: *Who's watching?*, with *Choose a server* one step on. */
-    val accounts: () -> Unit = {},
-)
-
 /** A fixed [height] and the width [width] has now, read at layout time (not in composition). */
 private fun Modifier.animatedWidth(width: State<Dp>, height: Dp): Modifier =
     layout { measurable, _ ->
@@ -98,21 +68,10 @@ private fun Modifier.animatedWidth(width: State<Dp>, height: Dp): Modifier =
         layout(w, h) { placeable.place(0, 0) }
     }.clipToBounds()
 
-/** Up to two initials for an account's avatar: "Bruce Lee" → "BL", "mum" → "M". */
-fun initials(name: String): String {
-    val parts = name.trim().split(Regex("[\\s._-]+")).filter { it.isNotEmpty() }
-    val letters = if (parts.size > 1) {
-        "${parts[0][0]}${parts[1][0]}"
-    } else {
-        (parts.firstOrNull() ?: "?").take(1)
-    }
-    return letters.uppercase()
-}
-
 /**
- * A screen inside the navigation, after the web's SideNav: on a TV or a wide screen a floating
- * dock on the left edge (icons at rest, labelled pills while it has the focus) under the
- * wordmark; on a phone a tab bar along the bottom.
+ * A phone or tablet screen inside the navigation, after the web's SideNav: on a wide screen (a
+ * tablet) a floating dock on the left edge under the wordmark; on a phone a tab bar along the
+ * bottom.
  */
 @Composable
 fun NavFrame(
@@ -157,17 +116,6 @@ fun NavFrame(
             TabBar(section, nav, user, systems, Modifier.align(Alignment.BottomCenter))
         }
     }
-}
-
-@Composable
-fun Brand(modifier: Modifier = Modifier, size: Int = 18) = Row(
-    modifier,
-    verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(8.dp),
-) {
-    LucideIcon(Lucide.Gamepad2, tint = Sov.Accent, size = (size + 6).dp)
-    Text("Sov", color = Color.White, fontSize = size.sp, fontWeight = FontWeight.Black)
-    Text("Emu", color = Sov.Accent, fontSize = size.sp, fontWeight = FontWeight.Black)
 }
 
 @Composable
@@ -448,8 +396,8 @@ private fun AccountMenu(
                 leading = { LucideIcon(Lucide.Gamepad2, tint = Sov.Slate300, size = 16.dp) },
                 detail = GAME_MODE_DETAIL,
             )
-            // A TV signs itself in with a code; this approves one from a phone or tablet.
-            if (!LocalForm.current.tv) {
+            // A TV signs itself in with a code; this approves one from this phone or tablet.
+            run {
                 MenuRow(
                     TvSignIn.TITLE,
                     onClick = {

@@ -20,6 +20,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -55,7 +57,6 @@ import media.sovereign.sovemu.core.Game
 import media.sovereign.sovemu.core.IdlePicker
 import media.sovereign.sovemu.core.SystemSummary
 import media.sovereign.sovemu.core.User
-import media.sovereign.sovemu.ui.HomeScreen
 import media.sovereign.sovemu.ui.HomeViewModel
 import media.sovereign.sovemu.ui.LaunchPage
 import media.sovereign.sovemu.ui.LaunchScreens
@@ -63,13 +64,11 @@ import media.sovereign.sovemu.ui.LocalApi
 import media.sovereign.sovemu.ui.LocalBackground
 import media.sovereign.sovemu.ui.LocalForm
 import media.sovereign.sovemu.ui.Nav
-import media.sovereign.sovemu.ui.NavFrame
 import media.sovereign.sovemu.ui.PlayerScreen
 import media.sovereign.sovemu.ui.PlayerViewModel
 import media.sovereign.sovemu.ui.QuitConfirm
 import media.sovereign.sovemu.ui.QuitOnRootBack
 import media.sovereign.sovemu.ui.Screensaver
-import media.sovereign.sovemu.ui.SearchScreen
 import media.sovereign.sovemu.ui.SearchViewModel
 import media.sovereign.sovemu.ui.Section
 import media.sovereign.sovemu.ui.SignInTvViewModel
@@ -170,12 +169,16 @@ interface Surface {
     fun EntryProviderScope<Route>.routes(app: AppRoutes)
 }
 
-/** What a surface's screens get from the signed-in app. */
+/**
+ * What a surface's screens get from the signed-in app. [user] and [systems] are read through
+ * their `State`: Navigation 3 keeps an entry's content from when it was first shown, so a plain
+ * value captured then would never change (Home stayed on "No games yet" once the systems came).
+ */
 class AppRoutes(
     val shell: Shell,
     val nav: Nav,
-    val user: User?,
-    val systems: List<SystemSummary>,
+    user: State<User?>,
+    systems: State<List<SystemSummary>>,
     /** Opens a route (going back to it when it is on the stack already). */
     val push: (Route) -> Unit,
     /** Back one route. */
@@ -184,6 +187,12 @@ class AppRoutes(
 ) {
     /** The stats overlay is on (a setting, kept across games). */
     var statsOn by stats
+
+    /** Who is signed in, once the server has said. */
+    val user by user
+
+    /** The library's systems; empty until they have loaded. */
+    val systems by systems
 }
 
 /**
@@ -276,11 +285,14 @@ private fun SignedIn(shell: Shell, surface: Surface): Unit = with(shell) {
         )
     }
 
-    val user by store.user.collectAsStateWithLifecycle()
-    val systemsLoad by store.systems.collectAsStateWithLifecycle()
-    val systems = (systemsLoad as? Load.Ready)?.value.orEmpty()
+    val user = store.user.collectAsStateWithLifecycle()
+    val systemsLoad = store.systems.collectAsStateWithLifecycle()
+    val systemsState = remember {
+        derivedStateOf { (systemsLoad.value as? Load.Ready)?.value.orEmpty() }
+    }
+    val systems by systemsState
     val route = stack.last()
-    val app = AppRoutes(shell, nav, user, systems, ::push, ::pop, stats)
+    val app = remember(shell) { AppRoutes(shell, nav, user, systemsState, ::push, ::pop, stats) }
     SideEffect {
         if (route is Route.Play) controller.analogSticks = route.system.needsGpu
         // Music in the menus; a game, and the screensaver's videos, have their own sound.
