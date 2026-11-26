@@ -24,7 +24,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,11 +48,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import media.sovereign.sovemu.BrowserSignIn
-import media.sovereign.sovemu.Settings
-import media.sovereign.sovemu.SovEmuApi
 import media.sovereign.sovemu.core.BrowserSignInText
 import media.sovereign.sovemu.core.DeviceCode
 import media.sovereign.sovemu.core.LaunchText
@@ -61,7 +58,6 @@ import media.sovereign.sovemu.core.PairingUi
 import media.sovereign.sovemu.core.QrCode
 import media.sovereign.sovemu.core.ServerAddress
 import media.sovereign.sovemu.core.SignInConfig
-import media.sovereign.sovemu.core.SignInFlow
 
 /**
  * The server's address, then sign in. The address is checked first (its `bootstrapConfig`: is
@@ -70,43 +66,36 @@ import media.sovereign.sovemu.core.SignInFlow
  * device grant), or with a username and password, the fallback. A server that has turned the
  * password off offers only the code. First-run setup (the admin account) happens in a browser.
  *
+ * [model] holds the sign-in ([LoginViewModel]; *Add a server* is one made for a new address).
  * As the account screens open it: [addUser] heads the form *Add a user*, and makes the browser
- * ask who is signing in even when it is signed in already; [username] fills its
- * field and [notice] says why (a sign-in that ended); [newServer] starts with an empty address
- * (*Add a server*), without asking the stored one; [onChangeServer] opens *Choose a server*,
- * when the device holds other servers; [onCustomHeaders] the proxy headers sent to the server.
+ * ask who is signing in even when it is signed in already; [username] fills its field and
+ * [notice] says why (a sign-in that ended); [onChangeServer] opens *Choose a server*, when the
+ * device holds other servers; [onCustomHeaders] the proxy headers sent to the server.
  */
 @Composable
 fun LoginScreen(
-    settings: Settings,
-    api: SovEmuApi,
+    model: LoginViewModel,
     onSignedIn: () -> Unit,
     modifier: Modifier = Modifier,
     addUser: Boolean = false,
     username: String = "",
     notice: String? = null,
-    newServer: Boolean = false,
     onChangeServer: (() -> Unit)? = null,
     onCustomHeaders: (() -> Unit)? = null,
 ) {
     var server by remember {
-        mutableStateOf(if (newServer) "" else settings.serverUrl)
+        mutableStateOf(model.initialServer)
     }
     var username by remember { mutableStateOf(username) }
     var password by remember { mutableStateOf("") }
-    var secureOnly by remember { mutableStateOf(settings.secureOnly) }
-    val scope = rememberCoroutineScope()
-    // Signing in itself (checking the address, the password, the browser, a code) is the flow's;
-    // this screen keeps its fields and which way in it shows.
-    val flow = remember(api) {
-        SignInFlow(
-            api,
-            scope,
-            if (newServer) null else settings.signInConfig,
-            onSignedIn,
-            now = SystemClock::elapsedRealtime,
-        )
-    }
+    var secureOnly by remember { mutableStateOf(model.secureOnly) }
+    // Signing in itself (checking the address, the password, the browser, a code) is the flow's,
+    // in the ViewModel; this screen keeps its fields and which way in it shows.
+    val flow = model.flow
+    val signedIn by model.signedIn.collectAsStateWithLifecycle()
+    val headerCount by model.customHeaders.collectAsStateWithLifecycle()
+    val signedInNow by rememberUpdatedState(onSignedIn)
+    LaunchedEffect(signedIn) { if (signedIn) signedInNow() }
     val config by flow.config.collectAsStateWithLifecycle()
     val error by flow.error.collectAsStateWithLifecycle()
     val busy by flow.busy.collectAsStateWithLifecycle()
@@ -123,24 +112,6 @@ fun LoginScreen(
     val pairing = ready && config!!.pairing &&
         (pairingAsked || (!config!!.password && !(!onTv && config!!.browser)))
     val context = LocalContext.current
-
-    // A stored address is asked again on every launch, so its sign-in details stay current.
-    LaunchedEffect(flow) {
-        if (!newServer && settings.serverUrl.isNotEmpty()) {
-            flow.check(settings.serverUrl, quiet = true)
-        }
-    }
-
-    // The browser comes back with a code (or why not): exchanged, and signed in. Taken once,
-    // also when it arrived before this screen (the app was ended while the browser was open).
-    LaunchedEffect(flow) {
-        BrowserSignIn.redirect.collect {
-            if (it != null) BrowserSignIn.take()?.let(flow::finishBrowserSignIn)
-        }
-    }
-    LaunchedEffect(flow) {
-        BrowserSignIn.noBrowser.drop(1).collect { flow.fail(BrowserSignInText.NO_BROWSER) }
-    }
 
     /** Opens the server's own sign-in page in a Custom Tab, for the code flow with PKCE. */
     fun signInWithBrowser() {
@@ -237,7 +208,7 @@ fun LoginScreen(
                     secureOnly,
                     {
                         secureOnly = !secureOnly
-                        settings.secureOnly = secureOnly
+                        model.secureOnly = secureOnly
                         flow.clearError()
                     },
                 ) {
@@ -248,7 +219,7 @@ fun LoginScreen(
                     )
                 }
                 if (onCustomHeaders != null) {
-                    val count = settings.customHeaders.size
+                    val count = headerCount
                     SovButton(
                         if (count == 0) CUSTOM_HEADERS else "$CUSTOM_HEADERS ($count)",
                         onCustomHeaders,
@@ -314,7 +285,7 @@ fun LoginScreen(
                         else -> "Sign in"
                     },
                     {
-                        if (browserFirst && ServerAddress.names(server, settings.serverUrl)) {
+                        if (browserFirst && model.isServer(server)) {
                             signInWithBrowser()
                         } else {
                             submit()

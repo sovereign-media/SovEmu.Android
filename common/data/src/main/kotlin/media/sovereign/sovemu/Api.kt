@@ -10,6 +10,9 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import media.sovereign.sovemu.core.AccountStore
 import media.sovereign.sovemu.core.ApiException
 import media.sovereign.sovemu.core.BearerInterceptor
@@ -122,9 +125,18 @@ class Settings @Inject constructor(@ApplicationContext context: Context) {
         if (prefs.contains("low_latency_decode")) prefs.edit().remove("low_latency_decode").apply()
     }
 
+    private val _server = MutableStateFlow(prefs.getString("server", "") ?: "")
+
+    /** The server the app talks to, as it changes ([serverUrl]). */
+    val server: StateFlow<String> = _server.asStateFlow()
+
     var serverUrl: String
-        get() = prefs.getString("server", "") ?: ""
-        set(value) = prefs.edit().putString("server", value.trim().trimEnd('/')).apply()
+        get() = _server.value
+        set(value) {
+            val address = value.trim().trimEnd('/')
+            prefs.edit().putString("server", address).apply()
+            _server.value = address
+        }
 
     /**
      * *Secure connections only*: a bare address is asked over https alone, and `http://` is
@@ -144,13 +156,20 @@ class Settings @Inject constructor(@ApplicationContext context: Context) {
      * the rest, never backed up or logged: a value is usually a credential.
      */
     var customHeaders: List<CustomHeader>
-        get() = CustomHeaderRules.decode(prefs.getString("custom_headers", null))
+        get() = _headers.value
         set(value) {
             val blob = CustomHeaderRules.encode(value)
             prefs.edit().apply {
                 if (blob.isEmpty()) remove("custom_headers") else putString("custom_headers", blob)
             }.apply()
+            _headers.value = CustomHeaderRules.decode(blob)
         }
+
+    private val _headers =
+        MutableStateFlow(CustomHeaderRules.decode(prefs.getString("custom_headers", null)))
+
+    /** [customHeaders], as they change. */
+    val headers: StateFlow<List<CustomHeader>> = _headers.asStateFlow()
 
     /**
      * The browser sign-in in flight, from opening the browser to its redirect: kept here, in the

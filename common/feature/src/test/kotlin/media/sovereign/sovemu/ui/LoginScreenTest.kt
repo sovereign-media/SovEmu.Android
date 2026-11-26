@@ -32,7 +32,9 @@ class LoginScreenTest {
 
     private fun show() = rule.setContent {
         val settings = Settings(ApplicationProvider.getApplicationContext())
-        TestApp { LoginScreen(settings, SovEmuApi(settings), onSignedIn = {}) }
+        TestApp {
+            LoginScreen(LoginViewModel(false, SovEmuApi(settings), settings), onSignedIn = {})
+        }
     }
 
     /** The empty address field (the first node with its name is its label). */

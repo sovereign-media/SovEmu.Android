@@ -45,7 +45,9 @@ class PhoneSignInTest {
             mobileRedirectUri = "media.sovereign.sovemu:/oauth2redirect",
         )
         rule.setContent {
-            TestApp(tv = tv) { LoginScreen(settings, SovEmuApi(settings), onSignedIn = {}) }
+            TestApp(tv = tv) {
+                LoginScreen(LoginViewModel(false, SovEmuApi(settings), settings), onSignedIn = {})
+            }
         }
     }
 

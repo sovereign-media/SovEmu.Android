@@ -8,8 +8,13 @@ paths:
 
 Rules from the official Compose guidance (tags point at the sources at the end), with a few
 learned in Sovereign.Android; "(judgement)" marks ours. Dependency injection is Hilt, as
-Sovereign.Android's (see android-kotlin.md). The app has no ViewModel yet: `Store` and each
-screen's remembered state stand in for one.
+Sovereign.Android's (see android-kotlin.md), and screens get their state from Hilt ViewModels, as
+Sovereign's do: one per Navigation 3 entry (`hiltViewModel()`, the entry decorators
+`rememberSaveableStateHolderNavEntryDecorator` and `rememberViewModelStoreNavEntryDecorator`),
+cleared when it is popped. A page stack made afresh (the account screens, each account's app)
+keeps its ViewModels in its own store (`rememberViewModelStoreOwner`), cleared when it goes. The
+account screens have theirs (`LaunchViewModels.kt`); the library and player screens still hold
+`Store` and remembered state, until they move.
 
 ## Naming and shape
 
@@ -29,8 +34,10 @@ screen's remembered state stand in for one.
 
 - Unidirectional data flow: `Store` and a screen's remembered state produce state and handle
   events; composables render it and forward events. [UI][HOIST]
-- **Only the screen-level composable touches `Store`, `SovEmuApi` or `Controller`**; children get
-  plain values and lambdas. A component's state and calls live in a plain class in `core` behind a
+- **Only a ViewModel (or, until its screen has one, the screen-level composable) touches `Store`,
+  `SovEmuApi` or `Controller`**; composables get plain values and lambdas. A ViewModel is thin:
+  it wires the API to the plain `:common:core` class that holds the logic (`LoginViewModel` owns
+  a `SignInFlow`), so the logic stays tested on the JVM. A component's state and calls live in a plain class in `core` behind a
   small service interface `SovEmuApi` implements, created by the screen and tested on the JVM
   with a fake (`CheatsModel`, `CollectionsModel`, `SignInFlow`, `GameSearch`); the component takes values
   and callbacks. A screen only wires the API to them; it holds no sign-in, search or saving logic
