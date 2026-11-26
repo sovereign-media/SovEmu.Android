@@ -37,8 +37,10 @@ import androidx.navigation3.ui.NavDisplay
 import coil3.ImageLoader
 import coil3.compose.setSingletonImageLoaderFactory
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import media.sovereign.sovemu.core.AuthState
 import media.sovereign.sovemu.core.Game
 import media.sovereign.sovemu.core.SystemSummary
 import media.sovereign.sovemu.ui.HomeScreen
@@ -156,11 +158,13 @@ abstract class SovEmuActivity : ComponentActivity() {
         presence = InputPresence(this, controller, tv)
         music = MenuMusic(this, lifecycleScope)
         takeBrowserRedirect(intent)
-        if (settings.serverUrl.isNotEmpty() && api.auth.signedIn.value) {
+        // Where the app opens, from the accounts stored for the server (no request): undispatched,
+        // so the state is decided before the first frame.
+        lifecycleScope.launch(start = CoroutineStart.UNDISPATCHED) { api.session.launch() }
+        if (settings.serverUrl.isNotEmpty() && api.session.allAccounts.value.isNotEmpty()) {
             // The server's sign-in details, asked again on each launch it can be reached (the
             // stored copy lets a sign-in refresh when it cannot).
             lifecycleScope.launch { attempt { api.bootstrap() } }
-            store.refresh()
         }
         setContent {
             // Artwork goes through the API's client (its timeouts; /media URLs are signed).
@@ -181,27 +185,26 @@ abstract class SovEmuActivity : ComponentActivity() {
 
     @Composable
     private fun App() {
-        // Signed in = a refresh token is stored. Signing out, or a refresh the server refuses
-        // (invalid_grant), clears it and comes back here to the sign-in screen.
-        val signedIn by api.auth.signedIn.collectAsStateWithLifecycle()
-        val expired by store.signedOut.collectAsStateWithLifecycle()
+        // Signed in = an account is active. Signing out, or a refresh the server refuses
+        // (invalid_grant), comes back here to the sign-in screen.
+        val auth by api.session.state.collectAsStateWithLifecycle()
+        val account = (auth as? AuthState.Authenticated)?.accountId
+        // Each account's own library: whatever the last one loaded, or still has in flight, goes.
+        LaunchedEffect(account) {
+            store.clear()
+            if (account != null) store.refresh()
+        }
         var gameMode by remember { mutableStateOf(settings.gameMode) }
         // The TV's game mode for the whole app, not per game: each switch blinks some TVs.
         TvGameMode(gameMode)
-        LaunchedEffect(expired) {
-            if (expired) api.auth.forget()
-        }
         var musicOn by remember { mutableStateOf(settings.music) }
-        if (!signedIn) {
+        if (account == null) {
             SideEffect {
                 playing = false
                 menusWantMusic = musicOn
                 updateMusic()
             }
-            LoginScreen(settings, api, onSignedIn = {
-                store.clear()
-                store.refresh()
-            })
+            LoginScreen(settings, api, onSignedIn = {})
             return
         }
 
@@ -251,9 +254,7 @@ abstract class SovEmuActivity : ComponentActivity() {
                     settings.gameMode = gameMode
                 },
                 signOut = {
-                    // Cleared now, not after the revoke: with the server down that waits for a
-                    // timeout, and would wipe a sign-in made to another server meanwhile.
-                    store.clear()
+                    // The revoke is sent without waiting: this works with the server down.
                     lifecycleScope.launch { api.signOut() }
                 },
                 signInTv = { push(Route.SignInTv) },

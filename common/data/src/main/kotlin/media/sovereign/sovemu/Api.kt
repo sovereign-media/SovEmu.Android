@@ -8,8 +8,8 @@ import com.apollographql.apollo.api.Query
 import com.apollographql.apollo.network.okHttpClient
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.flow.MutableStateFlow
+import media.sovereign.sovemu.core.AccountStore
 import media.sovereign.sovemu.core.ApiException
-import media.sovereign.sovemu.core.Auth
 import media.sovereign.sovemu.core.BearerInterceptor
 import media.sovereign.sovemu.core.Binding
 import media.sovereign.sovemu.core.BrowserRedirect
@@ -31,7 +31,7 @@ import media.sovereign.sovemu.core.KeyValue
 import media.sovereign.sovemu.core.OAuthException
 import media.sovereign.sovemu.core.PadLayout
 import media.sovereign.sovemu.core.SaveSlot
-import media.sovereign.sovemu.core.SealedToken
+import media.sovereign.sovemu.core.Session
 import media.sovereign.sovemu.core.SessionInfo
 import media.sovereign.sovemu.core.SignInConfig
 import media.sovereign.sovemu.core.SignInService
@@ -39,7 +39,6 @@ import media.sovereign.sovemu.core.StartStatus
 import media.sovereign.sovemu.core.SystemControls
 import media.sovereign.sovemu.core.SystemSummary
 import media.sovereign.sovemu.core.TokenClient
-import media.sovereign.sovemu.core.TokenStore
 import media.sovereign.sovemu.core.Tokens
 import media.sovereign.sovemu.core.Viewer
 import media.sovereign.sovemu.core.bootstrap
@@ -90,23 +89,21 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 
 /**
- * The server address, how to sign in there (its `bootstrapConfig`) and the sign-in's refresh
- * token, kept across launches. The token is sealed with a key in the Android Keystore
- * ([KeystoreSealer], [SealedToken]) in the app's private preferences, and nothing the app
+ * The server address, how to sign in there (its `bootstrapConfig`) and the accounts signed in
+ * ([AccountStore], each refresh token sealed with a key in the Android Keystore,
+ * [KeystoreSealer]), kept in the app's private preferences across launches. Nothing the app
  * stores leaves the device (`allowBackup="false"` and the data-extraction rules); the access
  * token lives only in memory.
  */
-class Settings(context: Context) : TokenStore {
+class Settings(context: Context) {
     internal val prefs = context.getSharedPreferences("sovemu", Context.MODE_PRIVATE)
-    private val token = SealedToken(
-        object : KeyValue {
-            override fun get(key: String) = prefs.getString(key, null)
-            override fun put(key: String, value: String) =
-                prefs.edit().putString(key, value).apply()
-            override fun remove(key: String) = prefs.edit().remove(key).apply()
-        },
-        KeystoreSealer,
-    )
+
+    /** The preferences as [AccountStore] reads and writes them. */
+    val keyValue: KeyValue = object : KeyValue {
+        override fun get(key: String) = prefs.getString(key, null)
+        override fun put(key: String, value: String) = prefs.edit().putString(key, value).apply()
+        override fun remove(key: String) = prefs.edit().remove(key).apply()
+    }
 
     init {
         // Before OAuth the app signed in with a session cookie, which the server no longer
@@ -120,21 +117,6 @@ class Settings(context: Context) : TokenStore {
     var serverUrl: String
         get() = prefs.getString("server", "") ?: ""
         set(value) = prefs.edit().putString("server", value.trim().trimEnd('/')).apply()
-
-    override var refreshToken: String?
-        get() = token.value
-        set(value) {
-            token.value = value
-        }
-
-    override var tokenClientId: String?
-        get() = prefs.getString("token_client", null)
-        set(value) = prefs.edit().putString("token_client", value).apply()
-
-    /** The device name last given to this sign-in (`nameDevice`); null after signing in anew. */
-    var namedDevice: String?
-        get() = prefs.getString("named_device", null)
-        set(value) = prefs.edit().putString("named_device", value).apply()
 
     /** The sign-in details last fetched from [serverUrl]; null for another address, or none yet. */
     var signInConfig: SignInConfig?
@@ -192,13 +174,19 @@ class SovEmuApi(
 
     /** The sign-in: OAuth tokens from the endpoints the server's `bootstrapConfig` names. */
     private val tokenClient = TokenClient(plain, { settings.serverUrl }, { settings.signInConfig })
-    val auth = Auth(tokenClient, settings)
+
+    /** The accounts signed in on this device, and the active one's tokens. */
+    val session = Session(
+        tokenClient,
+        AccountStore(settings.keyValue, KeystoreSealer, legacyServer = { settings.serverUrl }),
+        server = { settings.serverUrl },
+    )
 
     /**
      * Shared with Apollo, the image loader and the video players: GraphQL requests carry the
      * access token; `/media/…` URLs are signed and need nothing.
      */
-    val client: OkHttpClient = plain.newBuilder().addInterceptor(BearerInterceptor(auth)).build()
+    val client: OkHttpClient = plain.newBuilder().addInterceptor(BearerInterceptor(session)).build()
 
     /** One Apollo client per server address (the address changes at sign-in). */
     private var apollo: Pair<String, ApolloClient>? = null
@@ -251,9 +239,9 @@ class SovEmuApi(
     // An access token the server rejects (revoked, or the clocks disagree) is refreshed and the
     // request sent once more.
     private suspend fun <D : Query.Data> query(q: Query<D>): D =
-        auth.retryingUnauthenticated { apollo().query(q).execute().orThrow() }
+        session.retryingUnauthenticated { apollo().query(q).execute().orThrow() }
     private suspend fun <D : Mutation.Data> mutate(m: Mutation<D>): D =
-        auth.retryingUnauthenticated { apollo().mutation(m).execute().orThrow() }
+        session.retryingUnauthenticated { apollo().mutation(m).execute().orThrow() }
 
     /** An absolute URL for a path the API hands out (`/media/games/7/thumb`). */
     fun media(path: String?): String? = path?.let {
@@ -274,9 +262,7 @@ class SovEmuApi(
      * with the server's reason.
      */
     override suspend fun signIn(username: String, password: String) {
-        auth.signIn(username, password)
-        // A new sign-in on the server: it has no name yet.
-        settings.namedDevice = null
+        session.signIn(username, password)
     }
 
     /**
@@ -312,8 +298,10 @@ class SovEmuApi(
         when (val back = BrowserRedirect.parse(uri, request)) {
             is BrowserRedirect.Code -> {
                 browserRequest = null
-                auth.signedInWith(tokenClient.exchangeCode(back.code, request), request.clientId)
-                settings.namedDevice = null
+                session.signedInWith(
+                    tokenClient.exchangeCode(back.code, request),
+                    request.clientId,
+                )
             }
 
             else -> {
@@ -337,8 +325,7 @@ class SovEmuApi(
 
     /** Signs in with the tokens an approved code got. */
     override suspend fun signedInWith(tokens: Tokens) {
-        auth.signedInWith(tokens)
-        settings.namedDevice = null
+        session.signedInWith(tokens, tokenClient.deviceClientId)
     }
 
     /**
@@ -346,13 +333,16 @@ class SovEmuApi(
      * been named so yet (after signing in, and after an update changes the app's version).
      */
     suspend fun nameDevice() {
-        if (settings.namedDevice == device) return
+        if (session.namedDevice() == device) return
         mutate(NameDeviceMutation(device))
-        settings.namedDevice = device
+        session.setNamedDevice(device)
     }
 
-    /** Revokes the sign-in on the server, and forgets it here even when that fails. */
-    suspend fun signOut() = auth.signOut()
+    /**
+     * Signs the active account out (revoked on the server, without waiting) and lands as a launch
+     * does: the sign-in screen, the one account left, or the picker.
+     */
+    suspend fun signOut() = session.signOut()
     suspend fun iceServers(): List<IceServer> =
         iceServers(query(ClientConfigQuery()).clientConfig.iceServers)
     suspend fun systems(): List<SystemSummary> = query(SystemsQuery()).systems.map {
@@ -405,7 +395,7 @@ class SovEmuApi(
         client: String,
         events: List<media.sovereign.sovemu.core.ClientEvent>,
     ) {
-        if (!auth.signedIn.value) return
+        if (!session.signedIn) return
         val inputs = events.map {
             ClientEventInput(
                 kind = ClientEventKind.safeValueOf(it.kind),

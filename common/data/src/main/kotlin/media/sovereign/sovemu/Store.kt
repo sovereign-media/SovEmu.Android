@@ -50,7 +50,6 @@ class Store(
     private val _systems = MutableStateFlow<Load<List<SystemSummary>>>(Load.Loading)
     private val _home = MutableStateFlow<Load<HomeFeed>>(Load.Loading)
     private val _background = MutableStateFlow<String?>(null)
-    private val _signedOut = MutableStateFlow(false)
 
     val user: StateFlow<User?> = _user.asStateFlow()
     val systems: StateFlow<Load<List<SystemSummary>>> = _systems.asStateFlow()
@@ -62,9 +61,6 @@ class Store(
      * picture by its path, so it outlives the URL's signature.
      */
     val background: StateFlow<String?> = _background.asStateFlow()
-
-    /** Set when the server says the sign-in has expired: the app goes back to sign-in. */
-    val signedOut: StateFlow<Boolean> = _signedOut.asStateFlow()
 
     private val games = HashMap<String, MutableStateFlow<Load<GameIndex>>>()
     private var signIn: Job = SupervisorJob(scope.coroutineContext[Job])
@@ -192,7 +188,6 @@ class Store(
         _home.value = Load.Loading
         _background.value = null
         games.clear()
-        _signedOut.value = false
     }
 
     private suspend fun loadGames(
@@ -219,10 +214,13 @@ class Store(
             }
     }
 
-    /** The message to show for [e]; an expired sign-in also signs the app out. */
+    /**
+     * The message to show for [e]. A request refused even after a refresh that worked ends the
+     * active account's sign-in ([media.sovereign.sovemu.core.Session.refusedFreshToken]).
+     */
     private fun note(e: Throwable): String {
         if (e is ApiException) {
-            if (e.unauthenticated) _signedOut.value = true
+            if (e.unauthenticated) scope.launch { api.session.refusedFreshToken() }
             return e.message ?: "Request failed"
         }
         return "Cannot reach the server: ${e.message}"
