@@ -1,13 +1,13 @@
 package media.sovereign.sovemu.core
 
+import kotlin.coroutines.Continuation
+import kotlin.coroutines.EmptyCoroutineContext
+import kotlin.coroutines.startCoroutine
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import kotlin.coroutines.Continuation
-import kotlin.coroutines.EmptyCoroutineContext
-import kotlin.coroutines.startCoroutine
 
 /** Controller IDs, families, input names, mappings, hotkeys and players (docs/CONTROLLERS.md). */
 class ControllersTest {
@@ -15,15 +15,24 @@ class ControllersTest {
 
     @Test
     fun recognisesTheKnownModelsByVendorAndProduct() {
-        assertEquals(ControllerModel("xbox", Family.XBOX), Controllers.identify(0x045e, 0x0b13, "Xbox Wireless Controller"))
+        assertEquals(
+            ControllerModel("xbox", Family.XBOX),
+            Controllers.identify(0x045e, 0x0b13, "Xbox Wireless Controller"),
+        )
         assertEquals("xbox", Controllers.identify(0x045e, 0x028e, "Microsoft X-Box 360 pad").id)
         assertEquals("xbox", Controllers.identify(0x045e, 0x0b22, "").id)
-        assertEquals(ControllerModel("dualsense", Family.PLAYSTATION), Controllers.identify(0x054c, 0x0ce6, "DualSense Wireless Controller"))
+        assertEquals(
+            ControllerModel("dualsense", Family.PLAYSTATION),
+            Controllers.identify(0x054c, 0x0ce6, "DualSense Wireless Controller"),
+        )
         assertEquals("dualsense", Controllers.identify(0x054c, 0x0df2, "DualSense Edge").id)
         assertEquals("dualshock4", Controllers.identify(0x054c, 0x05c4, "Wireless Controller").id)
         assertEquals("dualshock4", Controllers.identify(0x054c, 0x09cc, "Wireless Controller").id)
         assertEquals("dualshock4", Controllers.identify(0x054c, 0x0ba0, "").id)
-        assertEquals(ControllerModel("switch-pro", Family.NINTENDO), Controllers.identify(0x057e, 0x2009, "Pro Controller"))
+        assertEquals(
+            ControllerModel("switch-pro", Family.NINTENDO),
+            Controllers.identify(0x057e, 0x2009, "Pro Controller"),
+        )
     }
 
     @Test
@@ -35,7 +44,10 @@ class ControllersTest {
         // Only the vendor or only the product still counts as IDs.
         assertEquals("pad:0000:0042", Controllers.identify(0, 0x42, "x").id)
         // An unlisted product of a known vendor takes the vendor's family.
-        assertEquals(ControllerModel("pad:054c:0268", Family.PLAYSTATION), Controllers.identify(0x054c, 0x0268, "PLAYSTATION(R)3 Controller"))
+        assertEquals(
+            ControllerModel("pad:054c:0268", Family.PLAYSTATION),
+            Controllers.identify(0x054c, 0x0268, "PLAYSTATION(R)3 Controller"),
+        )
         assertEquals(Family.XBOX, Controllers.identify(0x045e, 0x0001, "").family)
         assertEquals(Family.NINTENDO, Controllers.identify(0x057e, 0x2006, "Joy-Con (L)").family)
     }
@@ -69,14 +81,18 @@ class ControllersTest {
 
     @Test
     fun familiesLabelTheirButtons() {
-        val inputs = listOf("south", "east", "west", "north", "l1", "r1", "l2", "r2", "select", "start", "l3", "r3")
+        val inputs = listOf(
+            "south", "east", "west", "north", "l1", "r1", "l2", "r2", "select", "start", "l3", "r3",
+        )
         assertEquals(
             listOf("A", "B", "X", "Y", "LB", "RB", "LT", "RT", "View", "Menu", "LS", "RS"),
             inputs.map(Family.XBOX::label),
         )
         assertEquals(inputs.map(Family.XBOX::label), inputs.map(Family.GENERIC::label))
         assertEquals(
-            listOf("✕", "○", "□", "△", "L1", "R1", "L2", "R2", "Create", "Options", "L3", "R3"),
+            listOf(
+                "✕", "○", "□", "△", "L1", "R1", "L2", "R2", "Create", "Options", "L3", "R3",
+            ),
             inputs.map(Family.PLAYSTATION::label),
         )
         assertEquals(
@@ -84,7 +100,10 @@ class ControllersTest {
             inputs.map(Family.NINTENDO::label),
         )
         for (f in Family.entries) assertEquals("D-pad ↑", f.label("up"))
-        assertEquals("Left Shift", Controllers.inputLabel(Controllers.KEYBOARD, Family.GENERIC, "ShiftLeft"))
+        assertEquals(
+            "Left Shift",
+            Controllers.inputLabel(Controllers.KEYBOARD, Family.GENERIC, "ShiftLeft"),
+        )
         assertEquals("✕", Controllers.inputLabel("dualsense", Family.PLAYSTATION, "south"))
     }
 
@@ -94,8 +113,9 @@ class ControllersTest {
     fun padKeycodesAreNamedByPosition() {
         val k = Keys.Android
         val codes = listOf(
-            k.BUTTON_A, k.BUTTON_B, k.BUTTON_X, k.BUTTON_Y, k.BUTTON_L1, k.BUTTON_R1, k.BUTTON_L2, k.BUTTON_R2,
-            k.BUTTON_SELECT, k.BUTTON_START, k.BUTTON_THUMBL, k.BUTTON_THUMBR, k.DPAD_UP, k.DPAD_DOWN, k.DPAD_LEFT, k.DPAD_RIGHT,
+            k.BUTTON_A, k.BUTTON_B, k.BUTTON_X, k.BUTTON_Y, k.BUTTON_L1, k.BUTTON_R1, k.BUTTON_L2,
+            k.BUTTON_R2, k.BUTTON_SELECT, k.BUTTON_START, k.BUTTON_THUMBL, k.BUTTON_THUMBR,
+            k.DPAD_UP, k.DPAD_DOWN, k.DPAD_LEFT, k.DPAD_RIGHT,
         )
         assertEquals(Controllers.PAD_INPUTS, codes.map(Keys::padInput))
         assertNull(Keys.padInput(4)) // KEYCODE_BACK
@@ -127,7 +147,9 @@ class ControllersTest {
         assertEquals("Numpad5", Keys.keyboardCode(149))
         assertNull(Keys.keyboardCode(24)) // KEYCODE_VOLUME_UP
         // Every name is one the server accepts for a keyboard.
-        for (code in 0..300) Keys.keyboardCode(code)?.let { assertTrue(it, it.matches(Regex("[A-Za-z0-9]{1,32}"))) }
+        for (code in 0..300) {
+            Keys.keyboardCode(code)?.let { assertTrue(it, it.matches(Regex("[A-Za-z0-9]{1,32}"))) }
+        }
     }
 
     @Test
@@ -199,7 +221,11 @@ class ControllersTest {
         assertFalse(mixer.isPad(5))
         mixer.pad(9, "south", true)
         assertEquals(Button.B.bit, mixer.read().ports[0])
-        assertEquals("the other player is untouched", 1, mixer.devices().first { it.device == 6 }.port)
+        assertEquals(
+            "the other player is untouched",
+            1,
+            mixer.devices().first { it.device == 6 }.port,
+        )
     }
 
     @Test
@@ -207,7 +233,19 @@ class ControllersTest {
         val mixer = InputMixer()
         mixer.connect(5, "Pad", ControllerModel("xbox", Family.XBOX))
         // L1 is now Select and R1 is Start: holding both opens the menu, and the game sees neither.
-        mixer.setMappings(listOf(ControllerMapping("xbox", "Pad", listOf(Binding("l1", Button.SELECT), Binding("r1", Button.START), Binding("east", Button.R)))))
+        mixer.setMappings(
+            listOf(
+                ControllerMapping(
+                    "xbox",
+                    "Pad",
+                    listOf(
+                        Binding("l1", Button.SELECT),
+                        Binding("r1", Button.START),
+                        Binding("east", Button.R),
+                    ),
+                ),
+            ),
+        )
         mixer.pad(5, "l1", true)
         mixer.pad(5, "r1", true)
         var r = mixer.read()
@@ -234,7 +272,9 @@ class ControllersTest {
     @Test
     fun hotkeyCombosAreKeptFromTheGame() {
         val sel = Button.SELECT.bit
-        val r = Hotkeys.apply(listOf(sel or Button.L.bit or Button.B.bit, sel or Button.START.bit, sel, Button.R.bit))
+        val r = Hotkeys.apply(
+            listOf(sel or Button.L.bit or Button.B.bit, sel or Button.START.bit, sel, Button.R.bit),
+        )
         assertTrue(r.rewind)
         assertTrue(r.menu)
         assertFalse(r.fastForward)
@@ -328,7 +368,8 @@ class ControllersTest {
         return result!!.getOrThrow()
     }
 
-    private fun mine(system: String?, vararg b: Binding) = ControllerMapping("xbox", "Xbox", b.toList(), MappingSource.USER, system)
+    private fun mine(system: String?, vararg b: Binding) =
+        ControllerMapping("xbox", "Xbox", b.toList(), MappingSource.USER, system)
 
     @Test
     fun theBookSavesAndResetsEachScopeWithItsSystemArgument() {
@@ -339,14 +380,28 @@ class ControllersTest {
 
     @Test
     fun resettingRefetchesBothScopesSoTheNextLayerApplies() {
-        val admin = ControllerMapping("xbox", "Xbox", listOf(Binding("south", Button.A)), MappingSource.ADMIN, "megadrive")
+        val admin = ControllerMapping(
+            "xbox",
+            "Xbox",
+            listOf(Binding("south", Button.A)),
+            MappingSource.ADMIN,
+            "megadrive",
+        )
         val forMd = mine("megadrive", Binding("south", Button.Y))
         val forAll = mine(null, Binding("south", Button.START))
         // What the server has in force, per `system` argument.
-        var server = mapOf<String?, List<ControllerMapping>>("megadrive" to listOf(forMd), null to listOf(forAll))
+        var server = mapOf<String?, List<ControllerMapping>>(
+            "megadrive" to listOf(forMd),
+            null to listOf(forAll),
+        )
         val calls = mutableListOf<String>()
         val book = MappingBook("megadrive")
-        run { book.refresh { calls += "fetch $it"; server.getValue(it) } }
+        run {
+            book.refresh {
+                calls += "fetch $it"
+                server.getValue(it)
+            }
+        }
         assertEquals(Button.Y, book.mapping("xbox", MappingScope.SYSTEM).button("south"))
         assertEquals(Button.START, book.mapping("xbox", MappingScope.ALL).button("south"))
         assertTrue(book.canReset("xbox", MappingScope.SYSTEM))
@@ -356,21 +411,38 @@ class ControllersTest {
         calls.clear()
         run {
             book.reset(
-                "xbox", MappingScope.SYSTEM,
-                reset = { c, sys -> calls += "reset $c $sys"; server = server + ("megadrive" to listOf(forAll)); true },
-                fetch = { calls += "fetch $it"; server.getValue(it) },
+                "xbox",
+                MappingScope.SYSTEM,
+                reset = { c, sys ->
+                    calls += "reset $c $sys"
+                    server = server + ("megadrive" to listOf(forAll))
+                    true
+                },
+                fetch = {
+                    calls += "fetch $it"
+                    server.getValue(it)
+                },
             )
         }
         assertEquals(listOf("reset xbox megadrive", "fetch megadrive", "fetch null"), calls)
         assertEquals(Button.START, book.mapping("xbox", MappingScope.SYSTEM).button("south"))
-        assertFalse(book.canReset("xbox", MappingScope.SYSTEM)) // nothing of their own for this system
-        assertEquals("Yours for all systems", MappingBook.sourceText(book.entry("xbox", MappingScope.SYSTEM)))
+        // nothing of their own for this system
+        assertFalse(book.canReset("xbox", MappingScope.SYSTEM))
+        assertEquals(
+            "Yours for all systems",
+            MappingBook.sourceText(book.entry("xbox", MappingScope.SYSTEM)),
+        )
 
         // Resetting every system's: the admin's default for the system, not the built-in one.
         run {
             book.reset(
-                "xbox", MappingScope.ALL,
-                reset = { _, sys -> assertNull(sys); server = mapOf("megadrive" to listOf(admin), null to emptyList()); true },
+                "xbox",
+                MappingScope.ALL,
+                reset = { _, sys ->
+                    assertNull(sys)
+                    server = mapOf("megadrive" to listOf(admin), null to emptyList())
+                    true
+                },
                 fetch = { server.getValue(it) },
             )
         }
@@ -385,7 +457,14 @@ class ControllersTest {
         val book = MappingBook("snes")
         run { book.refresh { listOf(mine(it, Binding("south", Button.START))) } }
         val e = runCatching {
-            run { book.reset("xbox", MappingScope.SYSTEM, reset = { _, _ -> throw ApiException("BAD_REQUEST", "no") }, fetch = { emptyList() }) }
+            run {
+                book.reset(
+                    "xbox",
+                    MappingScope.SYSTEM,
+                    reset = { _, _ -> throw ApiException("BAD_REQUEST", "no") },
+                    fetch = { emptyList() },
+                )
+            }
         }.exceptionOrNull()
         assertEquals("BAD_REQUEST", (e as ApiException).code)
         assertEquals(Button.START, book.mapping("xbox", MappingScope.SYSTEM).button("south"))
@@ -395,8 +474,14 @@ class ControllersTest {
     fun sourceTextSaysWhereTheMappingComesFrom() {
         assertEquals("Yours for this system", MappingBook.sourceText(mine("snes")))
         assertEquals("Yours for all systems", MappingBook.sourceText(mine(null)))
-        assertEquals("Default", MappingBook.sourceText(mine("snes").copy(source = MappingSource.ENVIRONMENT)))
-        assertEquals("Default", MappingBook.sourceText(mine(null).copy(source = MappingSource.ADMIN)))
+        assertEquals(
+            "Default",
+            MappingBook.sourceText(mine("snes").copy(source = MappingSource.ENVIRONMENT)),
+        )
+        assertEquals(
+            "Default",
+            MappingBook.sourceText(mine(null).copy(source = MappingSource.ADMIN)),
+        )
         assertEquals("Default", MappingBook.sourceText(null))
     }
 
@@ -405,19 +490,28 @@ class ControllersTest {
     @Test
     fun aButtonLightsItsSystemKeyAndEveryInputMappedToIt() {
         // l3 also drives B; Select drives Start; nothing drives Select.
-        val m = Mapping.of(Mapping.PAD_DEFAULT.rebind(Button.START, "select").bindings.filter { it.input != "l3" } + Binding("l3", Button.B))
+        val m = Mapping.of(
+            Mapping.PAD_DEFAULT.rebind(Button.START, "select").bindings
+                .filter { it.input != "l3" } + Binding("l3", Button.B),
+        )
         assertEquals(Highlight("B", setOf("south", "l3")), highlight(Button.B, m))
         assertEquals(Highlight("START", setOf("select")), highlight(Button.START, m))
         assertEquals(Highlight("SELECT", emptySet()), highlight(Button.SELECT, m))
         // A keyboard: key names, which a client lists instead of drawing.
-        assertEquals(setOf("ShiftLeft", "ShiftRight"), highlight(Button.SELECT, Mapping.KEYBOARD_DEFAULT).controllerKeys)
+        assertEquals(
+            setOf("ShiftLeft", "ShiftRight"),
+            highlight(Button.SELECT, Mapping.KEYBOARD_DEFAULT).controllerKeys,
+        )
     }
 
     @Test
     fun diagramsAreCroppedToTheirShapesPlusThreeUnits() {
         // A flat pad: a body 30..130 × 40..60 and a key poking out above it.
         val flat = PadLayout(
-            "nes", "NES", 160.0, 100.0,
+            "nes",
+            "NES",
+            160.0,
+            100.0,
             body = listOf(Shape(30.0, 40.0, 100.0, 20.0, 4.0)),
             keys = listOf(PadKey("START", "Start", 70.0, 35.0, 12.0, 6.0, 3.0)),
         )
@@ -469,7 +563,8 @@ class ControllersTest {
     @Test
     fun inputsHeldAtTheStartAreIgnoredUntilReleased() {
         val c = RebindCapture("east", setOf("south", "east"), 0)
-        assertEquals(waiting, c.update(setOf("south", "east"), 2000)) // a held Back neither binds nor cancels
+        // a held Back neither binds nor cancels
+        assertEquals(waiting, c.update(setOf("south", "east"), 2000))
         assertEquals(waiting, c.update(emptySet(), 2100))
         assertEquals(bind("south"), c.update(setOf("south"), 2200))
     }
@@ -478,7 +573,10 @@ class ControllersTest {
     fun guideCancels() {
         val c = RebindCapture("east", emptySet(), 0)
         c.update(setOf("east"), 10)
-        assertEquals(RebindCapture.Outcome.Cancel(timedOut = false), c.update(setOf("east"), 20, guide = true))
+        assertEquals(
+            RebindCapture.Outcome.Cancel(timedOut = false),
+            c.update(setOf("east"), 20, guide = true),
+        )
     }
 
     @Test
@@ -492,8 +590,18 @@ class ControllersTest {
 
     @Test
     fun touchControlsOnlyWithNothingElseToPlayWith() {
-        val pad = InputDeviceInfo(7, "Pad", Controllers.identify(0x045e, 0x0b13, "Xbox Wireless Controller"), 0)
-        val keyboard = InputDeviceInfo(InputMixer.KEYBOARD_DEVICE, "Keyboard", Controllers.identify(0, 0, "Keyboard"), 0)
+        val pad = InputDeviceInfo(
+            7,
+            "Pad",
+            Controllers.identify(0x045e, 0x0b13, "Xbox Wireless Controller"),
+            0,
+        )
+        val keyboard = InputDeviceInfo(
+            InputMixer.KEYBOARD_DEVICE,
+            "Keyboard",
+            Controllers.identify(0, 0, "Keyboard"),
+            0,
+        )
         assertTrue(touchControlsWanted(touchscreen = true, devices = emptyList()))
         assertFalse(touchControlsWanted(touchscreen = true, devices = listOf(pad)))
         assertFalse(touchControlsWanted(touchscreen = true, devices = listOf(keyboard)))
@@ -526,7 +634,8 @@ class ControllersTest {
         assertEquals(1, ports[InputMixer.KEYBOARD_DEVICE])
         assertEquals(0, ports[7])
         assertEquals(2, ports[8])
-        // The controller on player 2 moving to the keyboard's player sends the keyboard to its old one.
+        // The controller on player 2 moving to the keyboard's player sends the keyboard to its old
+        // one.
         mixer.assign(7, 1)
         val after = mixer.devices().associate { it.device to it.port }
         assertEquals(1, after[7])
@@ -536,16 +645,23 @@ class ControllersTest {
     @Test
     fun tvRemotesAreNotControllers() {
         assertTrue(Controllers.isRemote("virtual-remote", 0x18d1, 0x0100, faceButtons = true))
-        assertTrue(Controllers.isRemote("Xiaomi RC Consumer Control", 0x2717, 0x32b9, faceButtons = true))
+        assertTrue(
+            Controllers.isRemote("Xiaomi RC Consumer Control", 0x2717, 0x32b9, faceButtons = true),
+        )
         assertTrue(Controllers.isRemote("ir_keypad0_0", 0, 0, faceButtons = true))
         assertTrue(Controllers.isRemote("Some Pad", 0x1234, 0x5678, faceButtons = false))
-        assertFalse(Controllers.isRemote("Xbox Wireless Controller", 0x045e, 0x0b13, faceButtons = true))
+        assertFalse(
+            Controllers.isRemote("Xbox Wireless Controller", 0x045e, 0x0b13, faceButtons = true),
+        )
         assertFalse(Controllers.isRemote("8BitDo Pro 2", 0x2dc8, 0x6006, faceButtons = true))
     }
 
     @Test
     fun stickDirectionsBindAndTheLeftStickFallsBackToTheDpad() {
-        assertEquals(setOf("ls_left", "rs_down"), axisInputs(0f, 0f, 0f, 0f, lx = -0.9f, ly = 0.1f, rx = 0f, ry = 0.8f))
+        assertEquals(
+            setOf("ls_left", "rs_down"),
+            axisInputs(0f, 0f, 0f, 0f, lx = -0.9f, ly = 0.1f, rx = 0f, ry = 0.8f),
+        )
         assertEquals("LS ←", Family.XBOX.label("ls_left"))
         assertEquals("r3", Controllers.diagramKey("rs_up"))
         val xbox = Controllers.identify(0x045e, 0x0b13, "Xbox Wireless Controller")
@@ -557,8 +673,13 @@ class ControllersTest {
         assertEquals(Button.LEFT.bit, mixer.read().ports[0])
 
         // Bound: it does what it is bound to instead, and lights its stick.
-        mixer.setMappings(listOf(ControllerMapping(xbox.id, bindings = listOf(Binding("ls_left", Button.L)))))
+        mixer.setMappings(
+            listOf(ControllerMapping(xbox.id, bindings = listOf(Binding("ls_left", Button.L)))),
+        )
         assertEquals(Button.L.bit, mixer.read().ports[0])
-        assertEquals(setOf("l3"), highlight(Button.L, Mapping.of(listOf(Binding("ls_left", Button.L)))).controllerKeys)
+        assertEquals(
+            setOf("l3"),
+            highlight(Button.L, Mapping.of(listOf(Binding("ls_left", Button.L)))).controllerKeys,
+        )
     }
 }

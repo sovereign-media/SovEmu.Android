@@ -41,7 +41,9 @@ class TvKeyboardTest {
         TestApp {
             TvKeyboardHost(enabled = true) {
                 Column {
-                    TvTextField("Name", value, { value = it }, typing, { typing = it }, onAction = { actions++ })
+                    TvTextField("Name", value, {
+                        value = it
+                    }, typing, { typing = it }, onAction = { actions++ })
                 }
             }
         }
@@ -53,7 +55,10 @@ class TvKeyboardTest {
         rule.onNodeWithText("Name").performClick()
         rule.waitForIdle()
         assertTrue(typing)
-        assertTrue("no system text field, so no system keyboard", rule.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isEmpty())
+        assertTrue(
+            "no system text field, so no system keyboard",
+            rule.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isEmpty(),
+        )
         rule.onNodeWithText("q").assertIsFocused()
         rule.onNodeWithText("a").performClick()
         rule.onNodeWithText("⇧").performClick()
@@ -94,9 +99,18 @@ class TvKeyboardTest {
     fun keysSuitTheField() {
         val address = tvKeyRows(TvKeyPage.LETTERS, shift = false, KeyboardType.Uri).flatten()
         assertTrue(listOf(":", "/", ".").all { TvKey.Text(it) in address })
-        assertTrue(TvKey.Text("@") in tvKeyRows(TvKeyPage.LETTERS, shift = false, KeyboardType.Email).flatten())
-        assertTrue(TvKey.Text("Q") in tvKeyRows(TvKeyPage.LETTERS, shift = true, KeyboardType.Text).flatten())
-        assertTrue(TvKey.Text("#") in tvKeyRows(TvKeyPage.SYMBOLS, shift = false, KeyboardType.Text).flatten())
+        assertTrue(
+            TvKey.Text("@") in
+                tvKeyRows(TvKeyPage.LETTERS, shift = false, KeyboardType.Email).flatten(),
+        )
+        assertTrue(
+            TvKey.Text("Q") in
+                tvKeyRows(TvKeyPage.LETTERS, shift = true, KeyboardType.Text).flatten(),
+        )
+        assertTrue(
+            TvKey.Text("#") in
+                tvKeyRows(TvKeyPage.SYMBOLS, shift = false, KeyboardType.Text).flatten(),
+        )
         assertEquals("Search", tvKeyLabel(TvKey.Action, TvKeyPage.LETTERS, false, ImeAction.Search))
         assertEquals("ab", tvKeyTyped("abc", TvKey.Delete))
         assertEquals("", tvKeyTyped("", TvKey.Delete))

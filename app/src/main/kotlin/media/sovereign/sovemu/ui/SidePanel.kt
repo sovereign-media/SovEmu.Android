@@ -17,9 +17,9 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
@@ -72,7 +72,15 @@ internal fun <T : Any> SidePanel(
         while (!focus.requestFocus()) withFrameNanos { }
     }
     AnimatedVisibility(item != null, enter = fadeIn(tween(200)), exit = fadeOut(tween(160))) {
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).clickable(remember { MutableInteractionSource() }, null, onClick = onClose))
+        Box(
+            Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).clickable(
+                remember {
+                    MutableInteractionSource()
+                },
+                null,
+                onClick = onClose,
+            ),
+        )
     }
     Box(modifier.fillMaxSize(), contentAlignment = Alignment.CenterEnd) {
         AnimatedVisibility(
@@ -89,19 +97,27 @@ internal fun <T : Any> SidePanel(
                     .clickable(remember { MutableInteractionSource() }, null) {}
                     .onFocusChanged { inside = it.hasFocus }
                     // Traps the focus only while open: sliding out, it must let the focus go
-                    // back to the card, and a drawer over it ([trapFocus] off) must be able to take it.
-                    .focusProperties { onExit = { if (item != null && trapFocus) cancelFocusChange() } }
+                    // back to the card, and a drawer over it ([trapFocus] off) must be able to
+                    // take it.
+                    .focusProperties {
+                        onExit = { if (item != null && trapFocus) cancelFocusChange() }
+                    }
                     .focusGroup(),
             ) { content(shown) }
         }
     }
 }
 
-/** The panel's close button, over its picture's top-right corner (touch only: Back closes on a TV). */
+/**
+ * The panel's close button, over its picture's top-right corner (touch only: Back closes on a
+ * TV).
+ */
 @Composable
 internal fun PanelClose(onClose: () -> Unit, modifier: Modifier = Modifier) {
     Box(
-        modifier.focusProperties { canFocus = false }.statusBarsPadding().padding(12.dp).size(36.dp).clip(CircleShape)
+        modifier.focusProperties {
+            canFocus = false
+        }.statusBarsPadding().padding(12.dp).size(36.dp).clip(CircleShape)
             .background(Color.Black.copy(alpha = 0.5f)).clickable(onClick = onClose),
         contentAlignment = Alignment.Center,
     ) { LucideIcon(Lucide.X) }

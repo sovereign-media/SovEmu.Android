@@ -27,16 +27,22 @@ fun game(
     series: List<String> = emptyList(),
     themes: List<String> = emptyList(),
 ): Game = Game(
-    id = id, system = "nes", title = title, fileTitle = null, tags = emptyList(), path = "nes/$title.nes", size = 0.0,
-    lastPlayedAt = null, playCount = playCount, image = null, imageSmall = null, cover = null, thumb = null, video = null, description = null,
-    releaseDate = null, developer = null, publisher = null, genre = null, genres = emptyList(), players = null, rating = rating, esrb = esrb, esrbBadgeUrl = esrbBadgeUrl,
+    id = id, system = "nes", title = title, fileTitle = null, tags = emptyList(),
+    path = "nes/$title.nes", size = 0.0,
+    lastPlayedAt = null, playCount = playCount, image = null, imageSmall = null, cover = null,
+    thumb = null, video = null, description = null,
+    releaseDate = null, developer = null, publisher = null, genre = null, genres = emptyList(),
+    players = null, rating = rating, esrb = esrb, esrbBadgeUrl = esrbBadgeUrl,
     modes = modes, series = series, themes = themes,
-    discs = discs, partKind = null, favourite = favourite, release = release, patch = patch, autoSave = autoSave,
+    discs = discs, partKind = null, favourite = favourite, release = release, patch = patch,
+    autoSave = autoSave,
 )
 
 fun system(): SystemSummary = SystemSummary(
-    id = "nes", name = "Nintendo Entertainment System", short = "NES", manufacturer = "Nintendo", year = 1983,
-    color = "#c0392b", photoUrl = null, gameCount = 1, playable = true, needsGpu = false, rendering = null,
+    id = "nes", name = "Nintendo Entertainment System", short = "NES", manufacturer = "Nintendo",
+    year = 1983,
+    color = "#c0392b", photoUrl = null, gameCount = 1, playable = true, needsGpu = false,
+    rendering = null,
     biosMissing = false, boxAspect = 0.72,
 )
 
@@ -47,5 +53,9 @@ fun system(): SystemSummary = SystemSummary(
 @Composable
 fun TestApp(tv: Boolean = true, content: @Composable () -> Unit) {
     val api = SovEmuApi(Settings(ApplicationProvider.getApplicationContext()))
-    CompositionLocalProvider(LocalApi provides api, LocalForm provides Form(tv = tv, wide = true), content = content)
+    CompositionLocalProvider(
+        LocalApi provides api,
+        LocalForm provides Form(tv = tv, wide = true),
+        content = content,
+    )
 }

@@ -1,18 +1,18 @@
 package media.sovereign.sovemu
 
+import kotlin.random.Random
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
-import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import media.sovereign.sovemu.core.ApiException
@@ -55,12 +55,14 @@ class Store(
     val user: StateFlow<User?> = _user.asStateFlow()
     val systems: StateFlow<Load<List<SystemSummary>>> = _systems.asStateFlow()
     val home: StateFlow<Load<HomeFeed>> = _home.asStateFlow()
+
     /**
      * The server's background behind every screen (the admin's choice), or null for none. Read
      * once per sign-in: with `random` that is one per visit, as on the web, and Coil keeps the
      * picture by its path, so it outlives the URL's signature.
      */
     val background: StateFlow<String?> = _background.asStateFlow()
+
     /** Set when the server says the sign-in has expired: the app goes back to sign-in. */
     val signedOut: StateFlow<Boolean> = _signedOut.asStateFlow()
 
@@ -68,7 +70,8 @@ class Store(
     private var signIn: Job = SupervisorJob(scope.coroutineContext[Job])
     private var freshening: Job? = null
 
-    private fun launch(block: suspend CoroutineScope.() -> Unit) = scope.launch(signIn, block = block)
+    private fun launch(block: suspend CoroutineScope.() -> Unit) =
+        scope.launch(signIn, block = block)
 
     fun refresh() {
         launch { _user.value = attempt { api.status().user }.onFailure(::note).getOrNull() }
@@ -93,16 +96,21 @@ class Store(
                 delay(refreshEvery)
                 launch { load(_systems) { api.systems() } }
                 launch { load(_home) { api.home() } }
-                for ((system, flow) in games.entries.toList()) launch { loadGames(system, flow, quiet = true) }
+                for ((system, flow) in games.entries.toList()) {
+                    launch {
+                        loadGames(system, flow, quiet = true)
+                    }
+                }
             }
         }
     }
 
     /** A system's games, fetched the first time they are asked for. */
-    fun games(system: String): StateFlow<Load<GameIndex>> =
-        games.getOrPut(system) {
-            MutableStateFlow<Load<GameIndex>>(Load.Loading).also { flow -> launch { loadGames(system, flow) } }
+    fun games(system: String): StateFlow<Load<GameIndex>> = games.getOrPut(system) {
+        MutableStateFlow<Load<GameIndex>>(Load.Loading).also { flow ->
+            launch { loadGames(system, flow) }
         }
+    }
 
     /**
      * A random game with a video snap, for the screensaver: a system picked in proportion to its
@@ -110,10 +118,15 @@ class Store(
      * list the first time; null while there is nothing to show.
      */
     suspend fun randomVideoGame(): Game? {
-        val withGames = (_systems.value as? Load.Ready)?.value?.filter { it.gameCount > 0 }.orEmpty()
+        val withGames = (_systems.value as? Load.Ready)?.value?.filter {
+            it.gameCount > 0
+        }.orEmpty()
         if (withGames.isEmpty()) return null
         var pick = Random.nextInt(withGames.sumOf { it.gameCount })
-        val system = withGames.first { s -> pick -= s.gameCount; pick < 0 }
+        val system = withGames.first { s ->
+            pick -= s.gameCount
+            pick < 0
+        }
         val index = games(system.id).first { it !is Load.Loading } as? Load.Ready ?: return null
         return index.value.games.filter { it.video != null }.randomOrNull()
     }
@@ -157,7 +170,9 @@ class Store(
     }
 
     private suspend fun markFavourite(system: String, id: Int, favourite: Boolean) =
-        update(system, id) { it.copy(favourite = favourite) }
+        update(system, id) {
+            it.copy(favourite = favourite)
+        }
 
     /** Changes one game in its system's list (if that list is loaded). */
     private suspend fun update(system: String, id: Int, change: (Game) -> Game) {
@@ -180,7 +195,11 @@ class Store(
         _signedOut.value = false
     }
 
-    private suspend fun loadGames(system: String, flow: MutableStateFlow<Load<GameIndex>>, quiet: Boolean = false) {
+    private suspend fun loadGames(
+        system: String,
+        flow: MutableStateFlow<Load<GameIndex>>,
+        quiet: Boolean = false,
+    ) {
         if (!quiet) flow.value = Load.Loading
         attempt { api.games(system) }
             .onSuccess { list -> flow.value = Load.Ready(withContext(compute) { GameIndex(list) }) }
@@ -190,7 +209,14 @@ class Store(
     private suspend fun <T> load(flow: MutableStateFlow<Load<T>>, fetch: suspend () -> T) {
         attempt { fetch() }
             .onSuccess { flow.value = Load.Ready(it) }
-            .onFailure { e -> note(e).let { if (flow.value !is Load.Ready) flow.value = Load.Failed(it) } }
+            .onFailure { e ->
+                note(e).let {
+                    if (flow.value !is Load.Ready) {
+                        flow.value =
+                            Load.Failed(it)
+                    }
+                }
+            }
     }
 
     /** The message to show for [e]; an expired sign-in also signs the app out. */

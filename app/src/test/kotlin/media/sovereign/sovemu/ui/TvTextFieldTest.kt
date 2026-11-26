@@ -36,7 +36,9 @@ class TvTextFieldTest {
     private fun show() = rule.setContent {
         TestApp {
             Column {
-                TvTextField("Name", value, { value = it }, typing, { typing = it }, onAction = { actions++ })
+                TvTextField("Name", value, {
+                    value = it
+                }, typing, { typing = it }, onAction = { actions++ })
             }
         }
     }

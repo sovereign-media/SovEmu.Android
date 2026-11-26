@@ -8,8 +8,8 @@ import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -17,11 +17,13 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,7 +36,9 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -42,10 +46,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -101,7 +101,9 @@ fun TvTextField(
         LaunchedEffect(typing, keyboardType, action) {
             if (typing) {
                 appKeyboard.request = TvKeyboardRequest(
-                    owner, keyboardType, action,
+                    owner,
+                    keyboardType,
+                    action,
                     value = { currentValue },
                     onValue = { currentOnValue(it) },
                     // Closed first, so an action that moves on to another field (Next) wins.
@@ -121,12 +123,20 @@ fun TvTextField(
         val keyboard = WindowInsets.isImeVisible
         var keyboardShown by remember { mutableStateOf(false) }
         LaunchedEffect(keyboard, typing) {
-            if (!typing) keyboardShown = false
-            else if (keyboard) keyboardShown = true
-            else if (keyboardShown) onTyping(false)
+            if (!typing) {
+                keyboardShown = false
+            } else if (keyboard) {
+                keyboardShown = true
+            } else if (keyboardShown) {
+                onTyping(false)
+            }
         }
     }
-    val style = TextStyle(color = Sov.Slate100, fontSize = 15.sp, fontFamily = if (mono) FontFamily.Monospace else FontFamily.Default)
+    val style = TextStyle(
+        color = Sov.Slate100,
+        fontSize = 15.sp,
+        fontFamily = if (mono) FontFamily.Monospace else FontFamily.Default,
+    )
     val shape = RoundedCornerShape(8.dp)
     if (typing && appKeyboard == null) {
         BasicTextField(
@@ -134,7 +144,11 @@ fun TvTextField(
             singleLine = true,
             textStyle = style,
             cursorBrush = SolidColor(Sov.Accent),
-            visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
+            visualTransformation = if (secret) {
+                PasswordVisualTransformation()
+            } else {
+                VisualTransformation.None
+            },
             keyboardOptions = KeyboardOptions(
                 capitalization = when {
                     mono -> KeyboardCapitalization.Characters
@@ -156,7 +170,14 @@ fun TvTextField(
                     }
                 },
             decorationBox = { inner ->
-                Box(Modifier.fillMaxWidth().clip(shape).background(Sov.Surface).border(2.dp, Sov.Accent, shape).padding(horizontal = 12.dp, vertical = 10.dp)) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(shape)
+                        .background(Sov.Surface)
+                        .border(2.dp, Sov.Accent, shape)
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                ) {
                     if (value.isEmpty()) Text(label, color = Sov.Slate500, fontSize = 14.sp)
                     inner()
                 }
@@ -188,9 +209,17 @@ fun TvTextField(
                         append(shown)
                         withStyle(SpanStyle(color = Sov.Accent)) { append("▏") }
                     },
-                    style = style, maxLines = 1, overflow = TextOverflow.StartEllipsis,
+                    style = style,
+                    maxLines = 1,
+                    overflow = TextOverflow.StartEllipsis,
                 )
-                value.isEmpty() -> Text(if (focused) "$label · press A to type" else label, color = Sov.Slate500, fontSize = 14.sp)
+
+                value.isEmpty() -> Text(
+                    if (focused) "$label · press A to type" else label,
+                    color = Sov.Slate500,
+                    fontSize = 14.sp,
+                )
+
                 else -> Text(shown, style = style, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }

@@ -1,17 +1,17 @@
 package media.sovereign.sovemu.ui
 
 import androidx.activity.ComponentActivity
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.assertIsFocused
-import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import media.sovereign.sovemu.Load
+import media.sovereign.sovemu.core.Game
 import media.sovereign.sovemu.core.GameIndex
 import media.sovereign.sovemu.core.HomeFeed
-import media.sovereign.sovemu.core.Game
 import media.sovereign.sovemu.core.SystemSummary
 import media.sovereign.sovemu.core.graphql.fragment.GameFields
 import org.junit.Assert.assertEquals
@@ -39,7 +39,9 @@ class ContinuePlayingTest {
     private fun home(recent: Game) = rule.setContent {
         TestApp {
             HomeScreen(
-                Load.Ready(HomeFeed(featured = emptyList(), recent = listOf(recent), added = emptyList())),
+                Load.Ready(
+                    HomeFeed(featured = emptyList(), recent = listOf(recent), added = emptyList()),
+                ),
                 listOf(system()),
                 onPlay = { g, start -> played += g.id to start },
                 onSystem = { s: SystemSummary, open -> opened += s.id to open },
@@ -109,7 +111,10 @@ class ContinuePlayingTest {
         rule.setContent {
             TestApp {
                 SystemScreen(
-                    LocalApi.current, system(), Load.Ready(GameIndex(listOf(game(id = 7, title = "Zelda")))),
+                    LocalApi.current, system(),
+                    Load.Ready(
+                        GameIndex(listOf(game(id = 7, title = "Zelda"))),
+                    ),
                     openFirst = 7, sort = media.sovereign.sovemu.core.GameSort.TITLE, onSort = {},
                     onPlay = { _, _ -> }, onFavourite = { _, _ -> null }, onCollectionsChanged = {},
                     onPatch = { _, _ -> null },

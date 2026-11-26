@@ -35,17 +35,20 @@ class PairingScreenTest {
         intervalSeconds = 5,
     )
 
-    private fun show(state: PairingUi, password: Boolean = true, actions: MutableList<String> = mutableListOf()) =
-        rule.setContent {
-            TestApp {
-                PairingScreen(
-                    state,
-                    onNewCode = { actions += "new" },
-                    onUsePassword = if (password) ({ actions += "password" }) else null,
-                    onChangeServer = { actions += "server" },
-                )
-            }
+    private fun show(
+        state: PairingUi,
+        password: Boolean = true,
+        actions: MutableList<String> = mutableListOf(),
+    ) = rule.setContent {
+        TestApp {
+            PairingScreen(
+                state,
+                onNewCode = { actions += "new" },
+                onUsePassword = if (password) ({ actions += "password" }) else null,
+                onChangeServer = { actions += "server" },
+            )
         }
+    }
 
     @Test
     fun showsTheCodeWhereToEnterItAndItsQrCode() {
@@ -54,9 +57,14 @@ class PairingScreenTest {
         rule.onNodeWithText("192.168.1.10:8080/device").assertExists()
         rule.onNodeWithText("BCDF-GHJK").assertExists()
         // Waiting, and how long the code has left (a second may already have gone).
-        rule.onNodeWithText("Waiting for you to approve… · Expires in ", substring = true).assertExists()
+        rule.onNodeWithText(
+            "Waiting for you to approve… · Expires in ",
+            substring = true,
+        ).assertExists()
         rule.onNodeWithText("Expires in 9:5", substring = true).assertExists()
-        rule.onNodeWithContentDescription("QR code for ${code.verificationUriComplete}").assertExists()
+        rule.onNodeWithContentDescription(
+            "QR code for ${code.verificationUriComplete}",
+        ).assertExists()
         rule.onNodeWithText("secret", substring = true).assertDoesNotExist()
         // Nothing to retry while it waits; the password is the first thing to reach with a remote.
         rule.onNodeWithText(PairingText.NEW_CODE).assertDoesNotExist()

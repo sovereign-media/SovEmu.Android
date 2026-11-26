@@ -32,7 +32,9 @@ class FrameLatency(private val capacity: Int = DEFAULT_CAPACITY) {
     /** How frames are told apart across the decoder. */
     enum class Match { UNKNOWN, RENDER_TIME, CAPTURE_TIME, COUNT }
 
-    /** An acked input not yet recorded; [frame] is null until a frame entering the decoder is bound. */
+    /**
+     * An acked input not yet recorded; [frame] is null until a frame entering the decoder is bound.
+     */
     private class Pending(val sentMs: Long, val arrivedMs: Long, val frame: Entered?)
 
     /** A frame going into the decoder: its render time (ms), capture time (ns) and its number. */
@@ -59,7 +61,13 @@ class FrameLatency(private val capacity: Int = DEFAULT_CAPACITY) {
         while (true) {
             val current = pending.get()
             if (current != null && age(nowMs, current.arrivedMs) <= PENDING_TIMEOUT_MS) return
-            if (pending.compareAndSet(current, Pending(clientTimeMs and MASK, nowMs and MASK, null))) return
+            if (pending.compareAndSet(
+                    current,
+                    Pending(clientTimeMs and MASK, nowMs and MASK, null),
+                )
+            ) {
+                return
+            }
         }
     }
 
@@ -77,7 +85,10 @@ class FrameLatency(private val capacity: Int = DEFAULT_CAPACITY) {
         }
         val current = pending.get() ?: return
         if (current.frame != null) return
-        pending.compareAndSet(current, Pending(current.sentMs, current.arrivedMs, Entered(renderTimeMs, captureTimeNs, index)))
+        pending.compareAndSet(
+            current,
+            Pending(current.sentMs, current.arrivedMs, Entered(renderTimeMs, captureTimeNs, index)),
+        )
     }
 
     /** A decoded frame with WebRTC's [timestampNs] was handed to the renderer at [nowMs]. */

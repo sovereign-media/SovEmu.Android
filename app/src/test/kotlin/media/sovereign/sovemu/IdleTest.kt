@@ -102,11 +102,17 @@ class IdleTest {
         assertFalse(idle.on)
     }
 
-    /** A second launch (another launcher's category) reuses the one activity, never stacks a new one. */
+    /**
+     * A second launch (another launcher's category) reuses the one activity, never stacks a new
+     * one.
+     */
     @Test
     fun theActivityIsSingleTask() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
-        val info = context.packageManager.getActivityInfo(ComponentName(context, MainActivity::class.java), 0)
+        val info = context.packageManager.getActivityInfo(
+            ComponentName(context, MainActivity::class.java),
+            0,
+        )
         assertEquals(ActivityInfo.LAUNCH_SINGLE_TASK, info.launchMode)
     }
 }

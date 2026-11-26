@@ -26,12 +26,15 @@ class DecoratedTest {
     val rule = createComposeRule()
 
     /** Batocera's usual frame: 1920x1080 with a 4:3 window 240 px in from each side. */
-    private val frame = GameDecoration("/media/decorations/sovemu/systems/snes.png", 1920, 1080, 0, 240, 0, 240)
+    private val frame =
+        GameDecoration("/media/decorations/sovemu/systems/snes.png", 1920, 1080, 0, 240, 0, 240)
 
     private fun show(width: Int, height: Int, decoration: GameDecoration?) = rule.setContent {
         TestApp {
             Box(Modifier.size(width.dp, height.dp)) {
-                Decorated(decoration, aspect = 4f / 3f) { Box(Modifier.fillMaxSize().testTag("picture")) }
+                Decorated(decoration, aspect = 4f / 3f) {
+                    Box(Modifier.fillMaxSize().testTag("picture"))
+                }
             }
         }
     }

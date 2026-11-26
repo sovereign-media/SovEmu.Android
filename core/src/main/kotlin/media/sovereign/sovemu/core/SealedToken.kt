@@ -7,6 +7,7 @@ package media.sovereign.sovemu.core
  */
 interface Sealer {
     fun seal(plaintext: String): String
+
     /** Throws on something this key did not seal, or a damaged one. */
     fun unseal(sealed: String): String
 }
@@ -45,6 +46,7 @@ class SealedToken(private val store: KeyValue, private val sealer: Sealer) {
             read = true
             return cached
         }
+
         @Synchronized set(token) {
             if (token == null) store.remove(SEALED) else store.put(SEALED, sealer.seal(token))
             store.remove(PLAIN)
@@ -55,6 +57,7 @@ class SealedToken(private val store: KeyValue, private val sealer: Sealer) {
     companion object {
         /** Where the sealed token is kept. */
         const val SEALED = "refresh_token_sealed"
+
         /** Where versions before sealing kept it, in plain text. */
         const val PLAIN = "refresh_token"
     }

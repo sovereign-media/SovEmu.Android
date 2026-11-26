@@ -104,16 +104,27 @@ data class StreamStats(
      * encode, the jitter buffer, decode and half a display refresh at 60 Hz.
      */
     val estimateMs: Double?
-        get() = inputRttP50Ms?.let { it + 8.0 + 2.0 + (jitterBufferMs ?: 0.0) + (decodeMs ?: 0.0) + 8.0 }
+        get() = inputRttP50Ms?.let {
+            it + 8.0 + 2.0 + (jitterBufferMs ?: 0.0) + (decodeMs ?: 0.0) +
+                8.0
+        }
 
     /** Label and value, in the order the overlay shows them. */
     fun rows(): List<Pair<String, String>> = listOf(
         "Estimated button→pixel" to ms(estimateMs, 0),
         "Measured button→frame" to ms(inputToFrameMs?.toDouble(), 0),
-        "Input round trip" to (inputRttP50Ms?.let { p50 -> "$p50 ms · p95 ${inputRttP95Ms ?: "–"}" } ?: "–"),
+        "Input round trip" to
+            (inputRttP50Ms?.let { p50 -> "$p50 ms · p95 ${inputRttP95Ms ?: "–"}" } ?: "–"),
         "Network RTT" to ms(networkRttMs, 1),
         "Jitter buffer" to ms(jitterBufferMs, 1),
-        "Audio delay" to (audioBufferMs?.let { "${num(it, 0)} ms" + (audioTargetMs?.let { t -> " · target ${num(t, 0)}" } ?: "") } ?: "–"),
+        "Audio delay" to
+            (
+                audioBufferMs?.let {
+                    "${num(it, 0)} ms" +
+                        (audioTargetMs?.let { t -> " · target ${num(t, 0)}" } ?: "")
+                }
+                    ?: "–"
+                ),
         "Decode" to ms(decodeMs, 1),
         "Video" to "${width ?: "?"}×${height ?: "?"} @ ${fps?.let { num(it, 0) } ?: "–"} fps",
         "Bitrate" to (kbps?.let { "${num(it, 0)} kbps" } ?: "–"),
@@ -142,31 +153,33 @@ data class StreamStats(
 
     /**
      * The worker's `client stats` message, sent every second while playing (the worker lowers
-     * the bitrate for a client that is not keeping up, and logs it): these values, the client ([client], `android 0.1.0
-     * (Pixel 7, Android 14)`), whether TV game mode was asked for, and once the hardware decoder
-     * is configured, its name and whether it decodes in low-latency mode ([decoder]).
+     * the bitrate for a client that is not keeping up, and logs it): these values, the client
+     * ([client], `android 0.1.0 (Pixel 7, Android 14)`), whether TV game mode was asked for, and
+     * once the hardware decoder is configured, its name and whether it decodes in low-latency
+     * mode ([decoder]).
      */
-    fun encode(client: String, gameMode: Boolean?, decoder: DecoderSetup? = null): ByteArray = Protocol.encodeStats(
-        listOf(
-            "client" to client,
-            "estimate_ms" to estimateMs,
-            "input_to_frame_ms" to inputToFrameMs,
-            "input_rtt_p50_ms" to inputRttP50Ms,
-            "input_rtt_p95_ms" to inputRttP95Ms,
-            "net_rtt_ms" to networkRttMs,
-            "jitter_ms" to jitterBufferMs,
-            "decode_ms" to decodeMs,
-            "width" to width,
-            "height" to height,
-            "fps" to fps,
-            "kbps" to kbps,
-            "packets_lost" to packetsLost,
-            "frames_dropped" to framesDropped,
-            "game_mode" to gameMode,
-            "decoder" to decoder?.codec,
-            "low_latency_decode" to decoder?.lowLatency,
-        ),
-    )
+    fun encode(client: String, gameMode: Boolean?, decoder: DecoderSetup? = null): ByteArray =
+        Protocol.encodeStats(
+            listOf(
+                "client" to client,
+                "estimate_ms" to estimateMs,
+                "input_to_frame_ms" to inputToFrameMs,
+                "input_rtt_p50_ms" to inputRttP50Ms,
+                "input_rtt_p95_ms" to inputRttP95Ms,
+                "net_rtt_ms" to networkRttMs,
+                "jitter_ms" to jitterBufferMs,
+                "decode_ms" to decodeMs,
+                "width" to width,
+                "height" to height,
+                "fps" to fps,
+                "kbps" to kbps,
+                "packets_lost" to packetsLost,
+                "frames_dropped" to framesDropped,
+                "game_mode" to gameMode,
+                "decoder" to decoder?.codec,
+                "low_latency_decode" to decoder?.lowLatency,
+            ),
+        )
 
     private fun ms(x: Double?, digits: Int) = x?.let { "${num(it, digits)} ms" } ?: "–"
     private fun num(x: Double, digits: Int) = String.format(Locale.ROOT, "%.${digits}f", x)
@@ -184,7 +197,11 @@ class StatsSampler {
      * [inputRtts]: the recent input round trips in ms, in any order; [inputToFrameMs]: the
      * measured button→frame ([FrameLatency.medianMs]).
      */
-    fun sample(now: StatsReading, inputRtts: List<Long>, inputToFrameMs: Long? = null): StreamStats {
+    fun sample(
+        now: StatsReading,
+        inputRtts: List<Long>,
+        inputToFrameMs: Long? = null,
+    ): StreamStats {
         val prev = last
         last = now
         val sorted = inputRtts.sorted()
@@ -199,7 +216,10 @@ class StatsSampler {
             inputRttP95Ms = percentile(sorted, 95),
             inputSamples = sorted.size,
             networkRttMs = now.networkRttMs,
-            jitterBufferMs = perFrame(StatsReading::jitterBufferDelay, StatsReading::jitterBufferEmittedCount),
+            jitterBufferMs = perFrame(
+                StatsReading::jitterBufferDelay,
+                StatsReading::jitterBufferEmittedCount,
+            ),
             decodeMs = perFrame(StatsReading::totalDecodeTime, StatsReading::framesDecoded),
             width = now.width,
             height = now.height,
@@ -209,9 +229,18 @@ class StatsSampler {
             decoder = now.decoder,
             inputToFrameMs = inputToFrameMs,
             framesDropped = now.framesDropped,
-            audioBufferMs = perFrame(StatsReading::audioJitterBufferDelay, StatsReading::audioJitterBufferEmittedCount),
-            audioTargetMs = perFrame(StatsReading::audioJitterBufferTargetDelay, StatsReading::audioJitterBufferEmittedCount),
-            audioPlayoutMs = perFrame(StatsReading::audioPlayoutDelay, StatsReading::audioPlayoutSamples),
+            audioBufferMs = perFrame(
+                StatsReading::audioJitterBufferDelay,
+                StatsReading::audioJitterBufferEmittedCount,
+            ),
+            audioTargetMs = perFrame(
+                StatsReading::audioJitterBufferTargetDelay,
+                StatsReading::audioJitterBufferEmittedCount,
+            ),
+            audioPlayoutMs = perFrame(
+                StatsReading::audioPlayoutDelay,
+                StatsReading::audioPlayoutSamples,
+            ),
         )
     }
 }
@@ -262,9 +291,19 @@ fun pipelineRows(
     pipeline ?: return emptyList()
     val video = pipeline.video
     return buildList {
-        add("Stream" to "${codecName(video.codec)} · ${encoderName(video.encoder)} (${if (video.hardware) "GPU" else "CPU"})")
+        add(
+            "Stream" to
+                "${codecName(
+                    video.codec,
+                )} · ${encoderName(video.encoder)} (${if (video.hardware) "GPU" else "CPU"})",
+        )
         if (video.fallbacks.isNotEmpty()) {
-            add("Fell back from" to video.fallbacks.joinToString("; ") { "${encoderName(it.encoder)}: ${it.reason}" })
+            add(
+                "Fell back from" to
+                    video.fallbacks.joinToString("; ") {
+                        "${encoderName(it.encoder)}: ${it.reason}"
+                    },
+            )
         }
         add(
             "Rendering" to when {
@@ -283,7 +322,9 @@ fun pipelineRows(
                 else -> "${pipeline.runAhead} frames"
             },
         )
-        decoder?.let { add("Decoder" to (setup?.let { s -> "${it.label} · ${s.label}" } ?: it.label)) }
+        decoder?.let {
+            add("Decoder" to (setup?.let { s -> "${it.label} · ${s.label}" } ?: it.label))
+        }
     }
 }
 

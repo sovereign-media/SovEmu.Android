@@ -11,7 +11,8 @@ class WatchedTest {
     private class Recording : VideoDecoder {
         var decoded = 0
         var lastInfo: VideoDecoder.DecodeInfo? = VideoDecoder.DecodeInfo(false, 1)
-        override fun initDecode(settings: VideoDecoder.Settings, callback: VideoDecoder.Callback) = VideoCodecStatus.OK
+        override fun initDecode(settings: VideoDecoder.Settings, callback: VideoDecoder.Callback) =
+            VideoCodecStatus.OK
         override fun release() = VideoCodecStatus.OK
         override fun decode(frame: EncodedImage, info: VideoDecoder.DecodeInfo?): VideoCodecStatus {
             decoded++
@@ -29,7 +30,10 @@ class WatchedTest {
     fun aFrameWithoutDecodeInfoIsReportedAndDecoded() {
         val inner = Recording()
         val entered = mutableListOf<Pair<Long, Long>>()
-        val watched = Watched(inner) { renderTimeMs, captureTimeNs -> entered += renderTimeMs to captureTimeNs }
+        val watched = Watched(inner) { renderTimeMs, captureTimeNs ->
+            entered +=
+                renderTimeMs to captureTimeNs
+        }
 
         assertEquals(VideoCodecStatus.OK, watched.decode(image(42), null))
 
@@ -41,7 +45,10 @@ class WatchedTest {
     @Test
     fun aFrameWithDecodeInfoReportsItsRenderTime() {
         val entered = mutableListOf<Pair<Long, Long>>()
-        val watched = Watched(Recording()) { renderTimeMs, captureTimeNs -> entered += renderTimeMs to captureTimeNs }
+        val watched = Watched(Recording()) { renderTimeMs, captureTimeNs ->
+            entered +=
+                renderTimeMs to captureTimeNs
+        }
 
         watched.decode(image(7), VideoDecoder.DecodeInfo(false, 1234))
 

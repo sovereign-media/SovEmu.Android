@@ -8,6 +8,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.junit4.StateRestorationTester
@@ -16,7 +17,6 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.requestFocus
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import org.junit.Rule
 import org.junit.Test
@@ -39,7 +39,14 @@ class FocusMemoryTest {
         val memory = rememberFocusMemory()
         Row {
             for (key in listOf("a", "b", "c")) {
-                Box(Modifier.testTag(key).size(40.dp).remembersFocus(memory, key, initial = key == initial).focusable()) {
+                Box(
+                    Modifier.testTag(key).size(40.dp).remembersFocus(
+                        memory,
+                        key,
+                        initial =
+                            key == initial,
+                    ).focusable(),
+                ) {
                     Text(key)
                 }
             }

@@ -1,133 +1,134 @@
 package media.sovereign.sovemu.ui
 
-import media.sovereign.sovemu.core.CheatsModel
-import android.util.Log
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.IntrinsicSize
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.text.PlatformTextStyle
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.style.LineHeightStyle
-import androidx.compose.ui.text.drawText
-import androidx.compose.ui.text.rememberTextMeasurer
-import media.sovereign.sovemu.core.FrameLatency
-import media.sovereign.sovemu.core.LatencyHistory
-import kotlin.math.roundToInt
-import androidx.activity.compose.BackHandler
-import androidx.compose.ui.text.font.FontFamily
-import media.sovereign.sovemu.core.StatsSampler
-import media.sovereign.sovemu.core.GameStart
-import media.sovereign.sovemu.core.StartScreen
-import media.sovereign.sovemu.core.StartStatus
-import media.sovereign.sovemu.core.ForwardOnly
-import media.sovereign.sovemu.core.describeStart
-import media.sovereign.sovemu.core.newStartId
 import android.os.SystemClock
+import android.util.Log
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.runtime.mutableDoubleStateOf
-import androidx.compose.runtime.mutableLongStateOf
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlinx.coroutines.flow.flowOf
-import media.sovereign.sovemu.core.GameModeState
-import media.sovereign.sovemu.core.pipelineRows
-import media.sovereign.sovemu.minimalPostProcessingSupported
-import media.sovereign.sovemu.core.Protocol
-import media.sovereign.sovemu.core.qualityNotice
-import media.sovereign.sovemu.core.QualityNotice
-import media.sovereign.sovemu.core.formatAgo
-import media.sovereign.sovemu.core.slotRows
-import media.sovereign.sovemu.core.SlotRow
-import media.sovereign.sovemu.core.SaveSlot
-import media.sovereign.sovemu.core.SAVE_SLOTS
-import media.sovereign.sovemu.core.AUTO_SLOT
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.withFrameNanos
-import androidx.compose.ui.focus.focusProperties
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.style.TextOverflow
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.withContext
-import kotlin.coroutines.cancellation.CancellationException
-import media.sovereign.sovemu.Sessions
-import media.sovereign.sovemu.attempt
-import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableDoubleStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlin.coroutines.cancellation.CancellationException
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import media.sovereign.sovemu.ClientEvents
 import media.sovereign.sovemu.Controller
 import media.sovereign.sovemu.LowLatencyWhilePlaying
+import media.sovereign.sovemu.Sessions
 import media.sovereign.sovemu.SovEmuApi
 import media.sovereign.sovemu.Stream
 import media.sovereign.sovemu.StreamView
 import media.sovereign.sovemu.WebRtc
+import media.sovereign.sovemu.attempt
+import media.sovereign.sovemu.core.AUTO_SLOT
 import media.sovereign.sovemu.core.Button
+import media.sovereign.sovemu.core.CheatsModel
+import media.sovereign.sovemu.core.ForwardOnly
+import media.sovereign.sovemu.core.FrameLatency
 import media.sovereign.sovemu.core.Game
 import media.sovereign.sovemu.core.GameDecoration
+import media.sovereign.sovemu.core.GameModeState
+import media.sovereign.sovemu.core.GameStart
+import media.sovereign.sovemu.core.LatencyHistory
 import media.sovereign.sovemu.core.MappingBook
+import media.sovereign.sovemu.core.Protocol
+import media.sovereign.sovemu.core.QualityNotice
+import media.sovereign.sovemu.core.SAVE_SLOTS
+import media.sovereign.sovemu.core.SaveSlot
 import media.sovereign.sovemu.core.SessionInfo
+import media.sovereign.sovemu.core.SlotRow
+import media.sovereign.sovemu.core.StartScreen
+import media.sovereign.sovemu.core.StartStatus
+import media.sovereign.sovemu.core.StatsSampler
 import media.sovereign.sovemu.core.SystemSummary
+import media.sovereign.sovemu.core.describeStart
+import media.sovereign.sovemu.core.formatAgo
+import media.sovereign.sovemu.core.newStartId
+import media.sovereign.sovemu.core.pipelineRows
+import media.sovereign.sovemu.core.qualityNotice
+import media.sovereign.sovemu.core.slotRows
+import media.sovereign.sovemu.minimalPostProcessingSupported
 import org.webrtc.PeerConnection
 
 /** Systems whose picture keeps its own shape rather than a TV's 4:3: the handhelds, and the
  *  Vectrex's portrait tube. */
 private val HANDHELDS = setOf(
-    "gb", "gbc", "gba", "gamegear", "lynx", "ngp", "ngpc", "wswan", "wswanc", "virtualboy", "vectrex",
+    "gb", "gbc", "gba", "gamegear", "lynx", "ngp", "ngpc", "wswan", "wswanc", "virtualboy",
+    "vectrex",
 )
 
 /**
@@ -168,6 +169,7 @@ fun PlayerScreen(
     gameMode: Boolean,
     onEnded: () -> Unit,
     onExit: () -> Unit,
+    modifier: Modifier = Modifier,
     /** Paused (the in-game menu or the controllers screen is open): the screensaver may start. */
     onPaused: (Boolean) -> Unit = {},
 ) {
@@ -175,31 +177,42 @@ fun PlayerScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var info by remember { mutableStateOf<SessionInfo?>(null) }
+
     /** A failure to start, or a lost connection, shown in place of the game. */
     var error by remember { mutableStateOf<String?>(null) }
+
     /** The server's word on how far the start has got (null until it has said), and the bar. */
     var progress by remember { mutableStateOf<StartStatus?>(null) }
     var bar by remember { mutableDoubleStateOf(0.0) }
+
     /** How long the ready session has waited for its first picture. */
     var waitedMs by remember { mutableLongStateOf(0L) }
     var menuOpen by remember { mutableStateOf(false) }
     var stream by remember { mutableStateOf<Stream?>(null) }
     var toast by remember { mutableStateOf<String?>(null) }
     var controllersOpen by remember { mutableStateOf(false) }
+
     /** The stats overlay's rows, label and value; null while it is off or has no sample yet. */
     var readout by remember { mutableStateOf<List<Pair<String, String>>?>(null) }
+
     /** The stream's quality changed: the notice at the top of the screen, for a moment. */
     var quality by remember { mutableStateOf<QualityNotice?>(null) }
+
     /** The overlay's latency graph, and a count of its samples that redraws it once a second. */
     val latencyHistory = remember { LatencyHistory() }
     var latencySamples by remember { mutableIntStateOf(0) }
+
     /** The stream has connected once: a failure after that is a lost connection. */
     var everConnected by remember { mutableStateOf(false) }
+
     /** The disc in the tray (1-based), for a multi-disc game. */
     var disc by remember { mutableStateOf(1) }
     val book = remember(system.id) { MappingBook(system.id) }
     var controls by remember { mutableStateOf(Controls()) }
-    /** Waiting for Continue or Start over (there is an auto save and the player was not asked yet). */
+
+    /**
+     * Waiting for Continue or Start over (there is an auto save and the player was not asked yet).
+     */
     var choice by remember { mutableStateOf<CompletableDeferred<Start>?>(null) }
     // Started at once, and owned by the app: leaving now still stops it once it exists.
     val startId = remember(game.id) { newStartId() }
@@ -220,29 +233,57 @@ fun PlayerScreen(
                 .onFailure { e -> toast = "Default controls: ${e.message}" }
         }
         // The system's labels and the diagrams, for the controllers screen.
-        launch { attempt { api.controls(system.id) }.onSuccess { (sys, layouts) -> controls = Controls(sys, layouts) } }
+        launch {
+            attempt { api.controls(system.id) }
+                .onSuccess { (sys, layouts) -> controls = Controls(sys, layouts) }
+        }
         val ice = async { attempt { api.iceServers() }.getOrDefault(emptyList()) }
         try {
             val how = if (start == Start.Ask) {
                 val saves = attempt { api.states(game.id) }.getOrDefault(emptyList())
-                if (saves.any { it.slot == 0 }) CompletableDeferred<Start>().also { choice = it }.await().also { choice = null } else Start.New
+                if (saves.any { it.slot == 0 }) {
+                    CompletableDeferred<Start>().also { choice = it }.await().also { choice = null }
+                } else {
+                    Start.New
+                }
             } else {
                 start
             }
             val session = starting.await()
-            if (how is Start.FromSlot) attempt { api.loadState(session.id, how.slot) }.onFailure { e -> toast = "Could not load: ${e.message}" }
+            if (how is Start.FromSlot) {
+                attempt { api.loadState(session.id, how.slot) }
+                    .onFailure { e -> toast = "Could not load: ${e.message}" }
+            }
             info = session
             // WebRTC's factory and peer connection are slow to build: not on the main thread.
             // Built whatever happens, so it is closed whatever happens.
             val s = withContext(NonCancellable + Dispatchers.Default) {
-                Stream(context, api, session.id, ClientEvents.clientName(context), ice.await(), controller, renderer) { state ->
-                    if (state == PeerConnection.PeerConnectionState.FAILED) error = "Connection failed"
+                Stream(
+                    context,
+                    api,
+                    session.id,
+                    ClientEvents.clientName(context),
+                    ice.await(),
+                    controller,
+                    renderer,
+                ) { state ->
+                    if (state == PeerConnection.PeerConnectionState.FAILED) {
+                        error = "Connection failed"
+                    }
                     when (state) {
                         PeerConnection.PeerConnectionState.CONNECTED -> everConnected = true
-                        PeerConnection.PeerConnectionState.FAILED, PeerConnection.PeerConnectionState.DISCONNECTED -> {
+
+                        PeerConnection.PeerConnectionState.FAILED,
+                        PeerConnection.PeerConnectionState.DISCONNECTED,
+                        -> {
                             val kind = if (everConnected) "CONNECTION_LOST" else "CONNECTION_FAILED"
-                            ClientEvents.report(kind, "WebRTC ${state.name.lowercase()}", session.id)
+                            ClientEvents.report(
+                                kind,
+                                "WebRTC ${state.name.lowercase()}",
+                                session.id,
+                            )
                         }
+
                         else -> {}
                     }
                 }
@@ -299,14 +340,19 @@ fun PlayerScreen(
             val setup = s.decoder.value
             // Whether the TV's game mode took effect, not only whether it was asked for: read
             // each second, since the display can change (another HDMI input, another TV).
-            val gameModeState = GameModeState.of(currentGameMode, minimalPostProcessingSupported(context))
+            val gameModeState =
+                GameModeState.of(currentGameMode, minimalPostProcessingSupported(context))
             s.sendStats(sample.encode(client, gameModeState.applied, setup))
             // The audio's delays, every ten seconds, overlay or not.
             if (++audioTick % 10 == 0) sample.audioLogfmt()?.let { Log.i(STATS_TAG, it) }
             if (!stats) continue
             readout = sample.rows() + ("TV game mode" to gameModeState.label) +
                 pipelineRows(s.pipeline.value, sample.decoder, setup)
-            latencyHistory.add(sample.inputToFrameMs?.toDouble(), sample.estimateMs, sample.audioBufferMs)
+            latencyHistory.add(
+                sample.inputToFrameMs?.toDouble(),
+                sample.estimateMs,
+                sample.audioBufferMs,
+            )
             latencySamples++
             Log.i(STATS_TAG, sample.logfmt())
             // How the measurement matches frames across the decoder, once it has learned it.
@@ -335,7 +381,8 @@ fun PlayerScreen(
     }
     // The loading screen stays until the game's first picture: a console's BIOS can boot for
     // seconds after the session is ready. A long wait adds a hint.
-    val pictureShown by remember(stream) { stream?.firstFrame ?: flowOf(false) }.collectAsStateWithLifecycle(false)
+    val pictureShown by remember(stream) { stream?.firstFrame ?: flowOf(false) }
+        .collectAsStateWithLifecycle(false)
     LaunchedEffect(info, pictureShown) {
         if (info == null || pictureShown) return@LaunchedEffect
         val since = SystemClock.uptimeMillis()
@@ -369,7 +416,11 @@ fun PlayerScreen(
             still = if (playing && frames == last) still + 1 else 0
             last = frames
             if (still == STALL_SECONDS) {
-                ClientEvents.report("STREAM_STALLED", "no new picture for $STALL_SECONDS s", info?.id)
+                ClientEvents.report(
+                    "STREAM_STALLED",
+                    "no new picture for $STALL_SECONDS s",
+                    info?.id,
+                )
             }
         }
     }
@@ -396,17 +447,27 @@ fun PlayerScreen(
     // Before the game is up there is nothing to resume: Back leaves.
     BackHandler { if (info == null) onExit() else menuOpen = !menuOpen }
 
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    Box(modifier.fillMaxSize().background(Color.Black)) {
         // The console's shape, centred, as on the web: 4:3 for a TV console, the screen's own for a
         // handheld. The whole frame is scaled into this box, never cropped; its decoration (if
         // any) frames it.
-        val aspect = info?.let { if (system.id in HANDHELDS && it.height > 0) it.width.toFloat() / it.height else null } ?: (4f / 3f)
+        val aspect = info?.let {
+            if (system.id in HANDHELDS && it.height > 0) it.width.toFloat() / it.height else null
+        } ?: (4f / 3f)
         Decorated(decoration, aspect) {
             AndroidView({ renderer }, Modifier.fillMaxSize())
         }
         // Input goes to the game while it starts too (some wait for a button), and Back opens the
         // menu over this screen, to quit a game that never draws.
-        GameStart.screen(game.title, error, progress, bar, ready = info != null, pictureShown, waitedMs)?.let { Splash(game, system, it, choice) }
+        GameStart.screen(
+            game.title,
+            error,
+            progress,
+            bar,
+            ready = info != null,
+            pictureShown,
+            waitedMs,
+        )?.let { Splash(game, system, it, choice) }
         if (touchControls && !menuOpen && !controllersOpen && info != null && error == null) {
             TouchController(controller, Modifier.fillMaxSize().safeDrawingPadding())
         }
@@ -421,19 +482,36 @@ fun PlayerScreen(
         quality?.let {
             QualityChip(
                 it,
-                Modifier.align(Alignment.TopCenter).safeDrawingPadding().padding(top = 8.dp, start = 16.dp, end = 16.dp),
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .safeDrawingPadding()
+                    .padding(top = 8.dp, start = 16.dp, end = 16.dp),
             )
         }
         toast?.let {
-            Text(it, color = Color.White, modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp)
-                .clip(RoundedCornerShape(20.dp)).background(Color.Black.copy(alpha = 0.8f)).padding(horizontal = 16.dp, vertical = 8.dp))
+            Text(
+                it,
+                color = Color.White,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(24.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color.Black.copy(alpha = 0.8f))
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            )
         }
         if (controllersOpen) {
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.7f)).safeDrawingPadding(), contentAlignment = Alignment.Center) {
-                ControllersScreen(api, controller, book, controls, system.short) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.7f))
+                    .safeDrawingPadding(),
+                contentAlignment = Alignment.Center,
+            ) {
+                ControllersScreen(api, controller, book, controls, system.short, onClose = {
                     controllersOpen = false
                     menuOpen = true
-                }
+                })
             }
         } else if (menuOpen) {
             InGameMenu(
@@ -447,28 +525,51 @@ fun PlayerScreen(
                     LaunchedEffect(model) { model.load() }
                     val cheats by model.cheats.collectAsStateWithLifecycle()
                     val message by model.message.collectAsStateWithLifecycle()
-                    CheatsPage(cheats, message, model::toggle, model::delete, model::add, first = first)
+                    CheatsPage(
+                        cheats,
+                        message,
+                        model::toggle,
+                        model::delete,
+                        model::add,
+                        first = first,
+                    )
                 },
                 discs = info?.discs ?: 1,
                 disc = disc,
                 onDisc = { n ->
                     scope.launch {
                         toast = info?.let { s ->
-                            attempt { api.setDisc(s.id, n) }.fold({ disc = n; "Disc $n is in" }, { e -> "Could not change disc: ${e.message}" })
+                            attempt { api.setDisc(s.id, n) }.fold(
+                                {
+                                    disc = n
+                                    "Disc $n is in"
+                                },
+                                { e -> "Could not change disc: ${e.message}" },
+                            )
                         }
                         menuOpen = false
                     }
                 },
                 onSaveTo = { slot ->
                     scope.launch {
-                        toast = info?.let { s -> attempt { api.saveState(s.id, slot) }.fold({ "Saved to slot $slot" }, { e -> "Save failed: ${e.message}" }) }
+                        toast = info?.let { s ->
+                            attempt { api.saveState(s.id, slot) }.fold(
+                                { "Saved to slot $slot" },
+                                { e -> "Save failed: ${e.message}" },
+                            )
+                        }
                         menuOpen = false
                     }
                 },
                 onLoadFrom = { slot ->
                     scope.launch {
                         val name = if (slot == AUTO_SLOT) "the auto save" else "slot $slot"
-                        toast = info?.let { s -> attempt { api.loadState(s.id, slot) }.fold({ "Loaded $name" }, { e -> "Load failed: ${e.message}" }) }
+                        toast = info?.let { s ->
+                            attempt { api.loadState(s.id, slot) }.fold(
+                                { "Loaded $name" },
+                                { e -> "Load failed: ${e.message}" },
+                            )
+                        }
                         menuOpen = false
                     }
                 },
@@ -528,7 +629,10 @@ private fun InGameMenu(
             if (first.requestFocus()) return@LaunchedEffect
         }
     }
-    Box(modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.7f)), contentAlignment = Alignment.Center) {
+    Box(
+        modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.7f)),
+        contentAlignment = Alignment.Center,
+    ) {
         Column(
             Modifier.width(if (page == MenuPage.Main) 360.dp else 480.dp)
                 .clip(RoundedCornerShape(16.dp))
@@ -539,7 +643,11 @@ private fun InGameMenu(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                Modifier.padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 SystemBadge(system.short, system.colour())
                 Text(
                     when (page) {
@@ -549,15 +657,30 @@ private fun InGameMenu(
                         MenuPage.Cheats -> "Cheats"
                         MenuPage.Disc -> "Change disc"
                     },
-                    color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
             when (page) {
                 MenuPage.Main -> {
-                    MenuItem("Resume", Lucide.Play, Modifier.focusRequester(first), onClick = onResume)
+                    MenuItem(
+                        "Resume",
+                        Lucide.Play,
+                        Modifier.focusRequester(first),
+                        onClick = onResume,
+                    )
                     MenuItem("Save state", Lucide.Check, onClick = { page = MenuPage.Save })
                     MenuItem("Load state", Lucide.History, onClick = { page = MenuPage.Load })
-                    if (discs > 1) MenuItem("Change disc · disc $disc of $discs", Lucide.Disc3, onClick = { page = MenuPage.Disc })
+                    if (discs > 1) {
+                        MenuItem(
+                            "Change disc · disc $disc of $discs",
+                            Lucide.Disc3,
+                            onClick = { page = MenuPage.Disc },
+                        )
+                    }
                     MenuItem("Cheats", Lucide.Sparkles, onClick = { page = MenuPage.Cheats })
                     MenuItem("Controllers", Lucide.Gamepad2, onClick = onControllers)
                     MenuItem(
@@ -566,10 +689,18 @@ private fun InGameMenu(
                         detail = STATS_WARNING,
                         onClick = { onStatsChange(!stats) },
                     )
-                    Box(Modifier.padding(vertical = 4.dp).fillMaxWidth().height(1.dp).background(Sov.Edge))
+                    Box(
+                        Modifier
+                            .padding(vertical = 4.dp)
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(Sov.Edge),
+                    )
                     MenuItem("Quit game", Lucide.LogOut, onClick = onQuit)
                 }
+
                 MenuPage.Cheats -> cheats(Modifier.focusRequester(first))
+
                 MenuPage.Disc -> for (n in 1..discs) {
                     MenuItem(
                         if (n == disc) "Disc $n · in the console" else "Disc $n",
@@ -577,13 +708,23 @@ private fun InGameMenu(
                         if (n == disc) Modifier.focusRequester(first) else Modifier,
                     ) { onDisc(n) }
                 }
+
                 else -> {
                     val list = slots
                     if (list == null) {
-                        Text("Loading saves…", color = Sov.Slate400, fontSize = 14.sp, modifier = Modifier.padding(12.dp))
+                        Text(
+                            "Loading saves…",
+                            color = Sov.Slate400,
+                            fontSize = 14.sp,
+                            modifier = Modifier.padding(12.dp),
+                        )
                     } else {
                         val saving = page == MenuPage.Save
-                        val rows = slotRows(list, if (saving) SAVE_SLOTS else listOf(AUTO_SLOT) + SAVE_SLOTS, emptyEnabled = saving)
+                        val rows = slotRows(
+                            list,
+                            if (saving) SAVE_SLOTS else listOf(AUTO_SLOT) + SAVE_SLOTS,
+                            emptyEnabled = saving,
+                        )
                         val firstEnabled = rows.indexOfFirst { it.enabled }
                         rows.forEachIndexed { i, row ->
                             SlotItem(
@@ -598,7 +739,10 @@ private fun InGameMenu(
     }
 }
 
-/** A save slot in a picker: its screenshot (or a blank), name and age; dimmed when it cannot be picked. */
+/**
+ * A save slot in a picker: its screenshot (or a blank), name and age; dimmed when it cannot be
+ * picked.
+ */
 @Composable
 private fun SlotItem(row: SlotRow, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val source = remember { MutableInteractionSource() }
@@ -611,13 +755,22 @@ private fun SlotItem(row: SlotRow, modifier: Modifier = Modifier, onClick: () ->
             .graphicsLayer { alpha = if (row.enabled) 1f else 0.4f }
             .clip(RoundedCornerShape(10.dp))
             .background(if (focused) Sov.Accent.copy(alpha = 0.45f) else Color.Transparent)
-            .clickable(interactionSource = source, indication = null, enabled = row.enabled, onClick = onClick)
+            .clickable(
+                interactionSource = source,
+                indication = null,
+                enabled = row.enabled,
+                onClick = onClick,
+            )
             .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Box(
-            Modifier.height(56.dp).aspectRatio(4 / 3f).clip(RoundedCornerShape(6.dp)).background(Color.Black)
+            Modifier
+                .height(56.dp)
+                .aspectRatio(4 / 3f)
+                .clip(RoundedCornerShape(6.dp))
+                .background(Color.Black)
                 .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(6.dp)),
             contentAlignment = Alignment.Center,
         ) {
@@ -627,40 +780,90 @@ private fun SlotItem(row: SlotRow, modifier: Modifier = Modifier, onClick: () ->
             Text(row.label, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             Text(
                 row.save?.let { "Saved " + formatAgo(it.savedAt.toLong(), now) } ?: "Empty",
-                color = Sov.Slate400, fontSize = 13.sp,
+                color = Sov.Slate400,
+                fontSize = 13.sp,
             )
         }
     }
 }
 
-/** While the game loads: its artwork, title and what is happening, and Continue / Start over when asked. */
+/**
+ * While the game loads: its artwork, title and what is happening, and Continue / Start over when
+ * asked.
+ */
 @Composable
-private fun Splash(game: Game, system: SystemSummary, screen: StartScreen, choice: CompletableDeferred<Start>?) {
+private fun Splash(
+    game: Game,
+    system: SystemSummary,
+    screen: StartScreen,
+    choice: CompletableDeferred<Start>?,
+) {
     val colour = system.colour()
     val brush = remember(colour) { tile(colour, 0.25f) }
     Box(Modifier.fillMaxSize().background(Sov.Surface)) {
         Box(Modifier.fillMaxSize().background(brush).graphicsLayer { alpha = 0.35f })
-        Art(game.image ?: game.thumb, Modifier.fillMaxSize(), alpha = 0.25f, sizePx = if (game.image == null) 32 else null)
+        Art(
+            game.image ?: game.thumb,
+            Modifier.fillMaxSize(),
+            alpha = 0.25f,
+            sizePx = if (game.image == null) 32 else null,
+        )
         Column(
             Modifier.align(Alignment.Center).padding(32.dp).widthIn(max = 560.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             SystemBadge(system.short, colour)
-            Text(game.title, color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Black, textAlign = TextAlign.Center)
+            Text(
+                game.title,
+                color = Color.White,
+                fontSize = 32.sp,
+                fontWeight = FontWeight.Black,
+                textAlign = TextAlign.Center,
+            )
             if (choice != null) {
                 val first = remember { FocusRequester() }
                 LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SovButton("Continue", { choice.complete(Start.Continue) }, Modifier.focusRequester(first), icon = Lucide.Play, filledIcon = true)
-                    SovButton("Start over", { choice.complete(Start.New) }, variant = Variant.Outline, icon = Lucide.RotateCcw)
+                    SovButton(
+                        "Continue",
+                        { choice.complete(Start.Continue) },
+                        Modifier.focusRequester(first),
+                        icon = Lucide.Play,
+                        filledIcon = true,
+                    )
+                    SovButton(
+                        "Start over",
+                        { choice.complete(Start.New) },
+                        variant = Variant.Outline,
+                        icon = Lucide.RotateCcw,
+                    )
                 }
             } else {
                 screen.fraction?.let { StartBar(it, Modifier.width(400.dp)) }
-                Text(screen.label, color = Sov.Slate100, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
-                if (screen.detail.isNotEmpty()) Text(screen.detail, color = Sov.Slate400, fontSize = 16.sp, textAlign = TextAlign.Center)
+                Text(
+                    screen.label,
+                    color = Sov.Slate100,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                )
+                if (screen.detail.isNotEmpty()) {
+                    Text(
+                        screen.detail,
+                        color = Sov.Slate400,
+                        fontSize = 16.sp,
+                        textAlign = TextAlign.Center,
+                    )
+                }
                 // How to leave a start that is slow, stuck or failed: B goes to the game.
-                Text(GameStart.MENU_HINT, color = Sov.Slate400, fontSize = 13.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp))
+                Text(
+                    GameStart.MENU_HINT,
+                    color = Sov.Slate400,
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
             }
         }
     }
@@ -700,12 +903,11 @@ private val STATS_TEXT = TextStyle(
 /** Seconds without a new video frame, while playing, before it is reported as a stall. */
 private const val STALL_SECONDS = 3
 
-/** Where stats are turned on, and on the overlay: they cost a little every second. */
 /** How long a notice of a change in quality stays at the top of the screen (Sovereign's 5 s). */
 private const val QUALITY_NOTICE_MS = 5000L
 
+/** Where stats are turned on, and on the overlay: they cost a little every second. */
 internal const val STATS_WARNING = "Showing stats can affect game performance."
-
 
 /**
  * Latency and stream health over the game, as the web client's: a panel in the top-left corner,
@@ -733,7 +935,13 @@ private fun StatsOverlay(
             StatsColumn(rows.subList(half, rows.size))
         }
         LatencyGraph(history, samples, Modifier.padding(top = 6.dp).fillMaxWidth().height(48.dp))
-        Text(STATS_WARNING, Modifier.padding(top = 3.dp), color = Sov.Slate400, fontSize = 9.sp, lineHeight = 11.sp)
+        Text(
+            STATS_WARNING,
+            Modifier.padding(top = 3.dp),
+            color = Sov.Slate400,
+            fontSize = 9.sp,
+            lineHeight = 11.sp,
+        )
     }
 }
 
@@ -746,8 +954,13 @@ private fun StatsColumn(rows: List<Pair<String, String>>, modifier: Modifier = M
         Column(horizontalAlignment = Alignment.End) {
             for ((label, value) in rows) {
                 // The graph's key: a jewel in its line's colour beside each value it draws.
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    GRAPH_KEY[label]?.let { Box(Modifier.size(6.dp).clip(CircleShape).background(it)) }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    GRAPH_KEY[label]?.let {
+                        Box(Modifier.size(6.dp).clip(CircleShape).background(it))
+                    }
                     Text(value, color = Color.White, style = STATS_TEXT)
                 }
             }
@@ -764,18 +977,35 @@ private fun StatsColumn(rows: List<Pair<String, String>>, modifier: Modifier = M
  * redraws.
  */
 @Composable
-private fun LatencyGraph(history: LatencyHistory, samples: () -> Int, modifier: Modifier = Modifier) {
+private fun LatencyGraph(
+    history: LatencyHistory,
+    samples: () -> Int,
+    modifier: Modifier = Modifier,
+) {
     val measurer = rememberTextMeasurer()
-    val label = remember { TextStyle(color = Sov.Slate500, fontSize = 9.sp, fontFamily = FontFamily.Monospace) }
-    val audioLabel = remember { TextStyle(color = Sov.Amber200, fontSize = 9.sp, fontFamily = FontFamily.Monospace) }
-    val latest = remember { TextStyle(color = Sov.Accent, fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold) }
+    val label = remember {
+        TextStyle(color = Sov.Slate500, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+    }
+    val audioLabel = remember {
+        TextStyle(color = Sov.Amber200, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+    }
+    val latest = remember {
+        TextStyle(
+            color = Sov.Accent,
+            fontSize = 10.sp,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
     val measuredPath = remember { Path() }
     val estimatedPath = remember { Path() }
     val audioPath = remember { Path() }
     Canvas(modifier) {
         samples()
         val top = history.scaleMaxMs()
-        val latestText = history.latestMeasured?.let { measurer.measure("${it.roundToInt()} ms", latest) }
+        val latestText = history.latestMeasured?.let {
+            measurer.measure("${it.roundToInt()} ms", latest)
+        }
         val right = size.width - (latestText?.size?.width ?: 0) - 4.dp.toPx()
         fun y(ms: Double) = (size.height * (1 - ms / top)).toFloat()
         // The audio's delay has a scale of its own (it runs several times the button's): its
@@ -860,7 +1090,10 @@ private fun MenuItem(
 @Composable
 private fun TouchController(controller: Controller, modifier: Modifier) {
     Box(modifier.padding(24.dp)) {
-        Column(Modifier.align(Alignment.BottomStart), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            Modifier.align(Alignment.BottomStart),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
             Pad("▲", Button.UP, controller)
             Row {
                 Pad("◀", Button.LEFT, controller)
@@ -869,7 +1102,10 @@ private fun TouchController(controller: Controller, modifier: Modifier) {
             }
             Pad("▼", Button.DOWN, controller)
         }
-        Row(Modifier.align(Alignment.BottomCenter), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Row(
+            Modifier.align(Alignment.BottomCenter),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
             Pad("Select", Button.SELECT, controller, width = 72.dp, height = 32.dp)
             Pad("Start", Button.START, controller, width = 72.dp, height = 32.dp)
         }
@@ -879,7 +1115,10 @@ private fun TouchController(controller: Controller, modifier: Modifier) {
                 .background(Color.White.copy(alpha = 0.18f)).clickable { controller.requestMenu() },
             contentAlignment = Alignment.Center,
         ) { LucideIcon(Lucide.Menu, tint = Color.White.copy(alpha = 0.9f)) }
-        Column(Modifier.align(Alignment.BottomEnd), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            Modifier.align(Alignment.BottomEnd),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
             Pad("X", Button.X, controller, round = true)
             Row {
                 Pad("Y", Button.Y, controller, round = true)
@@ -888,7 +1127,10 @@ private fun TouchController(controller: Controller, modifier: Modifier) {
             }
             Pad("B", Button.B, controller, round = true)
         }
-        Row(Modifier.align(Alignment.TopStart).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(
+            Modifier.align(Alignment.TopStart).fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
             Pad("L", Button.L, controller, width = 88.dp, height = 40.dp)
             Pad("R", Button.R, controller, width = 88.dp, height = 40.dp)
         }
@@ -896,7 +1138,14 @@ private fun TouchController(controller: Controller, modifier: Modifier) {
 }
 
 @Composable
-private fun Pad(label: String, button: Button, controller: Controller, round: Boolean = false, width: Dp = 56.dp, height: Dp = 56.dp) {
+private fun Pad(
+    label: String,
+    button: Button,
+    controller: Controller,
+    round: Boolean = false,
+    width: Dp = 56.dp,
+    height: Dp = 56.dp,
+) {
     var pressed by remember { mutableStateOf(false) }
     Box(
         Modifier
@@ -917,6 +1166,11 @@ private fun Pad(label: String, button: Button, controller: Controller, round: Bo
             },
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, color = Color.White.copy(alpha = 0.9f), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+        Text(
+            label,
+            color = Color.White.copy(alpha = 0.9f),
+            fontWeight = FontWeight.Bold,
+            fontSize = 14.sp,
+        )
     }
 }

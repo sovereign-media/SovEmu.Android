@@ -48,7 +48,10 @@ class GameStartTest {
         assertEquals(0.12, describeStart(status(StartPhase.CORE)).fraction, 1e-9)
         assertEquals(1.0, describeStart(status(StartPhase.READY)).fraction, 0.0)
         val failed = describeStart(status(StartPhase.FAILED, error = "no core installed"))
-        assertEquals(listOf("Could not start", "no core installed"), listOf(failed.label, failed.detail))
+        assertEquals(
+            listOf("Could not start", "no core installed"),
+            listOf(failed.label, failed.detail),
+        )
     }
 
     @Test
@@ -73,7 +76,10 @@ class GameStartTest {
     fun `waiting for the first picture counts the wait and says how to leave`() {
         assertEquals(LaunchView("Starting the game", "", 1.0), describeFirstPicture(500))
         assertEquals("6 s", describeFirstPicture(6200).detail)
-        assertEquals("21 s · still no picture: Back opens the menu", describeFirstPicture(21_000).detail)
+        assertEquals(
+            "21 s · still no picture: Back opens the menu",
+            describeFirstPicture(21_000).detail,
+        )
     }
 
     private fun screen(
@@ -94,7 +100,10 @@ class GameStartTest {
     fun `while the session starts, the server's phase over the forward-only bar`() {
         assertEquals(
             StartScreen("Loading the game", "32 of 64 MB · 5 s", 0.6),
-            screen(progress = status(read = 32 * mib, total = 64 * mib, elapsedMs = 5000.0), bar = 0.6),
+            screen(
+                progress = status(read = 32 * mib, total = 64 * mib, elapsedMs = 5000.0),
+                bar = 0.6,
+            ),
         )
     }
 
@@ -108,8 +117,14 @@ class GameStartTest {
 
     @Test
     fun `a ready session waits for the first picture with a full bar`() {
-        assertEquals(StartScreen("Starting the game", "", 1.0), screen(progress = status(StartPhase.READY), ready = true))
-        assertEquals("21 s · still no picture: Back opens the menu", screen(ready = true, waitedMs = 21_000)!!.detail)
+        assertEquals(
+            StartScreen("Starting the game", "", 1.0),
+            screen(progress = status(StartPhase.READY), ready = true),
+        )
+        assertEquals(
+            "21 s · still no picture: Back opens the menu",
+            screen(ready = true, waitedMs = 21_000)!!.detail,
+        )
     }
 
     @Test
@@ -119,7 +134,10 @@ class GameStartTest {
 
     @Test
     fun `an error wins, without a bar`() {
-        assertEquals(StartScreen("Connection failed"), screen(error = "Connection failed", ready = true, pictureShown = true))
+        assertEquals(
+            StartScreen("Connection failed"),
+            screen(error = "Connection failed", ready = true, pictureShown = true),
+        )
         assertEquals(StartScreen("Could not start: x"), screen(error = "Could not start: x"))
     }
 

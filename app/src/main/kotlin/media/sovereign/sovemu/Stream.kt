@@ -1,28 +1,32 @@
 package media.sovereign.sovemu
 
 import android.content.Context
-import android.media.AudioAttributes
 import android.hardware.display.DisplayManager
+import android.media.AudioAttributes
 import android.util.Log
 import android.view.Display
+import java.nio.ByteBuffer
+import java.util.concurrent.ConcurrentLinkedDeque
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlin.coroutines.suspendCoroutine
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.cancel
-import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import media.sovereign.sovemu.core.Capabilities
 import media.sovereign.sovemu.core.DecoderSetup
 import media.sovereign.sovemu.core.FrameLatency
@@ -46,14 +50,10 @@ import org.webrtc.RTCStatsReport
 import org.webrtc.RtpReceiver
 import org.webrtc.RtpTransceiver
 import org.webrtc.SdpObserver
-import org.webrtc.audio.JavaAudioDeviceModule
 import org.webrtc.SessionDescription
 import org.webrtc.VideoSink
 import org.webrtc.VideoTrack
-import java.nio.ByteBuffer
-import java.util.concurrent.ConcurrentLinkedDeque
-import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
+import org.webrtc.audio.JavaAudioDeviceModule
 
 /** One process-wide WebRTC factory. */
 object WebRtc {
@@ -66,12 +66,17 @@ object WebRtc {
      */
     @Volatile var onDecoder: ((DecoderSetup) -> Unit)? = null
 
-    /** Hears each encoded frame going into a decoder (render time ms, capture time ns); as [onDecoder]. */
+    /**
+     * Hears each encoded frame going into a decoder (render time ms, capture time ns); as
+     * [onDecoder].
+     */
     @Volatile var onFrameEntered: ((Long, Long) -> Unit)? = null
 
     fun factory(context: Context): PeerConnectionFactory = factory ?: run {
         PeerConnectionFactory.initialize(
-            PeerConnectionFactory.InitializationOptions.builder(context.applicationContext).createInitializationOptions(),
+            PeerConnectionFactory.InitializationOptions.builder(
+                context.applicationContext,
+            ).createInitializationOptions(),
         )
         // A game's sound, not a call's: played as game audio on the low-latency output path,
         // in stereo. (WebRTC's default is a voice call's: mono, on the ordinary path.)
@@ -104,11 +109,16 @@ object WebRtc {
                 Log.i(STATS_TAG, setup.logfmt())
                 onDecoder?.invoke(setup)
             },
-            onFrameEntered = { renderTimeMs, captureTimeNs -> onFrameEntered?.invoke(renderTimeMs, captureTimeNs) },
+            onFrameEntered = { renderTimeMs, captureTimeNs ->
+                onFrameEntered?.invoke(renderTimeMs, captureTimeNs)
+            },
         )
     }
 
-    /** The decoder each codec would get, asked of the device once (it does not change while the app runs). */
+    /**
+     * The decoder each codec would get, asked of the device once (it does not change while the app
+     * runs).
+     */
     private val decoderChoices by lazy { decoders.describe() }
 
     /**
@@ -117,10 +127,18 @@ object WebRtc {
      * Call it after [factory], off the main thread: the first call asks the device's codecs.
      */
     fun capabilities(context: Context): ClientCapabilitiesInput {
-        val mode = context.getSystemService(DisplayManager::class.java).getDisplay(Display.DEFAULT_DISPLAY).mode
-        val screen = ScreenMode(mode.physicalWidth, mode.physicalHeight, mode.refreshRate.toDouble())
+        val mode = context.getSystemService(
+            DisplayManager::class.java,
+        ).getDisplay(Display.DEFAULT_DISPLAY).mode
+        val screen =
+            ScreenMode(mode.physicalWidth, mode.physicalHeight, mode.refreshRate.toDouble())
         return Capabilities.document(decoderChoices, screen).also {
-            Log.i(STATS_TAG, "capabilities decoders=\"${Capabilities.summary(it)}\" display=${screen.width}x${screen.height}@${screen.refreshHz}")
+            Log.i(
+                STATS_TAG,
+                "capabilities decoders=\"${Capabilities.summary(
+                    it,
+                )}\" display=${screen.width}x${screen.height}@${screen.refreshHz}",
+            )
         }
     }
 
@@ -155,6 +173,7 @@ class Stream(
     private val appContext = context.applicationContext
     private val iceGathered = CompletableDeferred<Unit>()
     private var pump: Job? = null
+
     @Volatile var suspended = false
 
     /** Recent input round trips in ms (input → applied on a frame → ack). */
@@ -242,7 +261,9 @@ class Stream(
     init {
         WebRtc.onDecoder = decoderListener
         WebRtc.onFrameEntered = frameEntered
-        val recvOnly = RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.RECV_ONLY)
+        val recvOnly = RtpTransceiver.RtpTransceiverInit(
+            RtpTransceiver.RtpTransceiverDirection.RECV_ONLY,
+        )
         pc.addTransceiver(MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO, recvOnly)
         pc.addTransceiver(MediaStreamTrack.MediaType.MEDIA_TYPE_AUDIO, recvOnly)
         channel = pc.createDataChannel(
@@ -254,6 +275,7 @@ class Stream(
         )
         channel.registerObserver(object : DataChannel.Observer {
             override fun onBufferedAmountChange(previous: Long) {}
+
             // The worker lets go of held input when this closes; say so, for the log.
             override fun onStateChange() {
                 Log.i(TAG, "input channel ${channel.state()}")
@@ -281,10 +303,13 @@ class Stream(
 
     suspend fun connect() {
         val offer = suspendCoroutine<SessionDescription?> { cont ->
-            pc.createOffer(object : SdpAdapter() {
-                override fun onCreateSuccess(sdp: SessionDescription) = cont.resume(sdp)
-                override fun onCreateFailure(error: String?) = cont.resume(null)
-            }, MediaConstraints())
+            pc.createOffer(
+                object : SdpAdapter() {
+                    override fun onCreateSuccess(sdp: SessionDescription) = cont.resume(sdp)
+                    override fun onCreateFailure(error: String?) = cont.resume(null)
+                },
+                MediaConstraints(),
+            )
         } ?: error("could not create an offer")
         setLocal(offer)
         withTimeoutOrNull(1500) { iceGathered.await() }
@@ -297,17 +322,25 @@ class Stream(
     }
 
     private suspend fun setLocal(sdp: SessionDescription) = suspendCoroutine { cont ->
-        pc.setLocalDescription(object : SdpAdapter() {
-            override fun onSetSuccess() = cont.resume(Unit)
-            override fun onSetFailure(error: String?) = cont.resumeWithException(IllegalStateException("Local description: $error"))
-        }, sdp)
+        pc.setLocalDescription(
+            object : SdpAdapter() {
+                override fun onSetSuccess() = cont.resume(Unit)
+                override fun onSetFailure(error: String?) =
+                    cont.resumeWithException(IllegalStateException("Local description: $error"))
+            },
+            sdp,
+        )
     }
 
     private suspend fun setRemote(sdp: SessionDescription) = suspendCoroutine { cont ->
-        pc.setRemoteDescription(object : SdpAdapter() {
-            override fun onSetSuccess() = cont.resume(Unit)
-            override fun onSetFailure(error: String?) = cont.resumeWithException(IllegalStateException("Remote description: $error"))
-        }, sdp)
+        pc.setRemoteDescription(
+            object : SdpAdapter() {
+                override fun onSetSuccess() = cont.resume(Unit)
+                override fun onSetFailure(error: String?) =
+                    cont.resumeWithException(IllegalStateException("Remote description: $error"))
+            },
+            sdp,
+        )
     }
 
     /**
@@ -333,18 +366,26 @@ class Stream(
                 count = maxOf(count, r.count)
                 val buttons = r.ports.take(count)
                 val analog = r.analog.take(count)
-                val hotkeys = (if (r.fastForward) 1 else 0) or (if (r.rewind) 2 else 0) or (if (paused) 4 else 0)
+                val hotkeys =
+                    (if (r.fastForward) 1 else 0) or (if (r.rewind) 2 else 0) or
+                        (if (paused) 4 else 0)
                 val now = System.currentTimeMillis()
                 if (buttons != sent || hotkeys != sentHotkeys || now - lastSend > 100) {
                     seq++
                     send(Protocol.encodeInput(seq, now32().toInt(), buttons.toIntArray()))
-                    if (hotkeys != sentHotkeys || hotkeys != 0) send(Protocol.encodeHotkeys(r.fastForward, r.rewind, paused))
+                    if (hotkeys != sentHotkeys ||
+                        hotkeys != 0
+                    ) {
+                        send(Protocol.encodeHotkeys(r.fastForward, r.rewind, paused))
+                    }
                     sent = buttons
                     sentHotkeys = hotkeys
                     lastSend = now
                 }
                 // Sticks: on change, and as a heartbeat while any is off-centre.
-                if (analog != sentAnalog || (analog.any { !it.centred } && now - lastAnalogSend > 100)) {
+                if (analog != sentAnalog ||
+                    (analog.any { !it.centred } && now - lastAnalogSend > 100)
+                ) {
                     analogSeq++
                     send(Protocol.encodeAnalog(analogSeq, analog))
                     sentAnalog = analog
@@ -364,17 +405,24 @@ class Stream(
      */
     suspend fun readStats(): StatsReading? {
         if (closed.get()) return null
-        return suspendCancellableCoroutine { cont -> pc.getStats { report -> cont.resume(reading(report)) } }
+        return suspendCancellableCoroutine { cont ->
+            pc.getStats { report -> cont.resume(reading(report)) }
+        }
     }
 
     private fun reading(report: RTCStatsReport): StatsReading {
         val all = report.statsMap.values
         fun Map<String, Any?>.num(key: String) = (this[key] as? Number)?.toDouble()
-        val video = all.firstOrNull { it.type == "inbound-rtp" && it.members["kind"] == "video" }?.members.orEmpty()
-        val audio = all.firstOrNull { it.type == "inbound-rtp" && it.members["kind"] == "audio" }?.members.orEmpty()
+        val video = all.firstOrNull {
+            it.type == "inbound-rtp" && it.members["kind"] == "video"
+        }?.members.orEmpty()
+        val audio = all.firstOrNull {
+            it.type == "inbound-rtp" && it.members["kind"] == "audio"
+        }?.members.orEmpty()
         val playout = all.firstOrNull { it.type == "media-playout" }?.members.orEmpty()
         val pair = all.firstOrNull {
-            it.type == "candidate-pair" && it.members["nominated"] == true && it.members["state"] == "succeeded"
+            it.type == "candidate-pair" && it.members["nominated"] == true &&
+                it.members["state"] == "succeeded"
         }?.members.orEmpty()
         return StatsReading(
             atMs = (report.timestampUs / 1000).toLong(),
@@ -386,7 +434,13 @@ class Stream(
             framesPerSecond = video.num("framesPerSecond"),
             width = video.num("frameWidth")?.toInt(),
             height = video.num("frameHeight")?.toInt(),
-            packetsLost = ((video.num("packetsLost") ?: 0.0) + (audio.num("packetsLost") ?: 0.0)).toLong(),
+            packetsLost = (
+                (
+                    video.num(
+                        "packetsLost",
+                    ) ?: 0.0
+                    ) + (audio.num("packetsLost") ?: 0.0)
+                ).toLong(),
             networkRttMs = pair.num("currentRoundTripTime")?.let { it * 1000 },
             decoder = (video["decoderImplementation"] as? String)?.let {
                 VideoDecoder(it, video["powerEfficientDecoder"] as? Boolean)
@@ -434,6 +488,7 @@ class Stream(
 
     private companion object {
         const val TAG = "SovEmu.Stream"
+
         /** Nothing held: what the game gets while the menu is open. */
         val IDLE = InputMixer.Reading(
             ports = List(Protocol.MAX_PORTS) { 0 },

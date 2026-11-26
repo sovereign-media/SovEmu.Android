@@ -1,5 +1,6 @@
 package media.sovereign.sovemu
 
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
@@ -8,7 +9,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import kotlin.coroutines.cancellation.CancellationException
 
 class AsyncTest {
     @Test

@@ -4,7 +4,12 @@ package media.sovereign.sovemu.core
  * One thing that went wrong on this device, for the server's log (`reportClientEvents`, logged
  * as `client event` beside the game's own lines). [kind] is a `ClientEventKind` name.
  */
-data class ClientEvent(val kind: String, val message: String, val sessionId: String?, val at: Double)
+data class ClientEvent(
+    val kind: String,
+    val message: String,
+    val sessionId: String?,
+    val at: Double,
+)
 
 /**
  * Gathers events for the server: each distinct one once (a fault repeating every frame is sent

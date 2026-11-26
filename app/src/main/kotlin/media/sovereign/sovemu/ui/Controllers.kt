@@ -1,28 +1,27 @@
 package media.sovereign.sovemu.ui
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.border
-import media.sovereign.sovemu.attempt
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
@@ -48,18 +47,18 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import media.sovereign.sovemu.Controller
 import media.sovereign.sovemu.SovEmuApi
+import media.sovereign.sovemu.attempt
+import media.sovereign.sovemu.core.Binding
 import media.sovereign.sovemu.core.Button
 import media.sovereign.sovemu.core.Controllers
 import media.sovereign.sovemu.core.InputDeviceInfo
 import media.sovereign.sovemu.core.Mapping
 import media.sovereign.sovemu.core.MappingBook
 import media.sovereign.sovemu.core.MappingScope
-import media.sovereign.sovemu.core.highlight
 import media.sovereign.sovemu.core.Protocol
 import media.sovereign.sovemu.core.RebindCapture
-import media.sovereign.sovemu.core.Binding
 import media.sovereign.sovemu.core.SystemStick
-
+import media.sovereign.sovemu.core.highlight
 
 /**
  * The in-game controller settings: every connected device with its player, and per device its
@@ -75,6 +74,7 @@ fun ControllersScreen(
     controls: Controls,
     systemShort: String,
     onClose: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val devices by controller.devices.collectAsState()
     var selected by remember { mutableStateOf<Int?>(null) }
@@ -87,14 +87,28 @@ fun ControllersScreen(
     Column(
         // The device list is as tall as its devices (centred by the overlay; it scrolls if it ever
         // outgrows the screen); the bindings page takes the screen for its diagrams.
-        (if (device == null) Modifier.width(560.dp) else Modifier.fillMaxWidth(0.97f).fillMaxHeight(0.96f))
-            .clip(RoundedCornerShape(16.dp)).background(Sov.Panel).border(1.dp, Sov.Edge, RoundedCornerShape(16.dp)).padding(20.dp),
+        modifier
+            .then(
+                if (device == null) {
+                    Modifier.width(560.dp)
+                } else {
+                    Modifier.fillMaxWidth(0.97f).fillMaxHeight(0.96f)
+                },
+            )
+            .clip(RoundedCornerShape(16.dp))
+            .background(Sov.Panel)
+            .border(1.dp, Sov.Edge, RoundedCornerShape(16.dp))
+            .padding(20.dp),
     ) {
         if (device == null) {
             DeviceList(devices, controller, onOpen = { selected = it }, onClose = onClose)
         } else {
             Bindings(
-                controller, book, controls, systemShort, device,
+                controller,
+                book,
+                controls,
+                systemShort,
+                device,
                 // Saving and resetting go to the server, then everything in force is read again
                 // (both scopes), so the game and this page use what now applies.
                 save = { model, scope, name, bindings ->
@@ -113,57 +127,129 @@ fun ControllersScreen(
 }
 
 @Composable
-private fun ColumnScope.DeviceList(devices: List<InputDeviceInfo>, controller: Controller, onOpen: (Int) -> Unit, onClose: () -> Unit) {
+private fun ColumnScope.DeviceList(
+    devices: List<InputDeviceInfo>,
+    controller: Controller,
+    onOpen: (Int) -> Unit,
+    onClose: () -> Unit,
+) {
     val first = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
         LucideIcon(Lucide.Gamepad2, tint = Sov.Accent, size = 24.dp)
         Text("Controllers", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
     }
     Text(
-        "Each controller is its own player; choose another for this session. A player is only ever one device. " +
+        "Each controller is its own player; choose another for this session. " +
+            "A player is only ever one device. " +
             "The keyboard and touch controls are player 1 unless moved.",
-        color = Sov.Muted, fontSize = 13.sp, lineHeight = 19.sp, modifier = Modifier.padding(top = 6.dp, bottom = 12.dp),
+        color = Sov.Muted,
+        fontSize = 13.sp,
+        lineHeight = 19.sp,
+        modifier = Modifier.padding(top = 6.dp, bottom = 12.dp),
     )
-    Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(
+        Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
         if (devices.isEmpty()) {
-            Text("No controller or keyboard connected.", color = Sov.Slate300, modifier = Modifier.padding(vertical = 8.dp))
+            Text(
+                "No controller or keyboard connected.",
+                color = Sov.Slate300,
+                modifier = Modifier.padding(vertical = 8.dp),
+            )
         }
         devices.forEachIndexed { i, d ->
             Column(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Sov.Surface.copy(alpha = 0.6f))
-                    .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp)).padding(14.dp),
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Sov.Surface.copy(alpha = 0.6f))
+                    .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
+                    .padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Box(Modifier.size(40.dp).clip(CircleShape).background(Sov.Accent.copy(alpha = 0.2f)), contentAlignment = Alignment.Center) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Box(
+                        Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(Sov.Accent.copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
                         LucideIcon(Lucide.Gamepad2, tint = Sov.Accent, size = 20.dp)
                     }
                     Column(Modifier.weight(1f)) {
-                        Text(d.name, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                        Text(if (d.isKeyboard) "Keyboard" else d.model.family.title, color = Sov.Slate400, fontSize = 12.sp)
+                        Text(
+                            d.name,
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                        )
+                        Text(
+                            if (d.isKeyboard) "Keyboard" else d.model.family.title,
+                            color = Sov.Slate400,
+                            fontSize = 12.sp,
+                        )
                     }
                     if (!d.isKeyboard) {
-                        SovButton("Identify", { controller.identify(d.device, scope) }, variant = Variant.Glass, icon = Lucide.Vibrate, large = false)
+                        SovButton(
+                            "Identify",
+                            { controller.identify(d.device, scope) },
+                            variant = Variant.Glass,
+                            icon = Lucide.Vibrate,
+                            large = false,
+                        )
                     }
-                    SovButton("Buttons", { onOpen(d.device) }, variant = Variant.Glass, icon = Lucide.SlidersHorizontal, large = false)
+                    SovButton(
+                        "Buttons",
+                        { onOpen(d.device) },
+                        variant = Variant.Glass,
+                        icon = Lucide.SlidersHorizontal,
+                        large = false,
+                    )
                 }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
                     Eyebrow("Player", Modifier.padding(end = 6.dp))
                     for (port in 0 until Protocol.MAX_PORTS) {
                         Toggle(
                             on = d.port == port,
                             onClick = { controller.assign(d.device, port) },
-                            modifier = if (i == 0 && port == (d.port ?: 0)) Modifier.focusRequester(first) else Modifier,
-                        ) { Text("${port + 1}", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
+                            modifier = if (i == 0 && port == (d.port ?: 0)) {
+                                Modifier.focusRequester(first)
+                            } else {
+                                Modifier
+                            },
+                        ) {
+                            Text(
+                                "${port + 1}",
+                                color = Color.White,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
                     }
                 }
             }
         }
     }
     SovButton(
-        "Done", onClose,
-        Modifier.padding(top = 14.dp).fillMaxWidth().then(if (devices.isEmpty()) Modifier.focusRequester(first) else Modifier),
+        "Done",
+        onClose,
+        Modifier
+            .padding(top = 14.dp)
+            .fillMaxWidth()
+            .then(if (devices.isEmpty()) Modifier.focusRequester(first) else Modifier),
         icon = Lucide.Check,
     )
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
@@ -182,7 +268,12 @@ private fun ColumnScope.Bindings(
     systemShort: String,
     device: InputDeviceInfo,
     /** Saves a model's [Mapping]'s bindings for a scope, and reads back what is in force. */
-    save: suspend (model: String, scope: MappingScope, name: String, bindings: List<Binding>) -> Unit,
+    save: suspend (
+        model: String,
+        scope: MappingScope,
+        name: String,
+        bindings: List<Binding>,
+    ) -> Unit,
     /** Removes the user's own mapping for a model in a scope, and reads back what is in force. */
     reset: suspend (model: String, scope: MappingScope) -> Unit,
     onBack: () -> Unit,
@@ -190,9 +281,15 @@ private fun ColumnScope.Bindings(
     val scope = rememberCoroutineScope()
     val model = device.model
     var mappingScope by remember { mutableStateOf(MappingScope.SYSTEM) }
-    var mapping by remember(model.id, mappingScope) { mutableStateOf(book.mapping(model.id, mappingScope)) }
-    var canReset by remember(model.id, mappingScope) { mutableStateOf(book.canReset(model.id, mappingScope)) }
-    var inForce by remember(model.id) { mutableStateOf(MappingBook.sourceText(book.entry(model.id, MappingScope.SYSTEM))) }
+    var mapping by remember(model.id, mappingScope) {
+        mutableStateOf(book.mapping(model.id, mappingScope))
+    }
+    var canReset by remember(model.id, mappingScope) {
+        mutableStateOf(book.canReset(model.id, mappingScope))
+    }
+    var inForce by remember(model.id) {
+        mutableStateOf(MappingBook.sourceText(book.entry(model.id, MappingScope.SYSTEM)))
+    }
     var capturing by remember { mutableStateOf<Button?>(null) }
     var focused by remember { mutableStateOf<Button?>(null) }
     var focusedStick by remember { mutableStateOf<SystemStick?>(null) }
@@ -227,7 +324,8 @@ private fun ColumnScope.Bindings(
                 capturing = null
                 val m = mapping.rebind(button, input)
                 mapping = m
-                // For this system it is in force at once; an every-system one may sit under this system's.
+                // For this system it is in force at once; an every-system one may sit under this
+                // system's.
                 if (mappingScope == MappingScope.SYSTEM) controller.mixer.setMapping(model.id, m)
                 save(m)
             },
@@ -247,63 +345,127 @@ private fun ColumnScope.Bindings(
         Controllers.REMAP_ORDER.map { it to Controllers.buttonLabel(it) }
     }
     val labelOf = rows.toMap()
-    // The system's analog controls, after its buttons: shown, never rebound (sticks are not remapped).
-    val sticks = if (mappingScope == MappingScope.SYSTEM && !device.isKeyboard) system?.sticks.orEmpty() else emptyList()
-    val lit = capturing?.let { highlight(it, mapping) } ?: focusedStick?.highlight() ?: focused?.let { highlight(it, mapping) }
-    val pad = if (device.isKeyboard) null else {
-        controls.layouts.firstOrNull { it.id == model.family.layoutId } ?: controls.layouts.firstOrNull { it.id == "generic" }
+    // The system's analog controls, after its buttons: shown, never rebound (sticks are not
+    // remapped).
+    val sticks = if (mappingScope == MappingScope.SYSTEM && !device.isKeyboard) {
+        system?.sticks.orEmpty()
+    } else {
+        emptyList()
+    }
+    val lit = capturing?.let { highlight(it, mapping) }
+        ?: focusedStick?.highlight()
+        ?: focused?.let { highlight(it, mapping) }
+    val pad = if (device.isKeyboard) {
+        null
+    } else {
+        controls.layouts.firstOrNull { it.id == model.family.layoutId }
+            ?: controls.layouts.firstOrNull { it.id == "generic" }
     }
 
     // Header: the device, what is in force, and the scope as a capsule of chips.
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Box(Modifier.size(40.dp).clip(CircleShape).background(Sov.Accent.copy(alpha = 0.2f)), contentAlignment = Alignment.Center) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            Modifier.size(40.dp).clip(CircleShape).background(Sov.Accent.copy(alpha = 0.2f)),
+            contentAlignment = Alignment.Center,
+        ) {
             LucideIcon(Lucide.Gamepad2, tint = Sov.Accent, size = 20.dp)
         }
         Column(Modifier.weight(1f)) {
-            Text(device.name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text(
+                device.name,
+                color = Color.White,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+            )
             Text("In force here: $inForce", color = Sov.Slate400, fontSize = 12.sp)
         }
         ChipStrip {
-            for ((s, label) in listOf(MappingScope.SYSTEM to "This system ($systemShort)", MappingScope.ALL to "All systems")) {
-                Chip(label, if (s == MappingScope.SYSTEM) Lucide.Gamepad2 else Lucide.LayoutGrid, on = mappingScope == s, onClick = {
-                    controller.cancelCapture()
-                    capturing = null
-                    message = null
-                    mappingScope = s
-                })
+            val scopes = listOf(
+                MappingScope.SYSTEM to "This system ($systemShort)",
+                MappingScope.ALL to "All systems",
+            )
+            for ((s, label) in scopes) {
+                Chip(
+                    label,
+                    if (s == MappingScope.SYSTEM) Lucide.Gamepad2 else Lucide.LayoutGrid,
+                    on = mappingScope == s,
+                    onClick = {
+                        controller.cancelCapture()
+                        capturing = null
+                        message = null
+                        mappingScope = s
+                    },
+                )
             }
         }
     }
     val back = Controllers.inputLabel(model.id, model.family, RebindCapture.backInput(model.id))
-    // What to do now: a bright banner while waiting for an input, else a quiet hint (or the result).
+    // What to do now: a bright banner while waiting for an input, else a quiet hint (or the
+    // result).
     val waiting = capturing
     Row(
-        Modifier.padding(vertical = 12.dp).fillMaxWidth().clip(RoundedCornerShape(10.dp))
-            .background(if (waiting != null) Sov.Accent.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.04f))
+        Modifier
+            .padding(vertical = 12.dp)
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(
+                if (waiting != null) {
+                    Sov.Accent.copy(alpha = 0.25f)
+                } else {
+                    Color.White.copy(alpha = 0.04f)
+                },
+            )
             .borderIf(waiting != null, 1.dp, Sov.Accent, RoundedCornerShape(10.dp))
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        LucideIcon(if (waiting != null) Lucide.Gamepad2 else Lucide.CircleAlert, tint = if (waiting != null) Color.White else Sov.Slate400, size = 18.dp)
+        LucideIcon(
+            if (waiting != null) Lucide.Gamepad2 else Lucide.CircleAlert,
+            tint = if (waiting != null) Color.White else Sov.Slate400,
+            size = 18.dp,
+        )
         if (waiting != null) {
             Text("Press a button for ", color = Color.White, fontSize = 15.sp)
             KeyCap(labelOf[waiting] ?: Controllers.buttonLabel(waiting), accent = true)
-            Text("  ·  tap $back to cancel, hold it to bind $back", color = Sov.Slate300, fontSize = 13.sp)
+            Text(
+                "  ·  tap $back to cancel, hold it to bind $back",
+                color = Sov.Slate300,
+                fontSize = 13.sp,
+            )
         } else {
-            Text(message ?: "Pick a button, then press what should drive it.", color = Sov.Slate300, fontSize = 14.sp)
+            Text(
+                message ?: "Pick a button, then press what should drive it.",
+                color = Sov.Slate300,
+                fontSize = 14.sp,
+            )
         }
     }
 
     val list: @Composable (Modifier) -> Unit = { modifier ->
-        Column(modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(
+            modifier.verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
             rows.forEachIndexed { i, (button, label) ->
                 BindingRow(
                     label = label,
-                    inputs = mapping.inputs(button).map { Controllers.inputLabel(model.id, model.family, it) },
+                    inputs = mapping.inputs(button).map {
+                        Controllers.inputLabel(model.id, model.family, it)
+                    },
                     capturing = capturing == button,
                     modifier = if (i == 0) Modifier.focusRequester(first) else Modifier,
-                    onFocused = { if (it) focused = button else if (focused == button) focused = null },
+                    onFocused = {
+                        if (it) {
+                            focused = button
+                        } else if (focused == button) {
+                            focused = null
+                        }
+                    },
                 ) { rebind(button) }
             }
             for (stick in sticks) {
@@ -311,8 +473,18 @@ private fun ColumnScope.Bindings(
                     label = stick.label,
                     inputs = listOf(stick.stickName),
                     capturing = false,
-                    onFocused = { if (it) focusedStick = stick else if (focusedStick == stick) focusedStick = null },
-                ) { message = "${stick.label} is always the ${stick.stickName.lowercase()}: sticks are not remapped" }
+                    onFocused = {
+                        if (it) {
+                            focusedStick = stick
+                        } else if (focusedStick == stick) {
+                            focusedStick = null
+                        }
+                    },
+                ) {
+                    message =
+                        "${stick.label} is always the ${stick.stickName.lowercase()}: " +
+                        "sticks are not remapped"
+                }
             }
         }
     }
@@ -323,11 +495,15 @@ private fun ColumnScope.Bindings(
         )
         if (sideBySide) {
             Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                for ((layout, keys) in parts) DiagramPanel { PadDiagram(layout, keys, Modifier.fillMaxSize().padding(12.dp)) }
+                for ((layout, keys) in parts) {
+                    DiagramPanel { PadDiagram(layout, keys, Modifier.fillMaxSize().padding(12.dp)) }
+                }
             }
         } else {
             Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                for ((layout, keys) in parts) DiagramPanel { PadDiagram(layout, keys, Modifier.fillMaxSize().padding(12.dp)) }
+                for ((layout, keys) in parts) {
+                    DiagramPanel { PadDiagram(layout, keys, Modifier.fillMaxSize().padding(12.dp)) }
+                }
             }
         }
     }
@@ -339,9 +515,11 @@ private fun ColumnScope.Bindings(
         if (!hasDiagrams) {
             list(Modifier.fillMaxSize())
         } else if (w > h) {
-            // Landscape: the pads beside the buttons, side by side or stacked, whichever draws larger.
+            // Landscape: the pads beside the buttons, side by side or stacked, whichever draws
+            // larger.
             val area = w * 0.6f
-            val sideBySide = minOf(area.value / 2 / 160, h.value / 100) >= minOf(area.value / 160, h.value / 2 / 100)
+            val sideBySide = minOf(area.value / 2 / 160, h.value / 100) >=
+                minOf(area.value / 160, h.value / 2 / 100)
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 diagrams(Modifier.weight(1.5f).fillMaxHeight(), sideBySide)
                 list(Modifier.weight(1f).fillMaxHeight())
@@ -354,27 +532,33 @@ private fun ColumnScope.Bindings(
             }
         }
     }
-    Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
-        // Only the user's own mapping in this scope can be reset; what applies next is the server's.
-        if (canReset) SovButton("Reset to defaults", {
-            controller.cancelCapture()
-            capturing = null
-            val s = mappingScope
-            scope.launch {
-                message = attempt {
-                    reset(model.id, s)
-                    mapping = book.mapping(model.id, s)
-                    canReset = book.canReset(model.id, s)
-                    inForce = MappingBook.sourceText(book.entry(model.id, MappingScope.SYSTEM))
-                }.fold(
-                    {
-                        runCatching { first.requestFocus() }
-                        "Back to the defaults"
-                    },
-                    { e -> "Not reset: ${e.message}" },
-                )
-            }
-        }, variant = Variant.Outline, icon = Lucide.RotateCcw)
+    Row(
+        Modifier.fillMaxWidth().padding(top = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+    ) {
+        // Only the user's own mapping in this scope can be reset; what applies next is the
+        // server's.
+        if (canReset) {
+            SovButton("Reset to defaults", {
+                controller.cancelCapture()
+                capturing = null
+                val s = mappingScope
+                scope.launch {
+                    message = attempt {
+                        reset(model.id, s)
+                        mapping = book.mapping(model.id, s)
+                        canReset = book.canReset(model.id, s)
+                        inForce = MappingBook.sourceText(book.entry(model.id, MappingScope.SYSTEM))
+                    }.fold(
+                        {
+                            runCatching { first.requestFocus() }
+                            "Back to the defaults"
+                        },
+                        { e -> "Not reset: ${e.message}" },
+                    )
+                }
+            }, variant = Variant.Outline, icon = Lucide.RotateCcw)
+        }
         SovButton("Back", {
             controller.cancelCapture()
             onBack()
@@ -384,27 +568,40 @@ private fun ColumnScope.Bindings(
 
 /** A diagram on its own panel, sharing the row or column with the other. */
 @Composable
-private fun RowScope.DiagramPanel(content: @Composable () -> Unit) =
-    Box(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(12.dp)).background(Sov.Surface.copy(alpha = 0.6f))) { content() }
+private fun RowScope.DiagramPanel(content: @Composable () -> Unit) = Box(
+    Modifier
+        .weight(1f)
+        .fillMaxHeight()
+        .clip(RoundedCornerShape(12.dp))
+        .background(Sov.Surface.copy(alpha = 0.6f)),
+) { content() }
 
 @Composable
-private fun ColumnScope.DiagramPanel(content: @Composable () -> Unit) =
-    Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Sov.Surface.copy(alpha = 0.6f))) { content() }
+private fun ColumnScope.DiagramPanel(content: @Composable () -> Unit) = Box(
+    Modifier
+        .weight(1f)
+        .fillMaxWidth()
+        .clip(RoundedCornerShape(12.dp))
+        .background(Sov.Surface.copy(alpha = 0.6f)),
+) { content() }
 
 /** A key cap: how an input or a console button is shown (accent while it is being bound). */
 @Composable
-private fun KeyCap(text: String, accent: Boolean = false) =
-    Text(
-        text,
-        color = Color.White,
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Bold,
-        maxLines = 1,
-        modifier = Modifier.clip(RoundedCornerShape(6.dp))
-            .background(if (accent) Sov.Accent else Color.White.copy(alpha = 0.12f))
-            .border(1.dp, Color.White.copy(alpha = if (accent) 0.4f else 0.15f), RoundedCornerShape(6.dp))
-            .padding(horizontal = 8.dp, vertical = 3.dp),
-    )
+private fun KeyCap(text: String, accent: Boolean = false) = Text(
+    text,
+    color = Color.White,
+    fontSize = 13.sp,
+    fontWeight = FontWeight.Bold,
+    maxLines = 1,
+    modifier = Modifier.clip(RoundedCornerShape(6.dp))
+        .background(if (accent) Sov.Accent else Color.White.copy(alpha = 0.12f))
+        .border(
+            1.dp,
+            Color.White.copy(alpha = if (accent) 0.4f else 0.15f),
+            RoundedCornerShape(6.dp),
+        )
+        .padding(horizontal = 8.dp, vertical = 3.dp),
+)
 
 /**
  * One of the system's buttons and what drives it: the console's label, then the bound inputs as
@@ -435,13 +632,25 @@ private fun BindingRow(
                     else -> Color.Transparent
                 },
             )
-            .borderIf(focused || capturing, 2.dp, if (capturing) Sov.Accent else Color.White.copy(alpha = 0.6f), RoundedCornerShape(10.dp))
+            .borderIf(
+                focused || capturing,
+                2.dp,
+                if (capturing) Sov.Accent else Color.White.copy(alpha = 0.6f),
+                RoundedCornerShape(10.dp),
+            )
             .clickable(interactionSource = source, indication = null, onClick = onClick)
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(label, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 1)
+        Text(
+            label,
+            color = Color.White,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+        )
         when {
             capturing -> Text("Press an input…", color = Color.White, fontSize = 13.sp)
             inputs.isEmpty() -> Text("Not bound", color = Sov.Slate500, fontSize = 13.sp)

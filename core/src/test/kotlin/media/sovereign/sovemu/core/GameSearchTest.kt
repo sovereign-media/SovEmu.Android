@@ -12,7 +12,10 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class GameSearchTest {
     private val asked = mutableListOf<String>()
-    private val none: suspend (String) -> List<Game> = { asked += it; emptyList() }
+    private val none: suspend (String) -> List<Game> = {
+        asked += it
+        emptyList()
+    }
 
     @Test
     fun itAsksAfterAPauseAndOnlyForTheLatestQuery() = runTest {

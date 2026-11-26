@@ -39,13 +39,20 @@ object ClientEvents {
         }
     }
 
-    /** Keeps an uncaught exception for the next run to report (nothing can be sent while crashing). */
+    /**
+     * Keeps an uncaught exception for the next run to report (nothing can be sent while crashing).
+     */
     fun recordCrashes(context: Context) {
         val prefs = context.applicationContext.getSharedPreferences("sovemu", Context.MODE_PRIVATE)
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, e ->
-            val at = e.stackTrace.firstOrNull { it.className.startsWith("media.sovereign") } ?: e.stackTrace.firstOrNull()
-            prefs.edit().putString(CRASH_PREF, "${e.javaClass.simpleName}: ${e.message} at $at").commit()
+            val at =
+                e.stackTrace.firstOrNull { it.className.startsWith("media.sovereign") }
+                    ?: e.stackTrace.firstOrNull()
+            prefs.edit().putString(
+                CRASH_PREF,
+                "${e.javaClass.simpleName}: ${e.message} at $at",
+            ).commit()
             previous?.uncaughtException(thread, e)
         }
     }
@@ -58,7 +65,8 @@ object ClientEvents {
         if (pending?.isActive == true) return
         pending = scope.launch {
             delay(GATHER_MS)
-            // `attempt`, not runCatching: a report dropped on failure, but cancellation still stops it.
+            // `attempt`, not runCatching: a report dropped on failure, but cancellation still
+            // stops it.
             for (batch in queue.take()) attempt { api?.reportClientEvents(client, batch) }
         }
     }
@@ -68,8 +76,11 @@ object ClientEvents {
         "android ${version(context)} (${Build.MODEL}, Android ${Build.VERSION.RELEASE})"
 
     /** `SovEmu for Android 0.1.0 · MiTV-AFMU1`: this sign-in, on the admin's Devices page. */
-    fun deviceName(context: Context): String = "SovEmu for Android ${version(context)} · ${Build.MODEL}"
+    fun deviceName(context: Context): String =
+        "SovEmu for Android ${version(context)} · ${Build.MODEL}"
 
-    private fun version(context: Context): String =
-        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "?"
+    private fun version(context: Context): String = runCatching {
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName
+    }.getOrNull()
+        ?: "?"
 }

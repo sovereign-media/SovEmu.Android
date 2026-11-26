@@ -43,7 +43,12 @@ fun Unreachable(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Can't reach the server", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Text(
+                "Can't reach the server",
+                color = Color.White,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+            )
             Text(server, color = Sov.Slate300, fontSize = 15.sp, textAlign = TextAlign.Center)
             Text(message, color = Sov.Red300, fontSize = 14.sp, textAlign = TextAlign.Center)
             Text(

@@ -42,11 +42,15 @@ data class GameFilters(
 ) {
     /** How many filters are on, for the Filters chip: one per choice, one per value picked. */
     val count: Int get() =
-        (if (played != null) 1 else 0) + (if (favourites) 1 else 0) + (if (minPlayers != null) 1 else 0) +
-            (if (minStars != null) 1 else 0) + esrb.size + ListFilter.entries.sumOf { it.selected(this).size }
+        (if (played != null) 1 else 0) + (if (favourites) 1 else 0) +
+            (if (minPlayers != null) 1 else 0) + (if (minStars != null) 1 else 0) + esrb.size +
+            ListFilter.entries.sumOf { it.selected(this).size }
 }
 
-/** The filters that pick any number of a game's values, each with its own list of them, as the web's `LIST_FILTERS`. */
+/**
+ * The filters that pick any number of a game's values, each with its own list of them, as the web's
+ * `LIST_FILTERS`.
+ */
 enum class ListFilter(val label: String) {
     GENRES("Genre"),
     MODES("Play modes"),
@@ -79,30 +83,43 @@ enum class ListFilter(val label: String) {
     }
 }
 
-/** The ESRB ratings from the youngest audience to the oldest, as the age sort and its filter list them. */
+/**
+ * The ESRB ratings from the youngest audience to the oldest, as the age sort and its filter list
+ * them.
+ */
 val ESRB_ORDER: List<EsrbRating> = listOf(
-    EsrbRating.EARLY_CHILDHOOD, EsrbRating.EVERYONE, EsrbRating.EVERYONE_10_PLUS, EsrbRating.TEEN,
-    EsrbRating.MATURE, EsrbRating.ADULTS_ONLY, EsrbRating.RATING_PENDING,
+    EsrbRating.EARLY_CHILDHOOD,
+    EsrbRating.EVERYONE,
+    EsrbRating.EVERYONE_10_PLUS,
+    EsrbRating.TEEN,
+    EsrbRating.MATURE,
+    EsrbRating.ADULTS_ONLY,
+    EsrbRating.RATING_PENDING,
 )
 
 /** A game's genres: the metadata lists them comma-separated ("Platform, Action"). */
-fun genresOf(genre: String?): List<String> = genre.orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }
+fun genresOf(genre: String?): List<String> =
+    genre.orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }
 
 private val DIGITS = Regex("\\d+")
 private val SPACES = Regex("\\s+")
 
 /** The most players a game takes, from "1-2", "2", "1 to 4" …, or null when unknown. */
-fun maxPlayers(players: String?): Int? = DIGITS.findAll(players.orEmpty()).mapNotNull { it.value.toIntOrNull() }.maxOrNull()
+fun maxPlayers(players: String?): Int? =
+    DIGITS.findAll(players.orEmpty()).mapNotNull { it.value.toIntOrNull() }.maxOrNull()
 
 private val MARKS = Regex("\\p{Mn}+")
 
 /** Folds case and accents, so "pokemon" finds "Pokémon". */
-fun fold(s: String): String = MARKS.replace(Normalizer.normalize(s, Normalizer.Form.NFD), "").lowercase(Locale.ROOT)
+fun fold(s: String): String =
+    MARKS.replace(Normalizer.normalize(s, Normalizer.Form.NFD), "").lowercase(Locale.ROOT)
 
 /** The letters the jump strip offers: "#" then A–Z. */
 val LETTERS: List<String> = listOf("#") + ('A'..'Z').map { it.toString() }
 
-/** The letter a title files under: A–Z, or "#" for digits and symbols. Articles are not skipped. */
+/**
+ * The letter a title files under: A–Z, or "#" for digits and symbols. Articles are not skipped.
+ */
 fun letterOf(title: String): String {
     val c = fold(title).firstOrNull()?.uppercaseChar() ?: return "#"
     return if (c in 'A'..'Z') c.toString() else "#"
@@ -129,7 +146,10 @@ class GameIndex(val games: List<Game>) {
         Entry(
             game = g,
             text = fold(
-                (listOfNotNull(g.title, g.fileTitle, g.genre, g.developer, g.publisher) + g.tags + g.series + g.themes).joinToString(" "),
+                (
+                    listOfNotNull(g.title, g.fileTitle, g.genre, g.developer, g.publisher) +
+                        g.tags + g.series + g.themes
+                    ).joinToString(" "),
             ),
             values = ListFilter.entries.associateWith { it.values(g) },
             players = maxPlayers(g.players),
@@ -139,17 +159,26 @@ class GameIndex(val games: List<Game>) {
         )
     }.sortedWith { a, b -> titleOrder.compare(a.game.title, b.game.title) }
 
-    /** Each [ListFilter]'s values with their counts, most common first: empty until game information is fetched. */
-    val valueCounts: Map<ListFilter, List<Pair<String, Int>>> = ListFilter.entries.associateWith { f ->
-        entries.flatMap { it.values.getValue(f) }.groupingBy { it }.eachCount().toList()
-            .sortedWith(compareByDescending<Pair<String, Int>> { it.second }.thenBy { it.first })
-    }
+    /**
+     * Each [ListFilter]'s values with their counts, most common first: empty until game
+     * information is fetched.
+     */
+    val valueCounts: Map<ListFilter, List<Pair<String, Int>>> =
+        ListFilter.entries.associateWith { f ->
+            entries.flatMap { it.values.getValue(f) }.groupingBy { it }.eachCount().toList()
+                .sortedWith(
+                    compareByDescending<Pair<String, Int>> { it.second }.thenBy { it.first },
+                )
+        }
 
     /** Every genre with its count, most common first. */
     val genreCounts: List<Pair<String, Int>> get() = valueCounts.getValue(ListFilter.GENRES)
 
     /** The ESRB ratings the games have, youngest audience first, with how many have each. */
-    val esrbCounts: List<Pair<EsrbRating, Int>> = games.mapNotNull { it.esrb }.groupingBy { it }.eachCount().toList()
+    val esrbCounts: List<Pair<EsrbRating, Int>> = games.mapNotNull { it.esrb }
+        .groupingBy { it }
+        .eachCount()
+        .toList()
         .sortedBy { (r, _) -> ESRB_ORDER.indexOf(r).takeIf { it >= 0 } ?: ESRB_ORDER.size }
 
     /** Whether any game says how many players it takes, so the players filter can do something. */
@@ -158,21 +187,31 @@ class GameIndex(val games: List<Game>) {
     /** Whether any game has a rating, so the minimum-rating filter can do something. */
     val knowsRatings: Boolean = games.any { it.rating != null }
 
-    /** The games matching every word of [query] and every filter, sorted by [sort] (ties by title). */
+    /**
+     * The games matching every word of [query] and every filter, sorted by [sort] (ties by title).
+     */
     fun query(query: String, filters: GameFilters, sort: GameSort): List<Game> {
         val words = fold(query).split(SPACES).filter { it.isNotEmpty() }
         val kept = entries.filter { e ->
             when {
                 filters.played == PlayedFilter.PLAYED && e.game.playCount == 0 -> false
+
                 filters.played == PlayedFilter.UNPLAYED && e.game.playCount > 0 -> false
+
                 filters.favourites && !e.game.favourite -> false
+
                 filters.minPlayers != null && (e.players ?: 1) < filters.minPlayers -> false
-                filters.minStars != null && (e.game.rating ?: -1.0) * 5 < filters.minStars - 0.001 -> false
+
+                filters.minStars != null &&
+                    (e.game.rating ?: -1.0) * 5 < filters.minStars - 0.001 -> false
+
                 filters.esrb.isNotEmpty() && e.game.esrb !in filters.esrb -> false
+
                 ListFilter.entries.any { f ->
                     val picked = f.selected(filters)
                     picked.isNotEmpty() && e.values.getValue(f).none { it in picked }
                 } -> false
+
                 else -> words.all { it in e.text }
             }
         }
@@ -191,7 +230,8 @@ class GameIndex(val games: List<Game>) {
         /** Case- and accent-insensitive, digits by value ("Mega Man 2" before "Mega Man 10"). */
         val titleOrder: Comparator<String> = Comparator { a, b -> natural(a, b) }
 
-        private val collator: Collator = Collator.getInstance(Locale.ROOT).apply { strength = Collator.PRIMARY }
+        private val collator: Collator =
+            Collator.getInstance(Locale.ROOT).apply { strength = Collator.PRIMARY }
         private val CHUNK = Regex("\\d+|\\D+")
 
         private fun natural(a: String, b: String): Int {
@@ -211,8 +251,9 @@ class GameIndex(val games: List<Game>) {
         }
 
         /** `lastPlayedAt` ("2026-11-19 16:05:56", UTC) as epoch seconds, 0 when never. */
-        fun playedAt(s: String?): Long =
-            runCatching { LocalDateTime.parse(s!!.replace(' ', 'T')).toEpochSecond(ZoneOffset.UTC) }.getOrDefault(0L)
+        fun playedAt(s: String?): Long = runCatching {
+            LocalDateTime.parse(s!!.replace(' ', 'T')).toEpochSecond(ZoneOffset.UTC)
+        }.getOrDefault(0L)
     }
 }
 
@@ -222,7 +263,10 @@ fun jumpStops(games: List<Game>): List<String> {
     return LETTERS.filter { it in present }
 }
 
-/** Where the jump strip goes for [letter]: the first game under it, else the next letter with one, else the last game; -1 when empty. */
+/**
+ * Where the jump strip goes for [letter]: the first game under it, else the next letter with one,
+ * else the last game; -1 when empty.
+ */
 fun jumpTo(games: List<Game>, letter: String): Int {
     if (games.isEmpty()) return -1
     val wanted = LETTERS.indexOf(letter)
@@ -245,9 +289,25 @@ fun formatAgo(epochSeconds: Long, now: Long): String {
     }
 }
 
-private val MONTHS = listOf("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
+private val MONTHS = listOf(
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+)
 
-/** A release date as people say it: "March 11, 1995", "March 1995" or "1995" (from `YYYY[-MM[-DD]]`). */
+/**
+ * A release date as people say it: "March 11, 1995", "March 1995" or "1995" (from
+ * `YYYY[-MM[-DD]]`).
+ */
 fun formatReleaseDate(date: String?): String? {
     val parts = date?.split('-')?.takeIf { it.isNotEmpty() && it[0].length == 4 } ?: return null
     val month = parts.getOrNull(1)?.toIntOrNull()?.takeIf { it in 1..12 }?.let { MONTHS[it - 1] }
@@ -259,13 +319,20 @@ fun formatReleaseDate(date: String?): String? {
     }
 }
 
-/** "1 player", "1-2 players", "Up to 4 players" (from the metadata's "1", "1-2", "1 to 4"…); null when unknown. */
+/**
+ * "1 player", "1-2 players", "Up to 4 players" (from the metadata's "1", "1-2", "1 to 4"…); null
+ * when unknown.
+ */
 fun formatPlayers(players: String?): String? {
     val most = maxPlayers(players) ?: return null
     return when {
         most == 1 -> "1 player"
-        players!!.trim().matches(Regex("\\d+\\s*-\\s*\\d+")) -> "${players.replace(" ", "")} players"
+
+        players!!.trim().matches(Regex("\\d+\\s*-\\s*\\d+")) ->
+            "${players.replace(" ", "")} players"
+
         players.trim() == most.toString() -> "$most players"
+
         else -> "Up to $most players"
     }
 }
@@ -279,7 +346,11 @@ fun formatSize(bytes: Double): String {
         v /= 1024
         i++
     }
-    return if (i == 0 || v >= 100) "${v.toLong()} ${units[i]}" else String.format(Locale.ROOT, "%.1f %s", v, units[i])
+    return if (i == 0 || v >= 100) {
+        "${v.toLong()} ${units[i]}"
+    } else {
+        String.format(Locale.ROOT, "%.1f %s", v, units[i])
+    }
 }
 
 // --- Save slots -------------------------------------------------------------------------------
@@ -290,7 +361,10 @@ const val AUTO_SLOT = 0
 /** The slots a player saves to by hand, as on the web client. */
 val SAVE_SLOTS = listOf(1, 2, 3, 4)
 
-/** One row of a save or load picker: the slot, its save if there is one, and whether it can be picked. */
+/**
+ * One row of a save or load picker: the slot, its save if there is one, and whether it can be
+ * picked.
+ */
 data class SlotRow(val slot: Int, val label: String, val save: SaveSlot?, val enabled: Boolean)
 
 /**
@@ -300,5 +374,10 @@ data class SlotRow(val slot: Int, val label: String, val save: SaveSlot?, val en
 fun slotRows(saves: List<SaveSlot>, numbers: List<Int>, emptyEnabled: Boolean): List<SlotRow> =
     numbers.map { n ->
         val save = saves.firstOrNull { it.slot == n }
-        SlotRow(n, if (n == AUTO_SLOT) "Auto save" else "Slot $n", save, save != null || emptyEnabled)
+        SlotRow(
+            n,
+            if (n == AUTO_SLOT) "Auto save" else "Slot $n",
+            save,
+            save != null || emptyEnabled,
+        )
     }

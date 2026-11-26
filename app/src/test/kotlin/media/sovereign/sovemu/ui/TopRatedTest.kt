@@ -18,7 +18,9 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-/** Home's "Top rated" row: shown only when the server has rated games, and a card opens the game. */
+/**
+ * Home's "Top rated" row: shown only when the server has rated games, and a card opens the game.
+ */
 @Config(qualifiers = "w960dp-h540dp")
 @RunWith(RobolectricTestRunner::class)
 class TopRatedTest {
@@ -44,13 +46,22 @@ class TopRatedTest {
 
     @Test
     fun aTopRatedCardOpensTheGameOnItsSystemsPage() {
-        home(HomeFeed(featured = emptyList(), recent = emptyList(), added = emptyList(), topRated = listOf(game(id = 9, title = "Zelda"))))
+        home(
+            HomeFeed(
+                featured = emptyList(),
+                recent = emptyList(),
+                added = emptyList(),
+                topRated = listOf(game(id = 9, title = "Zelda")),
+            ),
+        )
         rule.onNodeWithText("Top rated").assertExists()
         rule.onNodeWithText("Zelda").assertExists()
         // The card's tile (it shows the system, the game having no art here); the Systems row's
         // card comes first, the Top rated row being the last. Below the fold, so the click is
         // the card's own action rather than a touch.
-        rule.onAllNodes(hasClickAction() and hasText("NES")).onLast().performSemanticsAction(SemanticsActions.OnClick)
+        rule.onAllNodes(
+            hasClickAction() and hasText("NES"),
+        ).onLast().performSemanticsAction(SemanticsActions.OnClick)
         assertEquals(listOf("nes" to 9), opened)
     }
 

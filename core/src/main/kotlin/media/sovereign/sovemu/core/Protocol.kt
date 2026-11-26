@@ -2,9 +2,9 @@ package media.sovereign.sovemu.core
 
 import com.apollographql.apollo.api.json.JsonReader
 import com.apollographql.apollo.api.json.jsonReader
-import okio.Buffer
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import okio.Buffer
 
 /**
  * The input channel's wire format, mirroring SovEmu.Protocol (`src/input.rs`) byte for byte.
@@ -46,16 +46,22 @@ object Protocol {
         return byteArrayOf(TYPE_STATS, INPUT_VERSION) + body.toByteArray(Charsets.UTF_8)
     }
 
-    /** One decimal, no trailing zeros: as JavaScript's JSON.stringify writes `Math.round(x * 10) / 10`. */
-    private fun number(x: Double): String =
-        java.math.BigDecimal(x).setScale(1, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()
+    /**
+     * One decimal, no trailing zeros: as JavaScript's JSON.stringify writes
+     * `Math.round(x * 10) / 10`.
+     */
+    private fun number(x: Double): String = java.math.BigDecimal(
+        x,
+    ).setScale(1, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()
 
     private fun quote(s: String): String = buildString {
         append('"')
-        for (c in s) when {
-            c == '"' || c == '\\' -> append('\\').append(c)
-            c < ' ' -> append(String.format(java.util.Locale.ROOT, "\\u%04x", c.code))
-            else -> append(c)
+        for (c in s) {
+            when {
+                c == '"' || c == '\\' -> append('\\').append(c)
+                c < ' ' -> append(String.format(java.util.Locale.ROOT, "\\u%04x", c.code))
+                else -> append(c)
+            }
         }
         append('"')
     }
@@ -68,7 +74,10 @@ object Protocol {
         return buf.array()
     }
 
-    /** Flags: bit 0 fast-forward, bit 1 rewind, bit 2 pause (the in-game menu is open: no frames run). */
+    /**
+     * Flags: bit 0 fast-forward, bit 1 rewind, bit 2 pause (the in-game menu is open: no frames
+     * run).
+     */
     fun encodeHotkeys(fastForward: Boolean, rewind: Boolean, pause: Boolean = false): ByteArray {
         val flags = (if (fastForward) 1 else 0) or (if (rewind) 2 else 0) or (if (pause) 4 else 0)
         return byteArrayOf(TYPE_HOTKEYS, INPUT_VERSION, flags.toByte())
@@ -78,7 +87,14 @@ object Protocol {
      * One port's analog controls: sticks −32768..32767 (x right, y down, libretro's convention),
      * triggers 0..32767.
      */
-    data class Analog(val lx: Int = 0, val ly: Int = 0, val rx: Int = 0, val ry: Int = 0, val l2: Int = 0, val r2: Int = 0) {
+    data class Analog(
+        val lx: Int = 0,
+        val ly: Int = 0,
+        val rx: Int = 0,
+        val ry: Int = 0,
+        val l2: Int = 0,
+        val r2: Int = 0,
+    ) {
         val centred: Boolean get() = this == CENTRED
 
         companion object {
@@ -93,7 +109,16 @@ object Protocol {
         buf.put(TYPE_ANALOG).put(INPUT_VERSION).putInt(seq).put(n.toByte())
         for (i in 0 until n) {
             val a = ports[i]
-            for (v in intArrayOf(a.lx, a.ly, a.rx, a.ry, a.l2, a.r2)) buf.putShort(v.coerceIn(-32768, 32767).toShort())
+            for (v in intArrayOf(
+                a.lx,
+                a.ly,
+                a.rx,
+                a.ry,
+                a.l2,
+                a.r2,
+            )) {
+                buf.putShort(v.coerceIn(-32768, 32767).toShort())
+            }
         }
         return buf.array()
     }
@@ -154,7 +179,13 @@ object Protocol {
         if (bytes[0] != TYPE_PIPELINE || bytes[1] != INPUT_VERSION) return null
         val p = try {
             val reader = Buffer().write(bytes, 2, bytes.size - 2).jsonReader()
-            readJson(reader).also { if (reader.peek() != JsonReader.Token.END_DOCUMENT) return null }
+            readJson(reader).also {
+                if (reader.peek() !=
+                    JsonReader.Token.END_DOCUMENT
+                ) {
+                    return null
+                }
+            }
         } catch (_: Exception) {
             return null
         } as? Map<*, *> ?: return null
@@ -198,6 +229,7 @@ object Protocol {
             reader.endObject()
             members
         }
+
         JsonReader.Token.BEGIN_ARRAY -> {
             val items = ArrayList<Any?>()
             reader.beginArray()
@@ -205,10 +237,15 @@ object Protocol {
             reader.endArray()
             items
         }
+
         JsonReader.Token.STRING -> reader.nextString()
+
         JsonReader.Token.NUMBER, JsonReader.Token.LONG -> reader.nextDouble()
+
         JsonReader.Token.BOOLEAN -> reader.nextBoolean()
+
         JsonReader.Token.NULL -> reader.nextNull()
+
         else -> throw IllegalArgumentException("unexpected JSON token ${reader.peek()}")
     }
 }
@@ -218,8 +255,23 @@ object Protocol {
  * are GraphQL's `PadButton`.
  */
 enum class Button(val id: Int) {
-    B(0), Y(1), SELECT(2), START(3), UP(4), DOWN(5), LEFT(6), RIGHT(7),
-    A(8), X(9), L(10), R(11), L2(12), R2(13), L3(14), R3(15);
+    B(0),
+    Y(1),
+    SELECT(2),
+    START(3),
+    UP(4),
+    DOWN(5),
+    LEFT(6),
+    RIGHT(7),
+    A(8),
+    X(9),
+    L(10),
+    R(11),
+    L2(12),
+    R2(13),
+    L3(14),
+    R3(15),
+    ;
 
     val bit: Int get() = 1 shl id
 }

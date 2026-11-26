@@ -1,11 +1,9 @@
 package media.sovereign.sovemu.core
 
-/**
- * Signing in with a code (RFC 8628, the device grant), as Sovereign's TVs do: the app shows a
- * short code, the person approves it on a phone or computer signed in to the server (at
- * [DeviceCode.verificationUri], the server's `/device` page), and the app's poll of the token
- * endpoint then gets its tokens. The password form is the fallback.
- */
+// Signing in with a code (RFC 8628, the device grant), as Sovereign's TVs do: the app shows a
+// short code, the person approves it on a phone or computer signed in to the server (at
+// [DeviceCode.verificationUri], the server's `/device` page), and the app's poll of the token
+// endpoint then gets its tokens. The password form is the fallback.
 
 /**
  * A code to show, from the server's device authorization endpoint. [deviceCode] is the
@@ -49,10 +47,15 @@ sealed interface DevicePoll {
     /** `authorization_pending`: nobody has approved it yet. Not a failure: keep waiting. */
     data object Pending : DevicePoll
 
-    /** `slow_down` (or a 429): wait longer from now on (RFC 8628 section 3.5: five seconds more). */
+    /**
+     * `slow_down` (or a 429): wait longer from now on (RFC 8628 section 3.5: five seconds more).
+     */
     data object SlowDown : DevicePoll
 
-    /** The request got no answer (offline, a server error). Conclude nothing: the next poll is the retry. */
+    /**
+     * The request got no answer (offline, a server error). Conclude nothing: the next poll is the
+     * retry.
+     */
     data object NoAnswer : DevicePoll
 
     /** Approved: the tokens. */
@@ -71,7 +74,9 @@ enum class PairingFailure {
     Denied,
 
     /** Anything else the server refused. */
-    Failed;
+    Failed,
+
+    ;
 
     /** What the screen says, for people. */
     val message: String
@@ -113,12 +118,16 @@ suspend fun awaitApproval(
         if (now() >= deadline) return PairingResult.Failed(PairingFailure.Expired)
         when (val answer = poll()) {
             DevicePoll.Pending -> reachable(true)
+
             DevicePoll.NoAnswer -> reachable(false)
+
             DevicePoll.SlowDown -> {
                 reachable(true)
                 interval += SLOW_DOWN_STEP_MS
             }
+
             is DevicePoll.Approved -> return PairingResult.Approved(answer.tokens)
+
             is DevicePoll.Refused -> return PairingResult.Failed(answer.failure)
         }
     }

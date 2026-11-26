@@ -21,20 +21,32 @@ import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** The generated operations against responses shaped as SovEmu.Server sends them, and the conversions over them. */
+/**
+ * The generated operations against responses shaped as SovEmu.Server sends them, and the
+ * conversions over them.
+ */
 class ApiTest {
     private fun json(s: String) = Buffer().writeUtf8(s).jsonReader()
 
     @Test
     fun parsesTheHomeFeedWithAutoSaves() {
         val text = """{"data":{"home":{
-            "featured":[{"__typename":"Game","id":7,"system":"snes","title":"Chrono Trigger","fileTitle":null,"tags":["USA"],
-              "path":"snes/ct.sfc","size":4194304.0,"lastPlayedAt":null,"playCount":0,"image":null,"thumb":"/media/games/7/thumb",
-              "video":null,"description":null,"releaseDate":"1995-03-11","developer":"Square","publisher":null,"genre":"RPG","genres":["RPG"],
-              "players":"1","rating":0.9,"esrb":"EVERYONE","modes":["Single player"],"series":["Chrono"],"themes":["Fantasy"],"discs":1,"partKind":null,"favourite":true,"release":"Translation","patch":"IPS patch","autoSave":null}],
-            "recent":[{"__typename":"Game","id":8,"system":"nes","title":"Metroid","fileTitle":null,"tags":[],"path":"nes/m.nes",
-              "size":131088.0,"lastPlayedAt":"2026-11-19 16:05:56","playCount":2,"image":null,"thumb":null,"video":null,
-              "description":null,"releaseDate":null,"developer":null,"publisher":null,"genre":null,"genres":[],"players":null,"rating":null,"esrb":null,"modes":[],"series":[],"themes":[],"discs":2,"partKind":"DISC","favourite":false,"release":null,"patch":null,
+            "featured":[{"__typename":"Game","id":7,"system":"snes","title":"Chrono Trigger",
+              "fileTitle":null,"tags":["USA"],
+              "path":"snes/ct.sfc","size":4194304.0,"lastPlayedAt":null,"playCount":0,"image":null,
+              "thumb":"/media/games/7/thumb",
+              "video":null,"description":null,"releaseDate":"1995-03-11","developer":"Square",
+              "publisher":null,"genre":"RPG","genres":["RPG"],
+              "players":"1","rating":0.9,"esrb":"EVERYONE","modes":["Single player"],
+              "series":["Chrono"],"themes":["Fantasy"],"discs":1,"partKind":null,"favourite":true,
+              "release":"Translation","patch":"IPS patch","autoSave":null}],
+            "recent":[{"__typename":"Game","id":8,"system":"nes","title":"Metroid","fileTitle":null,
+              "tags":[],"path":"nes/m.nes",
+              "size":131088.0,"lastPlayedAt":"2026-11-19 16:05:56","playCount":2,"image":null,
+              "thumb":null,"video":null,
+              "description":null,"releaseDate":null,"developer":null,"publisher":null,"genre":null,
+              "genres":[],"players":null,"rating":null,"esrb":null,"modes":[],"series":[],
+              "themes":[],"discs":2,"partKind":"DISC","favourite":false,"release":null,"patch":null,
               "autoSave":{"slot":0,"savedAt":1.7e9,"screenshotUrl":"/media/games/8/saves/0?t=1"}}],
             "added":[],"favourites":[],"topRated":[]},
           "collections":[{"__typename":"Collection","id":3,"name":"Co-op","games":[]}]}}"""
@@ -43,7 +55,10 @@ class ApiTest {
         val featured = home.featured[0].gameFields
         assertEquals("/media/games/7/thumb", featured.thumb)
         assertEquals("1995 · Square · RPG", featured.byline)
-        assertEquals("/media/games/8/saves/0?t=1", home.recent[0].gameFields.autoSave?.screenshotUrl)
+        assertEquals(
+            "/media/games/8/saves/0?t=1",
+            home.recent[0].gameFields.autoSave?.screenshotUrl,
+        )
         assertTrue(home.added.isEmpty())
         assertTrue(home.topRated.isEmpty())
         assertEquals(EsrbRating.EVERYONE, featured.esrb)
@@ -58,22 +73,35 @@ class ApiTest {
 
     @Test
     fun anUnknownSystemIsNull() {
-        assertNull(SystemGamesQuery("nope").parseResponse(json("""{"data":{"system":null}}""")).orThrow().system)
+        assertNull(
+            SystemGamesQuery(
+                "nope",
+            ).parseResponse(json("""{"data":{"system":null}}""")).orThrow().system,
+        )
     }
 
     @Test
     fun errorsBecomeApiExceptionsWithTheirCode() {
         val signedOut = StopSessionMutation("s1").parseResponse(
-            json("""{"data":null,"errors":[{"message":"Not signed in","extensions":{"code":"UNAUTHENTICATED"}}]}"""),
+            json(
+                """{"data":null,"errors":[{"message":"Not signed in",""" +
+                    """"extensions":{"code":"UNAUTHENTICATED"}}]}""",
+            ),
         )
         val e = assertThrows(ApiException::class.java) { signedOut.orThrow() }
         assertTrue(e.unauthenticated)
         assertEquals("Not signed in", e.message)
 
-        val plain = ApolloResponse.Builder(StopSessionMutation("s1"), uuid4()).errors(listOf(Error.Builder("Bad").build())).build()
+        val plain = ApolloResponse.Builder(
+            StopSessionMutation("s1"),
+            uuid4(),
+        ).errors(listOf(Error.Builder("Bad").build())).build()
         assertEquals("INTERNAL", assertThrows(ApiException::class.java) { plain.orThrow() }.code)
 
-        val http = ApolloResponse.Builder(StopSessionMutation("s1"), uuid4()).exception(ApolloHttpException(404, emptyList(), null, "Not Found")).build()
+        val http = ApolloResponse.Builder(
+            StopSessionMutation("s1"),
+            uuid4(),
+        ).exception(ApolloHttpException(404, emptyList(), null, "Not Found")).build()
         assertEquals("HTTP_404", assertThrows(ApiException::class.java) { http.orThrow() }.code)
     }
 
@@ -86,24 +114,45 @@ class ApiTest {
     @Test
     fun convertsMappingsBothWays() {
         val fields = MappingFields(
-            controller = "xbox", system = "snes", name = "Mine", source = SchemaMappingSource.USER,
-            bindings = listOf(MappingFields.Binding("south", PadButton.B), MappingFields.Binding("l2", PadButton.L3)),
+            controller = "xbox",
+            system = "snes",
+            name = "Mine",
+            source = SchemaMappingSource.USER,
+            bindings = listOf(
+                MappingFields.Binding("south", PadButton.B),
+                MappingFields.Binding("l2", PadButton.L3),
+            ),
         )
         val m = fields.toMapping()
-        assertEquals(ControllerMapping("xbox", "Mine", listOf(Binding("south", Button.B), Binding("l2", Button.L3)), MappingSource.USER, "snes"), m)
+        assertEquals(
+            ControllerMapping(
+                "xbox",
+                "Mine",
+                listOf(Binding("south", Button.B), Binding("l2", Button.L3)),
+                MappingSource.USER,
+                "snes",
+            ),
+            m,
+        )
         assertEquals(PadButton.L3, m.bindings[1].toInput().button)
     }
 
     @Test
     fun parsesControls() {
-        val layout = """{"__typename":"PadLayout","id":"snes","name":"Super Nintendo","width":100.0,"height":50.0,
+        val layout = """{"__typename":"PadLayout","id":"snes","name":"Super Nintendo","width":100.0,
+          "height":50.0,
             "body":[{"x":0.0,"y":0.0,"w":100.0,"h":50.0,"r":10.0,"tone":0}],
             "keys":[{"key":"A","label":"A","x":80.0,"y":20.0,"w":8.0,"h":8.0,"r":4.0}]}"""
-        val text = """{"data":{"system":{"controls":{"buttons":[{"button":"A","label":"A"},{"button":"START","label":"Start"}],
-            "sticks":[{"stick":"LEFT","label":"Control stick","key":"LS"},{"stick":"RIGHT","label":"C buttons","key":"RS"}],
+        val text = """{"data":{"system":{"controls":{"buttons":[{"button":"A",
+          "label":"A"},{"button":"START","label":"Start"}],
+            "sticks":[{"stick":"LEFT","label":"Control stick","key":"LS"},{"stick":"RIGHT",
+            "label":"C buttons","key":"RS"}],
             "layout":$layout}},"controllerLayouts":[${layout.replace("\"snes\"", "\"xbox\"")}]}}"""
         val (system, pads) = ControlsQuery("snes").parseResponse(json(text)).orThrow().toControls()
-        assertEquals(listOf(SystemButton(Button.A, "A"), SystemButton(Button.START, "Start")), system?.buttons)
+        assertEquals(
+            listOf(SystemButton(Button.A, "A"), SystemButton(Button.START, "Start")),
+            system?.buttons,
+        )
         val (control, c) = system!!.sticks
         assertEquals(SystemStick(right = false, label = "Control stick", key = "LS"), control)
         assertEquals("Right stick", c.stickName)
@@ -123,13 +172,25 @@ class ApiTest {
                 "junk",
             ),
         )
-        assertEquals(listOf(IceServer(listOf("stun:stun.example.org")), IceServer(listOf("turn:a", "turn:b"), "u", "c")), servers)
+        assertEquals(
+            listOf(
+                IceServer(listOf("stun:stun.example.org")),
+                IceServer(listOf("turn:a", "turn:b"), "u", "c"),
+            ),
+            servers,
+        )
         assertTrue(iceServers(null).isEmpty())
     }
 
     @Test
     fun systemBadgesAndColours() {
-        assertEquals("software rendering", system(needsGpu = true, rendering = media.sovereign.sovemu.core.graphql.type.Rendering.SOFTWARE).badge())
+        assertEquals(
+            "software rendering",
+            system(
+                needsGpu = true,
+                rendering = media.sovereign.sovemu.core.graphql.type.Rendering.SOFTWARE,
+            ).badge(),
+        )
         assertEquals("no core", system(playable = false).badge())
         assertEquals("no BIOS", system(biosMissing = true).badge())
         assertNull(system().badge())

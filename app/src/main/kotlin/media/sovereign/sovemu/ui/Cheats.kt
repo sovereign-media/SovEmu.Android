@@ -1,12 +1,6 @@
 package media.sovereign.sovemu.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.runtime.withFrameNanos
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -25,18 +19,24 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -62,21 +62,50 @@ fun CheatsPage(
     val scope = rememberCoroutineScope()
     var code by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
+
     /** The field being typed in ("code" or "name"), or none. */
     var typing by remember { mutableStateOf<String?>(null) }
     val codeField = remember { FocusRequester() }
     val addButton = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
 
-    Column(modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(
+        modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
         val list = cheats
         when {
-            list == null -> Text("Loading cheats…", color = Sov.Slate400, fontSize = 14.sp, modifier = Modifier.padding(12.dp))
-            list.isEmpty() -> Text("No cheats for this game yet. Add one below.", color = Sov.Slate400, fontSize = 14.sp, modifier = Modifier.padding(12.dp))
+            list == null -> Text(
+                "Loading cheats…",
+                color = Sov.Slate400,
+                fontSize = 14.sp,
+                modifier = Modifier.padding(12.dp),
+            )
+
+            list.isEmpty() -> Text(
+                "No cheats for this game yet. Add one below.",
+                color = Sov.Slate400,
+                fontSize = 14.sp,
+                modifier = Modifier.padding(12.dp),
+            )
         }
         list?.forEachIndexed { i, cheat ->
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                CheatRow(cheat, Modifier.weight(1f).then(if (i == 0) first else Modifier)) { onToggle(cheat) }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                CheatRow(
+                    cheat,
+                    Modifier.weight(1f).then(
+                        if (i ==
+                            0
+                        ) {
+                            first
+                        } else {
+                            Modifier
+                        },
+                    ),
+                ) { onToggle(cheat) }
                 IconAction(Lucide.X, "Delete") { onDelete(cheat) }
             }
         }
@@ -111,19 +140,28 @@ fun CheatsPage(
             action = ImeAction.Next, onAction = { typing = "name" },
         )
         TvTextField(
-            "Name (optional)", name, { name = it },
-            typing = typing == "name", onTyping = { typing = if (it) "name" else null },
-            action = ImeAction.Done, onAction = ::add,
+            "Name (optional)",
+            name,
+            { name = it },
+            typing = typing == "name",
+            onTyping = { typing = if (it) "name" else null },
+            action = ImeAction.Done,
+            onAction = ::add,
         )
         SovButton(
             "Add cheat",
             ::add,
-            // With no cheats yet the page starts here, not in a field (which would open the keyboard at once).
-            Modifier.fillMaxWidth().padding(top = 4.dp).focusRequester(addButton).then(if (list.isNullOrEmpty()) first else Modifier),
+            // With no cheats yet the page starts here, not in a field (which would open the
+            // keyboard at once).
+            Modifier.fillMaxWidth().padding(
+                top = 4.dp,
+            ).focusRequester(addButton).then(if (list.isNullOrEmpty()) first else Modifier),
             icon = Lucide.Check,
             large = false,
         )
-        message?.let { Text(it, color = Sov.Red300, fontSize = 13.sp, modifier = Modifier.padding(8.dp)) }
+        message?.let {
+            Text(it, color = Sov.Red300, fontSize = 13.sp, modifier = Modifier.padding(8.dp))
+        }
     }
 }
 
@@ -143,10 +181,25 @@ private fun CheatRow(cheat: Cheat, modifier: Modifier, onToggle: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Column(Modifier.weight(1f)) {
-            Text(cheat.description.ifBlank { cheat.code }, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
-                maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                cheat.description.ifBlank {
+                    cheat.code
+                },
+                color = Color.White,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             if (cheat.description.isNotBlank()) {
-                Text(cheat.code, color = Sov.Slate400, fontSize = 12.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    cheat.code,
+                    color = Sov.Slate400,
+                    fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
         Switch(cheat.enabled)
@@ -155,21 +208,34 @@ private fun CheatRow(cheat: Cheat, modifier: Modifier, onToggle: () -> Unit) {
 
 /** A switch's look (the row is what takes the press). */
 @Composable
-private fun Switch(on: Boolean) =
-    Box(
-        Modifier.size(44.dp, 24.dp).clip(CircleShape).background(if (on) Sov.Accent else Color.White.copy(alpha = 0.15f)).padding(3.dp),
-        contentAlignment = if (on) Alignment.CenterEnd else Alignment.CenterStart,
-    ) { Box(Modifier.size(18.dp).clip(CircleShape).background(Color.White)) }
+private fun Switch(on: Boolean) = Box(
+    Modifier.size(
+        44.dp,
+        24.dp,
+    ).clip(
+        CircleShape,
+    ).background(if (on) Sov.Accent else Color.White.copy(alpha = 0.15f)).padding(3.dp),
+    contentAlignment = if (on) Alignment.CenterEnd else Alignment.CenterStart,
+) { Box(Modifier.size(18.dp).clip(CircleShape).background(Color.White)) }
 
 /** A small focusable icon button beside a row. */
 @Composable
-private fun IconAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
+private fun IconAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit,
+) {
     val source = remember { MutableInteractionSource() }
     val focused by source.collectIsFocusedAsState()
     Box(
         Modifier.size(44.dp).clip(CircleShape)
             .background(if (focused) Color(0x55EF4444) else Color.White.copy(alpha = 0.06f))
-            .clickable(interactionSource = source, indication = null, onClickLabel = label, onClick = onClick),
+            .clickable(
+                interactionSource = source,
+                indication = null,
+                onClickLabel = label,
+                onClick = onClick,
+            ),
         contentAlignment = Alignment.Center,
     ) { LucideIcon(icon, tint = if (focused) Color.White else Sov.Slate400, size = 18.dp) }
 }

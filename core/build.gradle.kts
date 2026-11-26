@@ -22,7 +22,7 @@ apollo {
     }
 }
 
-/** Copies the server's schema (when this is checked out inside SovEmu, as a submodule). */
+// Copies the server's schema (when this is checked out inside SovEmu, as a submodule).
 tasks.register<Copy>("syncSchema") {
     description = "Copies SovEmu.Server/schema.graphql from the enclosing SovEmu checkout."
     from(rootProject.file("../SovEmu.Backend/SovEmu.Server/schema.graphql"))

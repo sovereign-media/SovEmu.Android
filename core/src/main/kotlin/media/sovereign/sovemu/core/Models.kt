@@ -89,7 +89,8 @@ data class GameDecoration(
  * Whether to frame the picture: only when the screen is wider than it, so there are bars to
  * fill (a phone held upright shows the picture alone, as large as it can be).
  */
-fun shouldFrame(screenAspect: Float, pictureAspect: Float): Boolean = screenAspect > pictureAspect * 1.05f
+fun shouldFrame(screenAspect: Float, pictureAspect: Float): Boolean =
+    screenAspect > pictureAspect * 1.05f
 
 /** A collection a game can go in, and whether it is in it. */
 data class CollectionChoice(val id: Int, val name: String, val member: Boolean)
@@ -98,7 +99,11 @@ data class CollectionChoice(val id: Int, val name: String, val member: Boolean)
 val Game.year: String? get() = releaseDate?.take(4)?.takeIf { it.length == 4 }
 
 /** "1996 · Nintendo · Platform", from what is known. */
-val Game.byline: String get() = listOfNotNull(year, developer ?: publisher, genre).joinToString(" · ")
+val Game.byline: String get() = listOfNotNull(
+    year,
+    developer ?: publisher,
+    genre,
+).joinToString(" · ")
 
 /** The small status badge on a system's card, if it needs one (as the web client's). */
 fun SystemSummary.badge(): String? = when {
@@ -109,12 +114,19 @@ fun SystemSummary.badge(): String? = when {
     else -> null
 }
 
-/** Systems grouped by maker, in the server's order (a maker first appears where its first system does). */
+/**
+ * Systems grouped by maker, in the server's order (a maker first appears where its first system
+ * does).
+ */
 fun groupByMaker(systems: List<SystemSummary>): List<Pair<String, List<SystemSummary>>> =
     systems.groupBy { it.manufacturer }.toList()
 
 /** One STUN/TURN server, from `clientConfig.iceServers` (JSON `RTCIceServer`s). */
-data class IceServer(val urls: List<String>, val username: String? = null, val credential: String? = null)
+data class IceServer(
+    val urls: List<String>,
+    val username: String? = null,
+    val credential: String? = null,
+)
 
 /** `clientConfig.iceServers` (the JSON scalar, as Apollo hands it over: lists and maps). */
 fun iceServers(json: Any?): List<IceServer> = (json as? List<*>).orEmpty().mapNotNull { entry ->
@@ -124,12 +136,22 @@ fun iceServers(json: Any?): List<IceServer> = (json as? List<*>).orEmpty().mapNo
         is List<*> -> u.filterIsInstance<String>()
         else -> emptyList()
     }
-    if (urls.isEmpty()) null else IceServer(urls, s["username"] as? String, s["credential"] as? String)
+    if (urls.isEmpty()) {
+        null
+    } else {
+        IceServer(
+            urls,
+            s["username"] as? String,
+            s["credential"] as? String,
+        )
+    }
 }
 
 // --- Controllers ------------------------------------------------------------------------------
 
-/** `Binding`: one input (`south`, `l1` … or a keyboard's `KeyboardEvent.code`) driving one button. */
+/**
+ * `Binding`: one input (`south`, `l1` … or a keyboard's `KeyboardEvent.code`) driving one button.
+ */
 data class Binding(val input: String, val button: Button)
 
 /**
@@ -147,15 +169,33 @@ data class ControllerMapping(
 )
 
 /** `Shape`: a rounded rectangle of a diagram's body; `tone` 1 is a darker recess. */
-data class Shape(val x: Double, val y: Double, val w: Double, val h: Double, val r: Double, val tone: Int = 0)
+data class Shape(
+    val x: Double,
+    val y: Double,
+    val w: Double,
+    val h: Double,
+    val r: Double,
+    val tone: Int = 0,
+)
 
 /**
  * `PadKey`: one button on a diagram, labelled. [key] is a RetroPad button (`B`, `START` …) on a
  * system's pad, an input name (`south`, `l1` …) on a controller's.
  */
-data class PadKey(val key: String, val label: String, val x: Double, val y: Double, val w: Double, val h: Double, val r: Double)
+data class PadKey(
+    val key: String,
+    val label: String,
+    val x: Double,
+    val y: Double,
+    val w: Double,
+    val h: Double,
+    val r: Double,
+)
 
-/** `PadLayout`: a pad drawn on a [width]×[height] canvas (docs/CONTROLLERS.md, "Systems and diagrams"). */
+/**
+ * `PadLayout`: a pad drawn on a [width]×[height] canvas (docs/CONTROLLERS.md, "Systems and
+ * diagrams").
+ */
 data class PadLayout(
     /** A system id, or a controller family (`xbox`, `playstation`, `nintendo`, `generic`). */
     val id: String,
@@ -166,7 +206,10 @@ data class PadLayout(
     val keys: List<PadKey> = emptyList(),
 )
 
-/** `SystemButton`: one of a system's buttons, the RetroPad button driving it and the console's label. */
+/**
+ * `SystemButton`: one of a system's buttons, the RetroPad button driving it and the console's
+ * label.
+ */
 data class SystemButton(val button: Button, val label: String)
 
 /**
@@ -223,7 +266,9 @@ fun LayoutFields.toLayout(): PadLayout = PadLayout(
 fun ControlsQuery.Data.toControls(): Pair<SystemControls?, List<PadLayout>> {
     val system = system?.controls?.let { c ->
         SystemControls(
-            buttons = c.buttons.mapNotNull { b -> b.button.toButton()?.let { SystemButton(it, b.label) } },
+            buttons = c.buttons.mapNotNull { b ->
+                b.button.toButton()?.let { SystemButton(it, b.label) }
+            },
             layout = c.layout.layoutFields.toLayout(),
             sticks = c.sticks.map { s -> SystemStick(s.stick == Stick.RIGHT, s.label, s.key) },
         )
@@ -248,6 +293,14 @@ private val SIGNATURE_PARAMS = setOf("Sov-UserId", "Sov-Expiry", "Sov-Signature"
 fun assetCacheKey(url: String): String {
     val at = url.indexOf('?')
     if (at < 0) return url
-    val kept = url.substring(at + 1).split('&').filter { it.substringBefore('=') !in SIGNATURE_PARAMS }
-    return if (kept.isEmpty()) url.substring(0, at) else url.substring(0, at) + "?" + kept.joinToString("&")
+    val kept = url.substring(at + 1).split('&').filter {
+        it.substringBefore('=') !in
+            SIGNATURE_PARAMS
+    }
+    return if (kept.isEmpty()) {
+        url.substring(0, at)
+    } else {
+        url.substring(0, at) + "?" +
+            kept.joinToString("&")
+    }
 }

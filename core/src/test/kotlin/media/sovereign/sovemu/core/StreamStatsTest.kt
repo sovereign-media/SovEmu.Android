@@ -52,18 +52,30 @@ class StreamStatsTest {
         assertEquals(60.0, stats.audioBufferMs!!, 0.001)
         assertEquals(40.0, stats.audioTargetMs!!, 0.001)
         assertEquals(25.0, stats.audioPlayoutMs!!, 0.001)
-        assertEquals("audio_buffer_ms=60.0 audio_target_ms=40.0 audio_playout_ms=25.0", stats.audioLogfmt())
+        assertEquals(
+            "audio_buffer_ms=60.0 audio_target_ms=40.0 audio_playout_ms=25.0",
+            stats.audioLogfmt(),
+        )
         // The overlay shows the wait and what it is aiming for, and a dash before either is known.
         assertEquals("60 ms · target 40", stats.rows().toMap()["Audio delay"])
         assertEquals("–", StatsSampler().sample(first, emptyList()).rows().toMap()["Audio delay"])
         // A platform that reports no output delay leaves it out of the line.
-        val third = second.copy(atMs = 3_000, audioJitterBufferDelay = second.audioJitterBufferDelay + 480.0, audioJitterBufferTargetDelay = second.audioJitterBufferTargetDelay + 480.0, audioJitterBufferEmittedCount = 98_000.0)
-        assertEquals("audio_buffer_ms=10.0 audio_target_ms=10.0", sampler.sample(third, emptyList()).audioLogfmt())
+        val third = second.copy(
+            atMs = 3_000,
+            audioJitterBufferDelay = second.audioJitterBufferDelay + 480.0,
+            audioJitterBufferTargetDelay = second.audioJitterBufferTargetDelay + 480.0,
+            audioJitterBufferEmittedCount = 98_000.0,
+        )
+        assertEquals(
+            "audio_buffer_ms=10.0 audio_target_ms=10.0",
+            sampler.sample(third, emptyList()).audioLogfmt(),
+        )
     }
 
     @Test
     fun `the first reading knows no rates`() {
-        val stats = StatsSampler().sample(reading(1_000, bytes = 5_000.0, emitted = 60.0, decoded = 60.0), emptyList())
+        val stats = StatsSampler()
+            .sample(reading(1_000, bytes = 5_000.0, emitted = 60.0, decoded = 60.0), emptyList())
         assertNull(stats.kbps)
         assertNull(stats.jitterBufferMs)
         assertNull(stats.decodeMs)
@@ -75,10 +87,27 @@ class StreamStatsTest {
     @Test
     fun `rates and per-frame averages come from the change since the last reading`() {
         val sampler = StatsSampler()
-        sampler.sample(reading(1_000, bytes = 10_000.0, jitter = 0.6, emitted = 60.0, decode = 0.12, decoded = 60.0), emptyList())
+        sampler.sample(
+            reading(
+                1_000,
+                bytes = 10_000.0,
+                jitter = 0.6,
+                emitted = 60.0,
+                decode = 0.12,
+                decoded = 60.0,
+            ),
+            emptyList(),
+        )
         // 125 kB in 1 s; 60 more frames that waited 0.6 s and decoded in 0.12 s between them.
         val stats = sampler.sample(
-            reading(2_000, bytes = 135_000.0, jitter = 1.2, emitted = 120.0, decode = 0.24, decoded = 120.0),
+            reading(
+                2_000,
+                bytes = 135_000.0,
+                jitter = 1.2,
+                emitted = 120.0,
+                decode = 0.24,
+                decoded = 120.0,
+            ),
             listOf(30L, 10L, 20L),
         )
         assertEquals(1000.0, stats.kbps!!, 1e-9)
@@ -107,7 +136,8 @@ class StreamStatsTest {
             kbps = 1234.4, packetsLost = 0,
         )
         assertEquals(
-            "estimate_ms=41 input_rtt_p50_ms=21 input_rtt_p95_ms=34 input_samples=60 net_rtt_ms=4.3 " +
+            "estimate_ms=41 input_rtt_p50_ms=21 input_rtt_p95_ms=34 input_samples=60 " +
+                "net_rtt_ms=4.3 " +
                 "decode_ms=1.5 width=256 height=240 fps=60 kbps=1234 packets_lost=0",
             stats.logfmt(),
         )
@@ -124,7 +154,14 @@ class StreamStatsTest {
 
     private val pipeline = Protocol.Pipeline(
         renderer = null,
-        video = Protocol.PipelineVideo(codec = "h264", encoder = "vaapi", hardware = true, width = 640, height = 480, fps = 60.0),
+        video = Protocol.PipelineVideo(
+            codec = "h264",
+            encoder = "vaapi",
+            hardware = true,
+            width = 640,
+            height = 480,
+            fps = 60.0,
+        ),
         audio = Protocol.PipelineAudio(codec = "opus", sourceHz = 32040.0, kbps = 128),
     )
 
@@ -162,7 +199,10 @@ class StreamStatsTest {
 
     @Test
     fun `without a pipeline there are no stream rows`() {
-        assertEquals(emptyList<Pair<String, String>>(), pipelineRows(null, VideoDecoder("libvpx", false)))
+        assertEquals(
+            emptyList<Pair<String, String>>(),
+            pipelineRows(null, VideoDecoder("libvpx", false)),
+        )
     }
 
     @Test
@@ -188,7 +228,10 @@ class StreamStatsTest {
                 video = Protocol.PipelineVideo(
                     codec = "vp8",
                     encoder = "libvpx",
-                    fallbacks = listOf(Protocol.Fallback("nvenc", "no device"), Protocol.Fallback("x264", "failed")),
+                    fallbacks = listOf(
+                        Protocol.Fallback("nvenc", "no device"),
+                        Protocol.Fallback("x264", "failed"),
+                    ),
                 ),
                 runAhead = 2,
             ),
@@ -199,8 +242,15 @@ class StreamStatsTest {
         assertEquals("Software · llvmpipe (LLVM 19.1.7, 256 bits)", rows["Rendering"])
         assertEquals("2 frames", rows["Run-ahead"])
         assertNull(rows["Decoder"])
-        assertEquals("GPU · AMD Radeon 780M", pipelineRows(Protocol.Pipeline(renderer = "AMD Radeon 780M"), null).toMap()["Rendering"])
-        assertEquals("1 frame", pipelineRows(Protocol.Pipeline(runAhead = 1), null).toMap()["Run-ahead"])
+        assertEquals(
+            "GPU · AMD Radeon 780M",
+            pipelineRows(Protocol.Pipeline(renderer = "AMD Radeon 780M"), null)
+                .toMap()["Rendering"],
+        )
+        assertEquals(
+            "1 frame",
+            pipelineRows(Protocol.Pipeline(runAhead = 1), null).toMap()["Run-ahead"],
+        )
     }
 
     @Test
@@ -212,7 +262,10 @@ class StreamStatsTest {
     @Test
     fun `the measured row follows the estimate and shows a dash until a sample`() {
         val none = StatsSampler().sample(reading(0), emptyList())
-        assertEquals(listOf("Estimated button→pixel", "Measured button→frame"), none.rows().take(2).map { it.first })
+        assertEquals(
+            listOf("Estimated button→pixel", "Measured button→frame"),
+            none.rows().take(2).map { it.first },
+        )
         assertEquals("–", none.rows().toMap()["Measured button→frame"])
         val some = StatsSampler().sample(reading(0), emptyList(), inputToFrameMs = 39)
         assertEquals("39 ms", some.rows().toMap()["Measured button→frame"])
@@ -221,28 +274,32 @@ class StreamStatsTest {
 
     @Test
     fun `the stats message carries the measurement and the decoder only when known`() {
-        fun json(stats: StreamStats, decoder: DecoderSetup?) = String(stats.encode("app", true, decoder).let { it.copyOfRange(2, it.size) })
+        fun json(stats: StreamStats, decoder: DecoderSetup?) =
+            String(stats.encode("app", true, decoder).let { it.copyOfRange(2, it.size) })
         val unknown = StatsSampler().sample(reading(0), emptyList())
         assertEquals(false, json(unknown, null).contains("input_to_frame_ms"))
         assertEquals(false, json(unknown, null).contains("decoder"))
         assertEquals(false, json(unknown, null).contains("low_latency_decode"))
         val known = StatsSampler().sample(reading(0), emptyList(), inputToFrameMs = 41)
         assertEquals(
-            """{"client":"app","input_to_frame_ms":41,"net_rtt_ms":4.3,"width":256,"height":240,""" +
-                """"fps":60,"packets_lost":3,"game_mode":true,"decoder":"c2.amlogic.avc.decoder",""" +
+            """{"client":"app","input_to_frame_ms":41,"net_rtt_ms":4.3,"width":256,""" +
+                """"height":240,"fps":60,"packets_lost":3,"game_mode":true,""" +
+                """"decoder":"c2.amlogic.avc.decoder",""" +
                 """"low_latency_decode":false}""",
             json(known, DecoderSetup("c2.amlogic.avc.decoder", "video/avc", emptyList())),
         )
         assertEquals(
             true,
-            json(known, DecoderSetup("c2.qti.avc.decoder", "video/avc", listOf("low-latency"))).contains(""""low_latency_decode":true"""),
+            json(known, DecoderSetup("c2.qti.avc.decoder", "video/avc", listOf("low-latency")))
+                .contains(""""low_latency_decode":true"""),
         )
     }
 
     @Test
     fun `the decoder row says whether it decodes in low-latency mode once known`() {
         val hardware = VideoDecoder("MediaCodecVideoDecoder", true)
-        fun decoderRow(setup: DecoderSetup?) = pipelineRows(pipeline, hardware, setup).toMap()["Decoder"]
+        fun decoderRow(setup: DecoderSetup?) =
+            pipelineRows(pipeline, hardware, setup).toMap()["Decoder"]
         assertEquals("MediaCodecVideoDecoder (hardware)", decoderRow(null))
         assertEquals(
             "MediaCodecVideoDecoder (hardware) · low latency: on",

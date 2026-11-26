@@ -11,8 +11,12 @@ class SealedTokenTest {
     private class Prefs : KeyValue {
         val map = mutableMapOf<String, String>()
         override fun get(key: String) = map[key]
-        override fun put(key: String, value: String) { map[key] = value }
-        override fun remove(key: String) { map.remove(key) }
+        override fun put(key: String, value: String) {
+            map[key] = value
+        }
+        override fun remove(key: String) {
+            map.remove(key)
+        }
     }
 
     /** A reversible stand-in for the Keystore's AES-GCM: marks what it sealed. */

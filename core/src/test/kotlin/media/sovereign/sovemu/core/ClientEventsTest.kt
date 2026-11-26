@@ -11,7 +11,10 @@ class ClientEventsTest {
         val q = ClientEventQueue { 1.0 }
         assertTrue(q.add("CONNECTION_FAILED", "ICE failed", "abc"))
         assertFalse("the same fault again", q.add("CONNECTION_FAILED", "ICE failed", "abc"))
-        assertEquals(listOf(listOf(ClientEvent("CONNECTION_FAILED", "ICE failed", "abc", 1.0))), q.take())
+        assertEquals(
+            listOf(listOf(ClientEvent("CONNECTION_FAILED", "ICE failed", "abc", 1.0))),
+            q.take(),
+        )
         repeat(25) { q.add("OTHER", "event $it") }
         assertEquals(listOf(20, 5), q.take().map { it.size })
         assertEquals(emptyList<List<ClientEvent>>(), q.take())

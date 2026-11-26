@@ -25,9 +25,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,23 +36,23 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -60,8 +60,8 @@ import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import coil3.request.ImageRequest
 import media.sovereign.sovemu.SovEmuApi
-import media.sovereign.sovemu.core.assetCacheKey
 import media.sovereign.sovemu.core.SystemSummary
+import media.sovereign.sovemu.core.assetCacheKey
 import media.sovereign.sovemu.core.parseColor
 
 // SovEmu.Web's theme (src/styles/global.css) and Tailwind's slate greys.
@@ -83,9 +83,17 @@ object Sov {
 
 /** Lucide's play, filled (`fill-current` on the web's Play buttons). */
 val PlayFilled: ImageVector by lazy {
-    ImageVector.Builder(defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f)
+    ImageVector.Builder(
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    )
         .addPath(
-            pathData = addPathNodes("M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"),
+            pathData = addPathNodes(
+                "M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7" +
+                    "A2 2 0 0 1 5 19z",
+            ),
             fill = SolidColor(Color.Black),
             stroke = SolidColor(Color.Black),
             strokeLineWidth = 2f,
@@ -100,7 +108,8 @@ private val colours = HashMap<String, Color>()
 fun SystemSummary.colour(): Color = colours.getOrPut(color) { Color(parseColor(color)) }
 
 /** `linear-gradient(145deg, c, color-mix(c [mix]%, black))`, the web's card fill. */
-fun tile(c: Color, mix: Float = 0.3f): Brush = Brush.linearGradient(listOf(c, lerp(Color.Black, c, mix)))
+fun tile(c: Color, mix: Float = 0.3f): Brush =
+    Brush.linearGradient(listOf(c, lerp(Color.Black, c, mix)))
 
 /** How the app is being used: a TV (D-pad), a wide screen (side dock) or a phone (tab bar). */
 data class Form(val tv: Boolean, val wide: Boolean)
@@ -108,7 +117,9 @@ data class Form(val tv: Boolean, val wide: Boolean)
 val LocalForm = staticCompositionLocalOf { Form(tv = false, wide = true) }
 val LocalApi = staticCompositionLocalOf<SovEmuApi> { error("no API") }
 
-/** The server's background behind every screen (a `/media/backgrounds/…` path), or null for none. */
+/**
+ * The server's background behind every screen (a `/media/backgrounds/…` path), or null for none.
+ */
 val LocalBackground = compositionLocalOf<String?> { null }
 
 @Composable
@@ -121,39 +132,51 @@ fun SovTheme(content: @Composable () -> Unit) {
     // 1280dp instead: the web client at 150%, a comfortable size from the sofa.
     val density = LocalDensity.current
     val scaled = remember(density, config.screenWidthDp, tv) {
-        if (!tv) density else Density(density.density * config.screenWidthDp / 1280f, density.fontScale)
+        if (!tv) {
+            density
+        } else {
+            Density(density.density * config.screenWidthDp / 1280f, density.fontScale)
+        }
     }
     CompositionLocalProvider(LocalDensity provides scaled) {
-    MaterialTheme(
-        colorScheme = darkColorScheme(
-            primary = Sov.Accent,
-            background = Sov.Surface,
-            surface = Sov.Panel,
-            surfaceContainer = Sov.Panel,
-            onSurface = Sov.Slate100,
-            outline = Sov.Edge,
-        ),
-    ) {
-        CompositionLocalProvider(LocalForm provides form, content = content)
-    }
+        MaterialTheme(
+            colorScheme = darkColorScheme(
+                primary = Sov.Accent,
+                background = Sov.Surface,
+                surface = Sov.Panel,
+                surfaceContainer = Sov.Panel,
+                onSurface = Sov.Slate100,
+                outline = Sov.Edge,
+            ),
+        ) {
+            CompositionLocalProvider(LocalForm provides form, content = content)
+        }
     }
 }
 
 /** A Lucide icon, tinted. */
 @Composable
-fun LucideIcon(icon: ImageVector, modifier: Modifier = Modifier, tint: Color = Color.White, size: Dp = 20.dp) =
-    Icon(icon, contentDescription = null, modifier = modifier.size(size), tint = tint)
+fun LucideIcon(
+    icon: ImageVector,
+    modifier: Modifier = Modifier,
+    tint: Color = Color.White,
+    size: Dp = 20.dp,
+) = Icon(icon, contentDescription = null, modifier = modifier.size(size), tint = tint)
 
 /**
  * The web's focus treatment for cards: scaled up 5% with a white ring. The scale is read in the
  * draw layer ([scale] is a lambda), so its animation redraws the card without recomposing it.
  */
-fun Modifier.focusRing(focused: Boolean, scale: () -> Float, shape: Shape, ring: Dp = 4.dp): Modifier =
-    graphicsLayer {
-        val s = scale()
-        scaleX = s
-        scaleY = s
-    }.then(if (focused) Modifier.border(ring, Color.White.copy(alpha = 0.8f), shape) else Modifier)
+fun Modifier.focusRing(
+    focused: Boolean,
+    scale: () -> Float,
+    shape: Shape,
+    ring: Dp = 4.dp,
+): Modifier = graphicsLayer {
+    val s = scale()
+    scaleX = s
+    scaleY = s
+}.then(if (focused) Modifier.border(ring, Color.White.copy(alpha = 0.8f), shape) else Modifier)
 
 /**
  * A border only when [show]: `border(0.dp)` is not "no border" (it draws a hairline), and a
@@ -176,11 +199,16 @@ fun FocusCard(
     // The focusable node keeps its real size; only what it draws is scaled. (Scaled, its bounds
     // would grow as it takes the focus, and the list would scroll to fit them and back: a bounce.)
     Box(modifier.clickable(interactionSource = source, indication = null, onClick = onClick)) {
-        Box(Modifier.matchParentSize().focusRing(focused, { scale.value }, shape).clip(shape)) { content(focused) }
+        Box(
+            Modifier.matchParentSize().focusRing(focused, { scale.value }, shape).clip(shape),
+        ) { content(focused) }
     }
 }
 
-/** Artwork from the server (relative `/media/…` URL), filling its box; nothing while there is none. */
+/**
+ * Artwork from the server (relative `/media/…` URL), filling its box; nothing while there is
+ * none.
+ */
 @Composable
 fun Art(
     path: String?,
@@ -202,13 +230,27 @@ fun Art(
             .apply { if (sizePx != null) size(sizePx) }.build()
     }
     AsyncImage(
-        model = request, contentDescription = null, contentScale = scale, alpha = alpha, modifier = modifier,
-        onState = if (onLoaded == null && onShape == null) null else { state: AsyncImagePainter.State ->
-            onLoaded?.invoke(state is AsyncImagePainter.State.Success)
-            // The picture's own shape (width over height), once it has loaded.
-            if (state is AsyncImagePainter.State.Success) {
-                val size = state.painter.intrinsicSize
-                if (size.width > 0f && size.height > 0f) onShape?.invoke(size.width / size.height)
+        model = request,
+        contentDescription = null,
+        contentScale = scale,
+        alpha = alpha,
+        modifier = modifier,
+        onState = if (
+            onLoaded == null && onShape == null
+        ) {
+            null
+        } else {
+            { state: AsyncImagePainter.State ->
+                onLoaded?.invoke(state is AsyncImagePainter.State.Success)
+                // The picture's own shape (width over height), once it has loaded.
+                if (state is AsyncImagePainter.State.Success) {
+                    val size = state.painter.intrinsicSize
+                    if (size.width > 0f &&
+                        size.height > 0f
+                    ) {
+                        onShape?.invoke(size.width / size.height)
+                    }
+                }
             }
         },
     )
@@ -234,9 +276,14 @@ fun SovButton(
     val shape = RoundedCornerShape(6.dp)
     val (bg, fg) = when (variant) {
         Variant.Primary -> Sov.Accent to Color.White
+
         Variant.Outline -> Color.Transparent to Sov.Slate200
-        Variant.Ghost -> (if (focused) Color.White.copy(alpha = 0.1f) else Color.Transparent) to Sov.Slate400
+
+        Variant.Ghost ->
+            (if (focused) Color.White.copy(alpha = 0.1f) else Color.Transparent) to Sov.Slate400
+
         Variant.Light -> Color.White to Sov.Slate950
+
         Variant.Glass -> Color.White.copy(alpha = if (focused) 0.25f else 0.15f) to Color.White
     }
     // The focus ring sits outside the button (Tailwind's ring), so it shows on a white one too;
@@ -250,13 +297,26 @@ fun SovButton(
             .borderIf(variant == Variant.Outline, 1.dp, Sov.Edge, shape)
             .clip(shape)
             .background(bg)
-            .clickable(interactionSource = source, indication = null, enabled = enabled, onClick = onClick)
+            .clickable(
+                interactionSource = source,
+                indication = null,
+                enabled = enabled,
+                onClick = onClick,
+            )
             .padding(horizontal = if (large) 20.dp else 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
     ) {
-        if (icon != null) LucideIcon(if (filledIcon) PlayFilled else icon, tint = iconTint ?: fg, size = 18.dp)
-        Text(label, color = fg, fontWeight = FontWeight.SemiBold, fontSize = if (large) 16.sp else 14.sp, maxLines = 1)
+        if (icon != null) {
+            LucideIcon(if (filledIcon) PlayFilled else icon, tint = iconTint ?: fg, size = 18.dp)
+        }
+        Text(
+            label,
+            color = fg,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = if (large) 16.sp else 14.sp,
+            maxLines = 1,
+        )
     }
 }
 
@@ -276,11 +336,24 @@ fun ChipStrip(modifier: Modifier = Modifier, content: @Composable RowScope.() ->
 }
 
 @Composable
-fun ChipDivider() = Box(Modifier.padding(horizontal = 4.dp).width(1.dp).height(20.dp).background(Color.White.copy(alpha = 0.1f)))
+fun ChipDivider(modifier: Modifier = Modifier) = Box(
+    modifier
+        .padding(horizontal = 4.dp)
+        .width(1.dp)
+        .height(20.dp)
+        .background(Color.White.copy(alpha = 0.1f)),
+)
 
 /** A chip: quiet at rest, filled when its action is in effect ([on]). */
 @Composable
-fun Chip(label: String, icon: ImageVector, onClick: () -> Unit, on: Boolean = false, modifier: Modifier = Modifier, enabled: Boolean = true) {
+fun Chip(
+    label: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    on: Boolean = false,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
     val source = remember { MutableInteractionSource() }
     val focused by source.collectIsFocusedAsState()
     val bg = when {
@@ -295,28 +368,55 @@ fun Chip(label: String, icon: ImageVector, onClick: () -> Unit, on: Boolean = fa
             .clip(CircleShape)
             .borderIf(focused, 2.dp, Color.White.copy(alpha = 0.6f), CircleShape)
             .background(bg)
-            .clickable(interactionSource = source, indication = null, enabled = enabled, onClick = onClick)
+            .clickable(
+                interactionSource = source,
+                indication = null,
+                enabled = enabled,
+                onClick = onClick,
+            )
             .alpha(if (enabled) 1f else 0.4f)
             .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         LucideIcon(icon, tint = fg, size = 14.dp)
-        Text(label, color = fg, fontSize = 14.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1)
+        Text(
+            label,
+            color = fg,
+            fontSize = 14.sp,
+            fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
+            maxLines = 1,
+        )
     }
 }
 
 /** A toggle pill (the filter drawer's): accent when on. */
 @Composable
-fun Toggle(on: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
+fun Toggle(
+    on: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable RowScope.() -> Unit,
+) {
     val source = remember { MutableInteractionSource() }
     val focused by source.collectIsFocusedAsState()
     Row(
         modifier
             .height(32.dp)
             .clip(CircleShape)
-            .background(if (on) Sov.Accent else if (focused) Color.White.copy(alpha = 0.1f) else Color.Transparent)
-            .borderIf(focused || !on, if (focused) 2.dp else 1.dp, if (focused) Color.White.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.15f), CircleShape)
+            .background(
+                when {
+                    on -> Sov.Accent
+                    focused -> Color.White.copy(alpha = 0.1f)
+                    else -> Color.Transparent
+                },
+            )
+            .borderIf(
+                focused || !on,
+                if (focused) 2.dp else 1.dp,
+                if (focused) Color.White.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.15f),
+                CircleShape,
+            )
             .clickable(interactionSource = source, indication = null, onClick = onClick)
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -329,51 +429,76 @@ fun Toggle(on: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, cont
 
 /** The system's coloured badge ("SNES"). */
 @Composable
-fun SystemBadge(short: String, colour: Color, modifier: Modifier = Modifier, large: Boolean = false) =
-    Text(
-        short,
-        color = Color.White,
-        fontWeight = FontWeight.Black,
-        fontSize = if (large) 14.sp else 12.sp,
-        modifier = modifier
-            .clip(RoundedCornerShape(if (large) 8.dp else 6.dp))
-            .background(colour)
-            .padding(horizontal = if (large) 10.dp else 8.dp, vertical = if (large) 4.dp else 2.dp),
-    )
+fun SystemBadge(
+    short: String,
+    colour: Color,
+    modifier: Modifier = Modifier,
+    large: Boolean = false,
+) = Text(
+    short,
+    color = Color.White,
+    fontWeight = FontWeight.Black,
+    fontSize = if (large) 14.sp else 12.sp,
+    modifier = modifier
+        .clip(RoundedCornerShape(if (large) 8.dp else 6.dp))
+        .background(colour)
+        .padding(horizontal = if (large) 10.dp else 8.dp, vertical = if (large) 4.dp else 2.dp),
+)
 
 /** A row's title with its icon ("Continue playing"). */
 @Composable
-fun SectionTitle(title: String, icon: ImageVector, modifier: Modifier = Modifier) =
-    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        LucideIcon(icon, tint = Sov.Slate400)
-        Text(title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
+fun SectionTitle(title: String, icon: ImageVector, modifier: Modifier = Modifier) = Row(
+    modifier,
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
+) {
+    LucideIcon(icon, tint = Sov.Slate400)
+    Text(
+        title,
+        color = Color.White,
+        fontSize = 18.sp,
+        fontWeight = FontWeight.Bold,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
 
 /** The uppercase label over a section ("SAVES", "GENRE"). */
 @Composable
-fun Eyebrow(text: String, modifier: Modifier = Modifier) =
-    Text(text.uppercase(), color = Sov.Slate500, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.2.sp, modifier = modifier)
+fun Eyebrow(text: String, modifier: Modifier = Modifier) = Text(
+    text.uppercase(),
+    color = Sov.Slate500,
+    fontSize = 12.sp,
+    fontWeight = FontWeight.SemiBold,
+    letterSpacing = 1.2.sp,
+    modifier = modifier,
+)
 
 /**
  * A card's detail line with the game's release label (what tells it from same-titled games on its
  * system: "Translation", "Rev 1") in amber, before the rest ([first]) or after its first part.
  */
 @Composable
-fun withRelease(release: String?, line: String, first: Boolean): AnnotatedString = remember(release, line, first) {
-    buildAnnotatedString {
-        if (release == null) {
-            append(line)
-            return@buildAnnotatedString
-        }
-        val label = { withStyle(SpanStyle(color = Sov.Amber200, fontWeight = FontWeight.Medium)) { append(release) } }
-        if (first) {
-            label()
-            append(" · ")
-            append(line)
-        } else {
-            append(line)
-            append(" · ")
-            label()
+fun withRelease(release: String?, line: String, first: Boolean): AnnotatedString =
+    remember(release, line, first) {
+        buildAnnotatedString {
+            if (release == null) {
+                append(line)
+                return@buildAnnotatedString
+            }
+            val label = {
+                withStyle(SpanStyle(color = Sov.Amber200, fontWeight = FontWeight.Medium)) {
+                    append(release)
+                }
+            }
+            if (first) {
+                label()
+                append(" · ")
+                append(line)
+            } else {
+                append(line)
+                append(" · ")
+                label()
+            }
         }
     }
-}

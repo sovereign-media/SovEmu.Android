@@ -51,6 +51,12 @@ fun QualityChip(notice: QualityNotice, modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         glyphFor(notice.icon)?.let { LucideIcon(it) }
-        Text(notice.line, color = Color.White, fontSize = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(
+            notice.line,
+            color = Color.White,
+            fontSize = 16.sp,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }

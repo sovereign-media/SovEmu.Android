@@ -72,11 +72,21 @@ fun SignInTvScreen(
                 .padding(28.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(TvSignIn.TITLE, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                TvSignIn.TITLE,
+                color = Color.White,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
             when {
                 approved -> Text(TvSignIn.APPROVED, color = Sov.Slate200, fontSize = 16.sp)
+
                 confirming -> {
-                    Text(TvSignIn.confirmation(server, name), color = Sov.Slate200, fontSize = 16.sp)
+                    Text(
+                        TvSignIn.confirmation(server, name),
+                        color = Sov.Slate200,
+                        fontSize = 16.sp,
+                    )
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         SovButton(
                             if (sending) "Approving…" else TvSignIn.APPROVE,
@@ -99,9 +109,12 @@ fun SignInTvScreen(
                             Modifier.weight(1f),
                             enabled = !sending,
                         )
-                        SovButton(TvSignIn.CANCEL, { confirming = false }, Modifier.weight(1f), variant = Variant.Outline, enabled = !sending)
+                        SovButton(TvSignIn.CANCEL, {
+                            confirming = false
+                        }, Modifier.weight(1f), variant = Variant.Outline, enabled = !sending)
                     }
                 }
+
                 else -> {
                     Text(TvSignIn.INTRO, color = Sov.Slate300, fontSize = 15.sp)
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -110,7 +123,12 @@ fun SignInTvScreen(
                         // a dash) fights the keyboard and drops keystrokes, as Sovereign.Android
                         // found. It is normalised only to check it and to send it.
                         TvTextField(
-                            TvSignIn.FIELD_LABEL, code, { code = it.take(MAX_TYPED); error = null },
+                            TvSignIn.FIELD_LABEL,
+                            code,
+                            {
+                                code = it.take(MAX_TYPED)
+                                error = null
+                            },
                             typing = typing,
                             onTyping = { typing = it },
                             mono = true,
@@ -120,7 +138,12 @@ fun SignInTvScreen(
                     }
                     error?.let { Text(it, color = Sov.Red300, fontSize = 14.sp) }
                     SovButton(
-                        TvSignIn.CONTINUE, { confirming = true; error = null }, Modifier.fillMaxWidth(),
+                        TvSignIn.CONTINUE,
+                        {
+                            confirming = true
+                            error = null
+                        },
+                        Modifier.fillMaxWidth(),
                         enabled = TvSignIn.isComplete(code),
                     )
                 }

@@ -5,8 +5,8 @@ import kotlin.math.ceil
 /**
  * The stats overlay's latency graph: the last [capacity] samples (one a second) of the measured
  * button→frame, the estimated button→pixel and the audio's delay, oldest first, and the graph's
- * two y scales (the audio's delay has its own). A fixed ring, so adding a sample allocates nothing; an unknown value is NaN (a gap
- * in its line).
+ * two y scales (the audio's delay has its own). A fixed ring, so adding a sample allocates
+ * nothing; an unknown value is NaN (a gap in its line).
  */
 class LatencyHistory(val capacity: Int = DEFAULT_CAPACITY) {
     private val measured = DoubleArray(capacity) { Double.NaN }

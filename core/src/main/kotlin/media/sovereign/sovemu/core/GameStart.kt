@@ -1,11 +1,11 @@
 package media.sovereign.sovemu.core
 
-import media.sovereign.sovemu.core.graphql.StartProgressQuery
-import media.sovereign.sovemu.core.graphql.type.StartPhase
 import java.util.Locale
 import java.util.UUID
 import kotlin.math.exp
 import kotlin.math.floor
+import media.sovereign.sovemu.core.graphql.StartProgressQuery
+import media.sovereign.sovemu.core.graphql.type.StartPhase
 
 // The loading screen while a game starts, as the web client's (SovEmu.Web/src/lib/launch.ts):
 // the server's phases (saving the last session, starting the emulator, opening the core, reading
@@ -26,9 +26,13 @@ data class StartStatus(
     val error: String? = null,
 )
 
-fun StartProgressQuery.StartProgress.toStartStatus() = StartStatus(phase, read, total, elapsedMs, phaseMs, error)
+fun StartProgressQuery.StartProgress.toStartStatus() =
+    StartStatus(phase, read, total, elapsedMs, phaseMs, error)
 
-/** One line of the loading screen: [label], its [detail] (megabytes and seconds, or the error), [fraction] 0..1 along the whole start. */
+/**
+ * One line of the loading screen: [label], its [detail] (megabytes and seconds, or the error),
+ * [fraction] 0..1 along the whole start.
+ */
 data class LaunchView(val label: String, val detail: String, val fraction: Double)
 
 private class Phase(val from: Double, val to: Double, val label: String, val ease: Double)
@@ -43,7 +47,10 @@ private val PHASES = mapOf(
     StartPhase.FAILED to Phase(0.0, 0.0, "Could not start", 1.0),
 )
 
-/** A phase a newer server knows and this app does not: named generically, the bar left where it was. */
+/**
+ * A phase a newer server knows and this app does not: named generically, the bar left where it
+ * was.
+ */
 private val UNKNOWN_PHASE = Phase(0.0, 0.0, "Starting", 1.0)
 
 private const val MB = 1024.0 * 1024.0
@@ -59,10 +66,18 @@ fun describeStart(s: StartStatus): LaunchView {
     if (s.phase == StartPhase.FAILED) return LaunchView(p.label, s.error ?: "", 0.0)
     val read = s.read
     val total = s.total
-    val within = if (total != null && total > 0 && read != null) minOf(1.0, read / total) else 1 - exp(-s.phaseMs / p.ease)
+    val within = if (total != null && total > 0 && read != null) {
+        minOf(1.0, read / total)
+    } else {
+        1 - exp(-s.phaseMs / p.ease)
+    }
     val parts = mutableListOf<String>()
     if (s.phase == StartPhase.CONTENT && read != null && read > 0) {
-        parts += if (total != null && total != 0.0) "${mb(minOf(read, total))} of ${mb(total)} MB" else "${mb(read)} MB read"
+        parts += if (total != null && total != 0.0) {
+            "${mb(minOf(read, total))} of ${mb(total)} MB"
+        } else {
+            "${mb(read)} MB read"
+        }
     }
     val seconds = floor(s.elapsedMs / 1000).toLong()
     if (seconds >= 3) parts += "$seconds s"
@@ -115,7 +130,8 @@ object GameStart {
      * A controller's B goes to the game while it starts (some wait for a button), so on a
      * controller it is the guide/home button or Select+Start; on a remote, Back.
      */
-    const val MENU_HINT = "To quit, open the menu: Back on the remote, or Home (or Select + Start) on a controller."
+    const val MENU_HINT =
+        "To quit, open the menu: Back on the remote, or Home (or Select + Start) on a controller."
 
     /**
      * [error] (a failure to start, or a lost connection) wins; then the session starting
@@ -135,7 +151,11 @@ object GameStart {
         if (!ready) {
             progress ?: return StartScreen("Starting $title…", fraction = bar)
             val view = describeStart(progress)
-            return if (progress.phase == StartPhase.FAILED) StartScreen(view.label, view.detail) else StartScreen(view.label, view.detail, bar)
+            return if (progress.phase == StartPhase.FAILED) {
+                StartScreen(view.label, view.detail)
+            } else {
+                StartScreen(view.label, view.detail, bar)
+            }
         }
         if (pictureShown) return null
         val view = describeFirstPicture(waitedMs)

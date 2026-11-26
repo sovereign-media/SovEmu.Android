@@ -7,85 +7,85 @@ import com.apollographql.apollo.api.Optional
 import com.apollographql.apollo.api.Query
 import com.apollographql.apollo.network.okHttpClient
 import java.util.concurrent.TimeUnit
-import media.sovereign.sovemu.core.SealedToken
-import media.sovereign.sovemu.core.KeyValue
+import kotlinx.coroutines.flow.MutableStateFlow
 import media.sovereign.sovemu.core.ApiException
 import media.sovereign.sovemu.core.Auth
 import media.sovereign.sovemu.core.BearerInterceptor
 import media.sovereign.sovemu.core.Binding
+import media.sovereign.sovemu.core.BrowserRedirect
+import media.sovereign.sovemu.core.BrowserSignInRequest
 import media.sovereign.sovemu.core.Cheat
 import media.sovereign.sovemu.core.CheatService
-import media.sovereign.sovemu.core.CollectionService
-import media.sovereign.sovemu.core.SignInService
 import media.sovereign.sovemu.core.CollectionChoice
-import media.sovereign.sovemu.core.HomeCollection
+import media.sovereign.sovemu.core.CollectionService
 import media.sovereign.sovemu.core.ControllerMapping
+import media.sovereign.sovemu.core.DeviceCode
+import media.sovereign.sovemu.core.DevicePoll
 import media.sovereign.sovemu.core.Game
 import media.sovereign.sovemu.core.GameDecoration
 import media.sovereign.sovemu.core.GamePatch
+import media.sovereign.sovemu.core.HomeCollection
 import media.sovereign.sovemu.core.HomeFeed
 import media.sovereign.sovemu.core.IceServer
+import media.sovereign.sovemu.core.KeyValue
+import media.sovereign.sovemu.core.OAuthException
 import media.sovereign.sovemu.core.PadLayout
 import media.sovereign.sovemu.core.SaveSlot
+import media.sovereign.sovemu.core.SealedToken
 import media.sovereign.sovemu.core.SessionInfo
-import kotlinx.coroutines.flow.MutableStateFlow
-import media.sovereign.sovemu.core.BrowserRedirect
-import media.sovereign.sovemu.core.BrowserSignInRequest
-import media.sovereign.sovemu.core.DeviceCode
-import media.sovereign.sovemu.core.OAuthException
-import media.sovereign.sovemu.core.graphql.ApproveDeviceCodeMutation
-import media.sovereign.sovemu.core.message
-import media.sovereign.sovemu.core.DevicePoll
 import media.sovereign.sovemu.core.SignInConfig
-import media.sovereign.sovemu.core.Tokens
-import media.sovereign.sovemu.core.bootstrap
+import media.sovereign.sovemu.core.SignInService
+import media.sovereign.sovemu.core.StartStatus
 import media.sovereign.sovemu.core.SystemControls
 import media.sovereign.sovemu.core.SystemSummary
 import media.sovereign.sovemu.core.TokenClient
 import media.sovereign.sovemu.core.TokenStore
+import media.sovereign.sovemu.core.Tokens
 import media.sovereign.sovemu.core.Viewer
+import media.sovereign.sovemu.core.bootstrap
 import media.sovereign.sovemu.core.graphql.AddCheatMutation
-import media.sovereign.sovemu.core.graphql.ReportClientEventsMutation
-import media.sovereign.sovemu.core.graphql.type.ClientEventInput
-import media.sovereign.sovemu.core.graphql.type.ClientEventKind
+import media.sovereign.sovemu.core.graphql.ApproveDeviceCodeMutation
 import media.sovereign.sovemu.core.graphql.BackgroundQuery
 import media.sovereign.sovemu.core.graphql.CheatsQuery
-import media.sovereign.sovemu.core.graphql.CollectionChoicesQuery
-import media.sovereign.sovemu.core.graphql.CreateCollectionMutation
 import media.sovereign.sovemu.core.graphql.ClientConfigQuery
-import media.sovereign.sovemu.core.graphql.DeleteCheatMutation
-import media.sovereign.sovemu.core.graphql.SetCheatEnabledMutation
+import media.sovereign.sovemu.core.graphql.CollectionChoicesQuery
 import media.sovereign.sovemu.core.graphql.ControllerMappingsQuery
 import media.sovereign.sovemu.core.graphql.ControlsQuery
+import media.sovereign.sovemu.core.graphql.CreateCollectionMutation
+import media.sovereign.sovemu.core.graphql.DeleteCheatMutation
 import media.sovereign.sovemu.core.graphql.GameDecorationQuery
 import media.sovereign.sovemu.core.graphql.HomeQuery
 import media.sovereign.sovemu.core.graphql.LoadStateMutation
 import media.sovereign.sovemu.core.graphql.NameDeviceMutation
+import media.sovereign.sovemu.core.graphql.PatchesQuery
+import media.sovereign.sovemu.core.graphql.ReportClientEventsMutation
 import media.sovereign.sovemu.core.graphql.ResetControllerMappingMutation
 import media.sovereign.sovemu.core.graphql.SaveControllerMappingMutation
-import media.sovereign.sovemu.core.graphql.PatchesQuery
 import media.sovereign.sovemu.core.graphql.SaveStateMutation
-import media.sovereign.sovemu.core.graphql.SearchQuery
 import media.sovereign.sovemu.core.graphql.SavesQuery
+import media.sovereign.sovemu.core.graphql.SearchQuery
 import media.sovereign.sovemu.core.graphql.SessionOfferMutation
+import media.sovereign.sovemu.core.graphql.SetCheatEnabledMutation
 import media.sovereign.sovemu.core.graphql.SetDiscMutation
 import media.sovereign.sovemu.core.graphql.SetFavouriteMutation
 import media.sovereign.sovemu.core.graphql.SetInCollectionMutation
 import media.sovereign.sovemu.core.graphql.SetPatchMutation
-import media.sovereign.sovemu.core.graphql.StartSessionMutation
 import media.sovereign.sovemu.core.graphql.StartProgressQuery
-import media.sovereign.sovemu.core.StartStatus
-import media.sovereign.sovemu.core.toStartStatus
+import media.sovereign.sovemu.core.graphql.StartSessionMutation
 import media.sovereign.sovemu.core.graphql.StopSessionMutation
 import media.sovereign.sovemu.core.graphql.SystemGamesQuery
 import media.sovereign.sovemu.core.graphql.SystemsQuery
 import media.sovereign.sovemu.core.graphql.ViewerQuery
 import media.sovereign.sovemu.core.graphql.type.ClientCapabilitiesInput
+import media.sovereign.sovemu.core.graphql.type.ClientEventInput
+import media.sovereign.sovemu.core.graphql.type.ClientEventKind
 import media.sovereign.sovemu.core.iceServers
+import media.sovereign.sovemu.core.message
 import media.sovereign.sovemu.core.orThrow
 import media.sovereign.sovemu.core.toControls
 import media.sovereign.sovemu.core.toInput
 import media.sovereign.sovemu.core.toMapping
+import media.sovereign.sovemu.core.toStartStatus
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 
@@ -101,7 +101,8 @@ class Settings(context: Context) : TokenStore {
     private val token = SealedToken(
         object : KeyValue {
             override fun get(key: String) = prefs.getString(key, null)
-            override fun put(key: String, value: String) = prefs.edit().putString(key, value).apply()
+            override fun put(key: String, value: String) =
+                prefs.edit().putString(key, value).apply()
             override fun remove(key: String) = prefs.edit().remove(key).apply()
         },
         KeystoreSealer,
@@ -180,7 +181,9 @@ class SovEmuApi(
     private val settings: Settings,
     /** What this app calls its device on the server ([ClientEvents.deviceName]). */
     private val device: String = "SovEmu for Android",
-) : CheatService, CollectionService, SignInService {
+) : CheatService,
+    CollectionService,
+    SignInService {
     /** The sign-in's token client: plain HTTP, without the bearer interceptor. */
     private val plain: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
@@ -203,12 +206,18 @@ class SovEmuApi(
     private fun apollo(): ApolloClient {
         val url = graphqlUrl()
         apollo?.let { (u, c) -> if (u == url) return c }
-        return ApolloClient.Builder().serverUrl(url).okHttpClient(client).build().also { apollo = url to it }
+        return ApolloClient.Builder()
+            .serverUrl(url)
+            .okHttpClient(client)
+            .build()
+            .also { apollo = url to it }
     }
 
     private fun graphqlUrl(): String {
         val url = "${settings.serverUrl}/graphql"
-        if (url.toHttpUrlOrNull() == null) throw ApiException("BAD_REQUEST", "Invalid server address")
+        if (url.toHttpUrlOrNull() == null) {
+            throw ApiException("BAD_REQUEST", "Invalid server address")
+        }
         return url
     }
 
@@ -219,7 +228,11 @@ class SovEmuApi(
     suspend fun bootstrap(): SignInConfig {
         val url = graphqlUrl()
         val anonymous = signedOut?.takeIf { it.first == url }?.second
-            ?: ApolloClient.Builder().serverUrl(url).okHttpClient(plain).build().also { signedOut = url to it }
+            ?: ApolloClient.Builder()
+                .serverUrl(url)
+                .okHttpClient(plain)
+                .build()
+                .also { signedOut = url to it }
         return bootstrap(anonymous, settings.serverUrl).also { settings.signInConfig = it }
     }
 
@@ -243,10 +256,23 @@ class SovEmuApi(
         auth.retryingUnauthenticated { apollo().mutation(m).execute().orThrow() }
 
     /** An absolute URL for a path the API hands out (`/media/games/7/thumb`). */
-    fun media(path: String?): String? = path?.let { if (it.startsWith("http")) it else settings.serverUrl + it }
+    fun media(path: String?): String? = path?.let {
+        if (it.startsWith("http")) {
+            it
+        } else {
+            settings.serverUrl +
+                it
+        }
+    }
 
-    suspend fun status(): Viewer = query(ViewerQuery()).viewer.let { Viewer(it.setupRequired, it.user?.userFields) }
-    /** Signs in with a username and password (after [bootstrap]); a refusal is an `OAuthException` with the server's reason. */
+    suspend fun status(): Viewer = query(ViewerQuery()).viewer.let {
+        Viewer(it.setupRequired, it.user?.userFields)
+    }
+
+    /**
+     * Signs in with a username and password (after [bootstrap]); a refusal is an `OAuthException`
+     * with the server's reason.
+     */
     override suspend fun signIn(username: String, password: String) {
         auth.signIn(username, password)
         // A new sign-in on the server: it has no name yet.
@@ -259,12 +285,18 @@ class SovEmuApi(
      */
     @Volatile private var browserRequest: BrowserSignInRequest? = null
 
-    /** The redirect the app was opened with, for the sign-in screen to finish with; null once taken. */
+    /**
+     * The redirect the app was opened with, for the sign-in screen to finish with; null once taken.
+     */
     val browserRedirect = MutableStateFlow<String?>(null)
 
-    /** A browser sign-in to open (the server's own page), kept for its redirect; null when the server offers none. */
-    override fun startBrowserSignIn(): BrowserSignInRequest? =
-        settings.signInConfig?.let { BrowserSignInRequest.create(settings.serverUrl, it) }.also { browserRequest = it }
+    /**
+     * A browser sign-in to open (the server's own page), kept for its redirect; null when the
+     * server offers none.
+     */
+    override fun startBrowserSignIn(): BrowserSignInRequest? = settings.signInConfig
+        ?.let { BrowserSignInRequest.create(settings.serverUrl, it) }
+        .also { browserRequest = it }
 
     /**
      * Finishes a browser sign-in with the redirect [uri]: the code exchanged, as the mobile
@@ -272,13 +304,18 @@ class SovEmuApi(
      */
     override suspend fun finishBrowserSignIn(uri: String) {
         val request = browserRequest
-            ?: throw OAuthException("no_request", "The browser came back after the app had closed. Sign in again.", 0)
+            ?: throw OAuthException(
+                "no_request",
+                "The browser came back after the app had closed. Sign in again.",
+                0,
+            )
         when (val back = BrowserRedirect.parse(uri, request)) {
             is BrowserRedirect.Code -> {
                 browserRequest = null
                 auth.signedInWith(tokenClient.exchangeCode(back.code, request), request.clientId)
                 settings.namedDevice = null
             }
+
             else -> {
                 if (back !is BrowserRedirect.StateMismatch) browserRequest = null
                 throw OAuthException("browser", back.message(), 0)
@@ -295,7 +332,8 @@ class SovEmuApi(
     override suspend fun requestDeviceCode(): DeviceCode = tokenClient.requestDeviceCode()
 
     /** One poll for [code]'s approval. */
-    override suspend fun pollDeviceCode(code: DeviceCode): DevicePoll = tokenClient.pollDeviceCode(code)
+    override suspend fun pollDeviceCode(code: DeviceCode): DevicePoll =
+        tokenClient.pollDeviceCode(code)
 
     /** Signs in with the tokens an approved code got. */
     override suspend fun signedInWith(tokens: Tokens) {
@@ -312,41 +350,61 @@ class SovEmuApi(
         mutate(NameDeviceMutation(device))
         settings.namedDevice = device
     }
+
     /** Revokes the sign-in on the server, and forgets it here even when that fails. */
     suspend fun signOut() = auth.signOut()
-    suspend fun iceServers(): List<IceServer> = iceServers(query(ClientConfigQuery()).clientConfig.iceServers)
-    suspend fun systems(): List<SystemSummary> = query(SystemsQuery()).systems.map { it.systemFields }
-    /** The background behind every screen (a signed `/media/backgrounds/…` path), or null for none. */
+    suspend fun iceServers(): List<IceServer> =
+        iceServers(query(ClientConfigQuery()).clientConfig.iceServers)
+    suspend fun systems(): List<SystemSummary> = query(SystemsQuery()).systems.map {
+        it.systemFields
+    }
+
+    /**
+     * The background behind every screen (a signed `/media/backgrounds/…` path), or null for
+     * none.
+     */
     suspend fun background(): String? = query(BackgroundQuery()).background?.url
     suspend fun home(): HomeFeed = query(HomeQuery()).let { d ->
         val h = d.home
         HomeFeed(
-            h.featured.map { it.gameFields }, h.recent.map { it.gameFields }, h.added.map { it.gameFields },
+            h.featured.map { it.gameFields },
+            h.recent.map { it.gameFields },
+            h.added.map { it.gameFields },
             h.favourites.map { it.gameFields },
             h.topRated.map { it.gameFields },
             d.collections.map { c -> HomeCollection(c.id, c.name, c.games.map { it.gameFields }) },
         )
     }
+
     /** Games from every system matching every word of [text], best first (at most 48). */
-    suspend fun search(text: String): List<Game> = query(SearchQuery(text)).search.map { it.gameFields }
+    suspend fun search(text: String): List<Game> =
+        query(SearchQuery(text)).search.map { it.gameFields }
+
     /** The artwork to frame a game's picture with, if its system has any. */
     suspend fun decoration(gameId: Int): GameDecoration? =
         query(GameDecorationQuery(gameId)).game.decoration?.let {
             GameDecoration(it.url, it.width, it.height, it.top, it.left, it.bottom, it.right)
         }
+
     /** A game's soft patches, the default first. */
     suspend fun patches(gameId: Int): List<GamePatch> =
-        query(PatchesQuery(gameId)).game.patches.map { GamePatch(it.id, it.name, it.isDefault) }
+        query(PatchesQuery(gameId)).game.patches.map {
+            GamePatch(it.id, it.name, it.isDefault)
+        }
+
     /** Plays the game with [patchId] from now on, or the original (null). */
     suspend fun setPatch(gameId: Int, patchId: Int?) {
         mutate(SetPatchMutation(gameId, Optional.present(patchId)))
     }
-    /** Adds a game to this user's favourites, or takes it out. */
+
     /**
      * Sends what went wrong here to the server's log; only while signed in, and never with a
      * retry or a sign-in of its own (a report must not get in the player's way).
      */
-    suspend fun reportClientEvents(client: String, events: List<media.sovereign.sovemu.core.ClientEvent>) {
+    suspend fun reportClientEvents(
+        client: String,
+        events: List<media.sovereign.sovemu.core.ClientEvent>,
+    ) {
         if (!auth.signedIn.value) return
         val inputs = events.map {
             ClientEventInput(
@@ -359,37 +417,59 @@ class SovEmuApi(
         apollo().mutation(ReportClientEventsMutation(client, inputs)).execute()
     }
 
+    /** Adds a game to this user's favourites, or takes it out. */
     suspend fun setFavourite(gameId: Int, favourite: Boolean) {
         mutate(SetFavouriteMutation(gameId, favourite))
     }
+
     /** This user's collections, each marked with whether [gameId] is in it. */
     override suspend fun collectionChoices(gameId: Int): List<CollectionChoice> =
         query(CollectionChoicesQuery(gameId)).let { d ->
             val member = d.game.collectionIds.toSet()
             d.collections.map { CollectionChoice(it.id, it.name, it.id in member) }
         }
+
     /** Makes a collection (names are 1 to 64 characters, unique per user); returns its id. */
-    override suspend fun createCollection(name: String): Int = mutate(CreateCollectionMutation(name.trim().take(64))).createCollection.id
+    override suspend fun createCollection(name: String): Int =
+        mutate(CreateCollectionMutation(name.trim().take(64))).createCollection.id
     override suspend fun setInCollection(collectionId: Int, gameId: Int, member: Boolean) {
         mutate(SetInCollectionMutation(collectionId, gameId, member))
     }
     suspend fun games(system: String): List<Game> =
-        query(SystemGamesQuery(system)).system?.games?.map { it.gameFields } ?: throw ApiException("NOT_FOUND", "No such system")
+        query(SystemGamesQuery(system)).system?.games?.map { it.gameFields }
+            ?: throw ApiException("NOT_FOUND", "No such system")
+
     /** Starts [gameId]; [startId] names the start, for [startProgress] meanwhile. */
     suspend fun startSession(gameId: Int, startId: String): SessionInfo =
         mutate(StartSessionMutation(gameId, Optional.present(startId))).startSession.sessionFields
+
     /** How far the start [startId] has got. */
-    suspend fun startProgress(startId: String): StartStatus = query(StartProgressQuery(startId)).startProgress.toStartStatus()
+    suspend fun startProgress(startId: String): StartStatus =
+        query(StartProgressQuery(startId)).startProgress.toStartStatus()
+
     /**
      * Sends the complete offer SDP, naming this app ([client]) and saying what this device can
      * decode and show ([capabilities], the whole document every time); returns the answer SDP.
      */
-    suspend fun offer(sessionId: String, sdp: String, client: String, capabilities: ClientCapabilitiesInput): String =
-        mutate(SessionOfferMutation(sessionId, sdp, Optional.present(client), Optional.present(capabilities))).sessionOffer
+    suspend fun offer(
+        sessionId: String,
+        sdp: String,
+        client: String,
+        capabilities: ClientCapabilitiesInput,
+    ): String = mutate(
+        SessionOfferMutation(
+            sessionId,
+            sdp,
+            Optional.present(client),
+            Optional.present(capabilities),
+        ),
+    ).sessionOffer
     suspend fun stopSession(sessionId: String) {
         mutate(StopSessionMutation(sessionId))
     }
-    suspend fun states(gameId: Int): List<SaveSlot> = query(SavesQuery(gameId)).game.saves.map { it.saveFields }
+    suspend fun states(gameId: Int): List<SaveSlot> =
+        query(SavesQuery(gameId)).game.saves.map { it.saveFields }
+
     /** Changes a multi-disc game's disc (from 1). */
     suspend fun setDisc(sessionId: String, disc: Int) {
         mutate(SetDiscMutation(sessionId, disc))
@@ -406,25 +486,55 @@ class SovEmuApi(
      * controller model; a model missing from the list uses the built-in defaults.
      */
     suspend fun controllerMappings(system: String?): List<ControllerMapping> =
-        query(ControllerMappingsQuery(Optional.present(system))).controllerMappings.map { it.mappingFields.toMapping() }
-    /** Saves this user's mapping for a model on [system], or on every system when it is null. The server allows names up to 128 characters. */
-    suspend fun saveControllerMapping(controller: String, system: String?, name: String, bindings: List<Binding>): ControllerMapping =
-        mutate(SaveControllerMappingMutation(controller, Optional.present(system), name.take(128), bindings.map { it.toInput() }))
-            .saveControllerMapping.mappingFields.toMapping()
-    /** Removes this user's mapping for a model on [system] (or every system); returns whether there was one. */
+        query(ControllerMappingsQuery(Optional.present(system)))
+            .controllerMappings
+            .map { it.mappingFields.toMapping() }
+
+    /**
+     * Saves this user's mapping for a model on [system], or on every system when it is null. The
+     * server allows names up to 128 characters.
+     */
+    suspend fun saveControllerMapping(
+        controller: String,
+        system: String?,
+        name: String,
+        bindings: List<Binding>,
+    ): ControllerMapping = mutate(
+        SaveControllerMappingMutation(
+            controller,
+            Optional.present(system),
+            name.take(128),
+            bindings.map { it.toInput() },
+        ),
+    )
+        .saveControllerMapping.mappingFields.toMapping()
+
+    /**
+     * Removes this user's mapping for a model on [system] (or every system); returns whether there
+     * was one.
+     */
     suspend fun resetControllerMapping(controller: String, system: String?): Boolean =
-        mutate(ResetControllerMappingMutation(controller, Optional.present(system))).resetControllerMapping
+        mutate(ResetControllerMappingMutation(controller, Optional.present(system)))
+            .resetControllerMapping
+
     /** This user's cheats for a game. */
-    override suspend fun cheats(gameId: Int): List<Cheat> = query(CheatsQuery(gameId)).game.cheats.map { it.cheatFields }
+    override suspend fun cheats(gameId: Int): List<Cheat> =
+        query(CheatsQuery(gameId)).game.cheats.map { it.cheatFields }
+
     /** Adds a cheat (on); a running session gets it at once. Returns the game's cheats. */
     override suspend fun addCheat(gameId: Int, code: String, description: String): List<Cheat> =
-        mutate(AddCheatMutation(gameId, code, description)).addCheat.map { it.cheatFields }
+        mutate(AddCheatMutation(gameId, code, description)).addCheat.map {
+            it.cheatFields
+        }
     override suspend fun setCheatEnabled(gameId: Int, cheatId: Int, enabled: Boolean): List<Cheat> =
-        mutate(SetCheatEnabledMutation(gameId, cheatId, enabled)).setCheatEnabled.map { it.cheatFields }
+        mutate(SetCheatEnabledMutation(gameId, cheatId, enabled))
+            .setCheatEnabled
+            .map { it.cheatFields }
     override suspend fun deleteCheat(gameId: Int, cheatId: Int) {
         mutate(DeleteCheatMutation(gameId, cheatId))
     }
 
     /** A system's button labels and pad (null for an unknown system), and the controllers' pads. */
-    suspend fun controls(system: String): Pair<SystemControls?, List<PadLayout>> = query(ControlsQuery(system)).toControls()
+    suspend fun controls(system: String): Pair<SystemControls?, List<PadLayout>> =
+        query(ControlsQuery(system)).toControls()
 }

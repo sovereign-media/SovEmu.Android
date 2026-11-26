@@ -44,7 +44,9 @@ class Idle(private val clock: () -> Long = SystemClock::uptimeMillis) {
         return true
     }
 
-    /** The wait starts again (the screensaver became possible: back in the menus, a game paused). */
+    /**
+     * The wait starts again (the screensaver became possible: back in the menus, a game paused).
+     */
     fun restart() {
         lastInput = clock()
     }

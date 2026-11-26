@@ -24,7 +24,10 @@ object TvSignIn {
     fun confirmation(server: String, name: String) = "Sign in a TV to $server as $name?"
 
     /** The code's characters: letters and digits only, upper case, at most eight. */
-    fun normalize(input: String): String = input.filter { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' }
+    fun normalize(input: String): String = input.filter {
+        it in 'a'..'z' || it in 'A'..'Z' ||
+            it in '0'..'9'
+    }
         .uppercase()
         .take(CODE_LENGTH)
 
@@ -39,9 +42,14 @@ object TvSignIn {
 
     /** What the screen says when the approval failed with [e] (the server's code and message). */
     fun failure(e: Exception): String = when ((e as? ApiException)?.code) {
-        "NOT_FOUND" -> "No TV is waiting with that code. Check the code, and that the TV is connected to this server."
+        "NOT_FOUND" ->
+            "No TV is waiting with that code. " +
+                "Check the code, and that the TV is connected to this server."
+
         "TOO_MANY_REQUESTS" -> "Too many codes just now. Try again in a minute."
+
         "UNAUTHENTICATED" -> "Sign in again to sign in a TV."
+
         else -> e.message ?: "The TV could not be signed in."
     }
 }

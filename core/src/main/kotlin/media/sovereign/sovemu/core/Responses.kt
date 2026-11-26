@@ -15,7 +15,12 @@ fun <D : Operation.Data> ApolloResponse<D>.orThrow(): D {
     }
     when (val ex = exception) {
         null -> {}
-        is ApolloHttpException -> throw ApiException("HTTP_${ex.statusCode}", "Unexpected response from the server (HTTP ${ex.statusCode})")
+
+        is ApolloHttpException -> throw ApiException(
+            "HTTP_${ex.statusCode}",
+            "Unexpected response from the server (HTTP ${ex.statusCode})",
+        )
+
         else -> throw ex
     }
     return data ?: throw ApiException("INTERNAL", "The server sent no data")

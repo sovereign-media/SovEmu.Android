@@ -1,5 +1,7 @@
 package media.sovereign.sovemu.core
 
+import com.apollographql.apollo.ApolloClient
+import com.apollographql.apollo.network.okHttpClient
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.Dispatchers
@@ -10,8 +12,6 @@ import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import mockwebserver3.RecordedRequest
-import com.apollographql.apollo.ApolloClient
-import com.apollographql.apollo.network.okHttpClient
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.junit.After
@@ -23,7 +23,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
-/** The OAuth token client and the sign-in over it, against a server answering as SovEmu.Server's `/oauth/…`. */
+/**
+ * The OAuth token client and the sign-in over it, against a server answering as SovEmu.Server's
+ * `/oauth/…`.
+ */
 class AuthTest {
     private class MemoryStore(
         override var refreshToken: String? = null,
@@ -35,6 +38,7 @@ class AuthTest {
     private val store = MemoryStore()
     private var clock = 0L
     private lateinit var auth: Auth
+
     /** What the server's bootstrapConfig said: SovEmu's own paths, unless a test asks it. */
     private var config: SignInConfig? = null
 
@@ -61,38 +65,52 @@ class AuthTest {
 
     private fun auth() = Auth(TokenClient(http, ::address, { config }), store, now = { clock })
 
-    private fun bootstrapAnswer(available: Boolean = true, password: String? = "/auth/pw") = MockResponse.Builder()
-        .code(200)
-        .setHeader("Content-Type", "application/json")
-        .body(
-            if (!available) {
-                """{"data":{"bootstrapConfig":{"signInAvailable":false,"address":"10.0.0.5:8080","deviceClientId":null,""" +
-                    """"tokenEndpoint":null,"revocationEndpoint":null,"deviceAuthorizationEndpoint":null,""" +
-                    """"verificationUri":null,"passwordEndpoint":null,"authorizationEndpoint":null,""" +
-                    """"mobileClientId":null,"mobileRedirectUri":null}}}"""
-            } else {
-                // Elsewhere than SovEmu's own paths, and another client id: the app must use these.
-                """{"data":{"bootstrapConfig":{"signInAvailable":true,"address":"10.0.0.5:8080","deviceClientId":"tv-app",""" +
-                    """"tokenEndpoint":"${server.url("/auth/token")}","revocationEndpoint":"/auth/revoke",""" +
-                    """"deviceAuthorizationEndpoint":"/auth/device","verificationUri":"http://10.0.0.5:8080/device",""" +
-                    """"authorizationEndpoint":"/auth/authorize","mobileClientId":"phone-app",""" +
-                    """"mobileRedirectUri":"media.sovereign.sovemu:/oauth2redirect",""" +
-                    """"passwordEndpoint":${password?.let { "\"$it\"" } ?: "null"}}}}"""
-            },
-        )
-        .build()
+    private fun bootstrapAnswer(available: Boolean = true, password: String? = "/auth/pw") =
+        MockResponse.Builder()
+            .code(200)
+            .setHeader("Content-Type", "application/json")
+            .body(
+                if (!available) {
+                    """{"data":{"bootstrapConfig":{"signInAvailable":false,""" +
+                        """"address":"10.0.0.5:8080","deviceClientId":null,""" +
+                        """"tokenEndpoint":null,"revocationEndpoint":null,""" +
+                        """"deviceAuthorizationEndpoint":null,""" +
+                        """"verificationUri":null,"passwordEndpoint":null,""" +
+                        """"authorizationEndpoint":null,""" +
+                        """"mobileClientId":null,"mobileRedirectUri":null}}}"""
+                } else {
+                    // Elsewhere than SovEmu's own paths, and another client id: the app must use these.
+                    """{"data":{"bootstrapConfig":{"signInAvailable":true,""" +
+                        """"address":"10.0.0.5:8080","deviceClientId":"tv-app",""" +
+                        """"tokenEndpoint":"${server.url("/auth/token")}",""" +
+                        """"revocationEndpoint":"/auth/revoke",""" +
+                        """"deviceAuthorizationEndpoint":"/auth/device",""" +
+                        """"verificationUri":"http://10.0.0.5:8080/device",""" +
+                        """"authorizationEndpoint":"/auth/authorize",""" +
+                        """"mobileClientId":"phone-app",""" +
+                        """"mobileRedirectUri":"media.sovereign.sovemu:/oauth2redirect",""" +
+                        """"passwordEndpoint":${password?.let { "\"$it\"" } ?: "null"}}}}"""
+                },
+            )
+            .build()
 
-    private suspend fun fetchBootstrap(): SignInConfig =
-        ApolloClient.Builder().serverUrl("${address()}/graphql").okHttpClient(http).build().use { bootstrap(it, address()) }
-
-    private fun tokens(access: String, refresh: String, expiresIn: Int = 3600) = MockResponse.Builder()
-        .code(200)
-        .setHeader("Content-Type", "application/json")
-        .body(
-            """{"access_token":"$access","token_type":"Bearer","expires_in":$expiresIn,"refresh_token":"$refresh",""" +
-                """"id_token":"x.y.z","scope":"openid profile offline_access"}""",
-        )
+    private suspend fun fetchBootstrap(): SignInConfig = ApolloClient
+        .Builder()
+        .serverUrl("${address()}/graphql")
+        .okHttpClient(http)
         .build()
+        .use { bootstrap(it, address()) }
+
+    private fun tokens(access: String, refresh: String, expiresIn: Int = 3600) =
+        MockResponse.Builder()
+            .code(200)
+            .setHeader("Content-Type", "application/json")
+            .body(
+                """{"access_token":"$access","token_type":"Bearer","expires_in":$expiresIn,""" +
+                    """"refresh_token":"$refresh",""" +
+                    """"id_token":"x.y.z","scope":"openid profile offline_access"}""",
+            )
+            .build()
 
     private fun error(code: Int, error: String, description: String) = MockResponse.Builder()
         .code(code)
@@ -113,11 +131,16 @@ class AuthTest {
 
         val request = server.takeRequest()
         assertEquals("/oauth/password", request.url.encodedPath)
-        assertEquals("application/x-www-form-urlencoded", request.headers["Content-Type"]?.substringBefore(';'))
+        assertEquals(
+            "application/x-www-form-urlencoded",
+            request.headers["Content-Type"]?.substringBefore(';'),
+        )
         assertEquals(
             mapOf(
-                "client_id" to "sovemu-native", "username" to "ada",
-                "password" to "p&ss word", "scope" to "openid profile offline_access",
+                "client_id" to "sovemu-native",
+                "username" to "ada",
+                "password" to "p&ss word",
+                "scope" to "openid profile offline_access",
             ),
             request.form(),
         )
@@ -131,7 +154,9 @@ class AuthTest {
     @Test
     fun aWrongPasswordIsTheServersDescription() = runBlocking {
         server.enqueue(error(400, "invalid_grant", "Wrong username or password"))
-        val e = assertThrows(OAuthException::class.java) { runBlocking { auth.signIn("ada", "nope") } }
+        val e = assertThrows(OAuthException::class.java) {
+            runBlocking { auth.signIn("ada", "nope") }
+        }
         assertEquals("invalid_grant", e.error)
         assertEquals(400, e.status)
         assertEquals("Wrong username or password", e.message)
@@ -141,15 +166,23 @@ class AuthTest {
 
     @Test
     fun throttledSignInSaysHowLongToWait() = runBlocking {
-        server.enqueue(error(429, "too_many_requests", "Too many failed sign-ins: try again in 5 minutes"))
-        val e = assertThrows(OAuthException::class.java) { runBlocking { auth.signIn("ada", "nope") } }
+        server.enqueue(
+            error(429, "too_many_requests", "Too many failed sign-ins: try again in 5 minutes"),
+        )
+        val e = assertThrows(OAuthException::class.java) {
+            runBlocking { auth.signIn("ada", "nope") }
+        }
         assertEquals("Too many failed sign-ins: try again in 5 minutes", e.message)
     }
 
     @Test
     fun passwordSignInSwitchedOffIsTheServersDescription() = runBlocking {
-        server.enqueue(error(400, "unsupported_grant_type", "Password sign-in is off: sign in with a code"))
-        val e = assertThrows(OAuthException::class.java) { runBlocking { auth.signIn("ada", "pw") } }
+        server.enqueue(
+            error(400, "unsupported_grant_type", "Password sign-in is off: sign in with a code"),
+        )
+        val e = assertThrows(OAuthException::class.java) {
+            runBlocking { auth.signIn("ada", "pw") }
+        }
         assertEquals("unsupported_grant_type", e.error)
         assertEquals("Password sign-in is off: sign in with a code", e.message)
         assertFalse(auth.signedIn.value)
@@ -168,7 +201,14 @@ class AuthTest {
         assertEquals("a2", auth.accessToken())
         val refresh = server.takeRequest()
         assertEquals("/oauth/token", refresh.url.encodedPath)
-        assertEquals(mapOf("grant_type" to "refresh_token", "client_id" to "sovemu-native", "refresh_token" to "r1"), refresh.form())
+        assertEquals(
+            mapOf(
+                "grant_type" to "refresh_token",
+                "client_id" to "sovemu-native",
+                "refresh_token" to "r1",
+            ),
+            refresh.form(),
+        )
         assertEquals("r2", store.refreshToken)
 
         clock += 3_600_000
@@ -220,7 +260,9 @@ class AuthTest {
             override fun dispatch(request: RecordedRequest): MockResponse {
                 val n = refreshes.incrementAndGet()
                 // Slow enough that every caller arrives while the first refresh is in flight.
-                return tokens("a$n", "r$n").newBuilder().headersDelay(300, TimeUnit.MILLISECONDS).build()
+                return tokens("a$n", "r$n").newBuilder()
+                    .headersDelay(300, TimeUnit.MILLISECONDS)
+                    .build()
             }
         }
         val got = (1..8).map { async(Dispatchers.IO) { auth.accessToken() } }.awaitAll()
@@ -253,7 +295,12 @@ class AuthTest {
         server.enqueue(tokens("a3", "r3"))
         calls = 0
         val e = assertThrows(ApiException::class.java) {
-            runBlocking { auth.retryingUnauthenticated<Unit> { calls++; throw ApiException("UNAUTHENTICATED", "No") } }
+            runBlocking {
+                auth.retryingUnauthenticated<Unit> {
+                    calls++
+                    throw ApiException("UNAUTHENTICATED", "No")
+                }
+            }
         }
         assertTrue(e.unauthenticated)
         assertEquals(2, calls)
@@ -264,7 +311,12 @@ class AuthTest {
     fun signedOutUnauthenticatedIsNotRetried() = runBlocking {
         var calls = 0
         assertThrows(ApiException::class.java) {
-            runBlocking { auth.retryingUnauthenticated<Unit> { calls++; throw ApiException("UNAUTHENTICATED", "No") } }
+            runBlocking {
+                auth.retryingUnauthenticated<Unit> {
+                    calls++
+                    throw ApiException("UNAUTHENTICATED", "No")
+                }
+            }
         }
         assertEquals(1, calls)
         assertEquals(0, server.requestCount)
@@ -303,7 +355,9 @@ class AuthTest {
         server.enqueue(MockResponse.Builder().code(200).body("{}").build())
         server.enqueue(MockResponse.Builder().code(200).body("").build())
         client.newCall(Request.Builder().url(server.url("/graphql")).build()).execute().close()
-        client.newCall(Request.Builder().url(server.url("/media/games/7/thumb")).build()).execute().close()
+        client.newCall(Request.Builder().url(server.url("/media/games/7/thumb")).build())
+            .execute()
+            .close()
         assertEquals("Bearer a1", server.takeRequest().headers["Authorization"])
         assertNull(server.takeRequest().headers["Authorization"])
     }
@@ -342,9 +396,12 @@ class AuthTest {
     fun anAddressOutsidePublicUrlCannotSignIn() = runBlocking {
         server.enqueue(bootstrapAnswer(available = false))
         config = fetchBootstrap()
-        val why = "Signing in isn't available at 10.0.0.5:8080. Add it to SOVEMU_PUBLIC_URL on the server."
+        val why = "Signing in isn't available at 10.0.0.5:8080. " +
+            "Add it to SOVEMU_PUBLIC_URL on the server."
         assertEquals(why, config!!.problem)
-        val e = assertThrows(OAuthException::class.java) { runBlocking { auth.signIn("ada", "pw") } }
+        val e = assertThrows(OAuthException::class.java) {
+            runBlocking { auth.signIn("ada", "pw") }
+        }
         assertEquals(why, e.message)
         assertEquals(1, server.requestCount)
     }
@@ -357,12 +414,18 @@ class AuthTest {
         assertTrue(config!!.pairing)
         assertFalse(config!!.password)
         val why = "This server signs in only with a code shown on the screen."
-        assertEquals(why, assertThrows(OAuthException::class.java) { runBlocking { auth.signIn("ada", "pw") } }.message)
+        val thrown = assertThrows(OAuthException::class.java) {
+            runBlocking { auth.signIn("ada", "pw") }
+        }
+        assertEquals(why, thrown.message)
         assertEquals(1, server.requestCount)
     }
 
-    private fun json(code: Int, body: String) =
-        MockResponse.Builder().code(code).setHeader("Content-Type", "application/json").body(body).build()
+    private fun json(code: Int, body: String) = MockResponse.Builder()
+        .code(code)
+        .setHeader("Content-Type", "application/json")
+        .body(body)
+        .build()
 
     private fun pairingConfig() {
         config = config!!.copy(
@@ -379,14 +442,20 @@ class AuthTest {
         server.enqueue(
             json(
                 200,
-                """{"device_code":"secret-device-code","user_code":"BCDF-GHJK","verification_uri":"http://tv.local/device",""" +
-                    """"verification_uri_complete":"http://tv.local/device?user_code=BCDF-GHJK","expires_in":600,"interval":5}""",
+                """{"device_code":"secret-device-code","user_code":"BCDF-GHJK",""" +
+                    """"verification_uri":"http://tv.local/device",""" +
+                    """"verification_uri_complete":""" +
+                    """"http://tv.local/device?user_code=BCDF-GHJK",""" +
+                    """"expires_in":600,"interval":5}""",
             ),
         )
         val code = client.requestDeviceCode()
         val asked = server.takeRequest()
         assertEquals("/oauth/device_authorization", asked.url.encodedPath)
-        assertEquals(mapOf("client_id" to "sovemu-native", "scope" to TokenClient.SCOPE), asked.form())
+        assertEquals(
+            mapOf("client_id" to "sovemu-native", "scope" to TokenClient.SCOPE),
+            asked.form(),
+        )
         assertEquals("BCDF-GHJK", code.grouped)
         assertEquals("tv.local/device", code.shownUri)
         assertEquals("http://tv.local/device?user_code=BCDF-GHJK", code.qrContent)
@@ -406,7 +475,13 @@ class AuthTest {
         server.enqueue(json(400, """{"error":"access_denied"}"""))
         server.enqueue(json(400, """{"error":"expired_token"}"""))
         server.enqueue(json(400, """{"error":"invalid_grant"}"""))
-        server.enqueue(json(200, """{"access_token":"a1","token_type":"Bearer","expires_in":3600,"refresh_token":"r1"}"""))
+        server.enqueue(
+            json(
+                200,
+                """{"access_token":"a1","token_type":"Bearer","expires_in":3600,""" +
+                    """"refresh_token":"r1"}""",
+            ),
+        )
         val answers = List(8) { client.pollDeviceCode(code) }
         assertEquals(
             listOf(
@@ -468,7 +543,9 @@ class AuthTest {
         assertTrue(auth.signedIn.value)
         assertEquals("r1", store.refreshToken)
         assertEquals("a1", auth.accessToken())
-        assertThrows(OAuthException::class.java) { runBlocking { auth.signedInWith(Tokens("a2", 3600, null)) } }
+        assertThrows(OAuthException::class.java) {
+            runBlocking { auth.signedInWith(Tokens("a2", 3600, null)) }
+        }
     }
 
     @Test

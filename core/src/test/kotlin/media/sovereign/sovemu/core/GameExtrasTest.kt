@@ -26,7 +26,11 @@ class GameExtrasTest {
             list += Cheat(list.size + 1, description, code, false)
             return list.toList()
         }
-        override suspend fun setCheatEnabled(gameId: Int, cheatId: Int, enabled: Boolean): List<Cheat> {
+        override suspend fun setCheatEnabled(
+            gameId: Int,
+            cheatId: Int,
+            enabled: Boolean,
+        ): List<Cheat> {
             check()
             calls += "set $cheatId $enabled"
             list.replaceAll { if (it.id == cheatId) it.copy(enabled = enabled) else it }
@@ -75,8 +79,13 @@ class GameExtrasTest {
         val names = mutableMapOf(1 to "Arcade", 2 to "couch")
         var fail = false
 
-        override suspend fun collectionChoices(gameId: Int) =
-            names.map { (id, name) -> CollectionChoice(id, name, members[id] == true) }
+        override suspend fun collectionChoices(gameId: Int) = names.map { (id, name) ->
+            CollectionChoice(
+                id,
+                name,
+                members[id] == true,
+            )
+        }
         override suspend fun createCollection(name: String): Int {
             if (fail) throw ApiException("CONFLICT", "a collection with that name exists")
             val id = names.size + 1
@@ -112,7 +121,12 @@ class GameExtrasTest {
         val model = CollectionsModel(api, 7, now)
         model.load()
         model.create("  Beat 'em ups ")
-        assertEquals(listOf("Arcade", "Beat 'em ups", "couch"), model.choices.value!!.map { it.name })
+        assertEquals(
+            listOf("Arcade", "Beat 'em ups", "couch"),
+            model.choices.value!!.map {
+                it.name
+            },
+        )
         assertEquals(true, api.members[3])
         api.fail = true
         var back: String? = null

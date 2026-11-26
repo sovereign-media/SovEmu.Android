@@ -12,7 +12,12 @@ import media.sovereign.sovemu.core.graphql.type.VideoDecoderInput
  * as it is decoded ([lowLatency]), and the decoder's own [name] (`c2.amlogic.avc.decoder`,
  * `libvpx`).
  */
-data class DecoderChoice(val codec: String, val hardware: Boolean, val lowLatency: Boolean, val name: String?)
+data class DecoderChoice(
+    val codec: String,
+    val hardware: Boolean,
+    val lowLatency: Boolean,
+    val name: String?,
+)
 
 /** The screen games are shown on: physical pixels, and pictures a second. */
 data class ScreenMode(val width: Int, val height: Int, val refreshHz: Double)
@@ -43,14 +48,22 @@ object Capabilities {
                     codec = codec,
                     hardware = decoder.hardware,
                     lowLatency = decoder.lowLatency,
-                    name = Optional.presentIfNotNull(decoder.name?.trim()?.take(MAX_NAME)?.ifEmpty { null }),
+                    name = Optional.presentIfNotNull(
+                        decoder.name?.trim()?.take(MAX_NAME)?.ifEmpty {
+                            null
+                        },
+                    ),
                 )
             }
         }
         return ClientCapabilitiesInput(
             version = VERSION,
             videoDecoders = rows.values.toList(),
-            display = DisplayInput(width = screen.width, height = screen.height, refreshHz = screen.refreshHz),
+            display = DisplayInput(
+                width = screen.width,
+                height = screen.height,
+                refreshHz = screen.refreshHz,
+            ),
         )
     }
 
@@ -65,8 +78,9 @@ object Capabilities {
     }
 
     /** The document in a line, for the log: `vp8 software, h264 hardware low-latency`. */
-    fun summary(document: ClientCapabilitiesInput): String = document.videoDecoders.joinToString(", ") {
-        val how = if (it.hardware) "hardware" else "software"
-        "${it.codec.rawValue.lowercase()} $how${if (it.lowLatency) " low-latency" else ""}"
-    }
+    fun summary(document: ClientCapabilitiesInput): String =
+        document.videoDecoders.joinToString(", ") {
+            val how = if (it.hardware) "hardware" else "software"
+            "${it.codec.rawValue.lowercase()} $how${if (it.lowLatency) " low-latency" else ""}"
+        }
 }

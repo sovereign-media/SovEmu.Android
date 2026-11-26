@@ -40,7 +40,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6
 
       - name: Test and build
-        run: ./gradlew :core:test :app:testDebugUnitTest :app:assembleDebug --console=plain
+        run: ./gradlew spotlessCheck :core:test :app:testDebugUnitTest :app:assembleDebug --console=plain
 
       - uses: actions/upload-artifact@v7
         with:
