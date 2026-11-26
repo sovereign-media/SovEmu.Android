@@ -16,6 +16,9 @@ paths:
 - **CI** (`.github/workflows/ci.yml`, JDK 21) runs exactly the PR command:
   `./gradlew spotlessCheck :core:test :app:testDebugUnitTest :app:assembleDebug`. Keep the two in
   step.
+- **The pre-push hook** (`.githooks/pre-push`; once per clone, `git config core.hooksPath
+  .githooks`) runs `spotlessCheck` on any pushed commit that changes Kotlin or Gradle, so the
+  format never fails CI. Never skip it with `--no-verify` to get a misformatted change up.
 - **Performance is judged on the R8 release build** (`assembleRelease`), compiled with its profile
   (`adb shell cmd package compile -m speed-profile`), or with Macrobenchmark / `dumpsys gfxinfo`;
   never on a debug build.

@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# Checks the format before a push leaves the machine, so CI never fails on it: when the push
+# changes a Kotlin or Gradle file, `./gradlew spotlessCheck` (ktlint, .editorconfig) runs on the
+# commit being pushed. `./gradlew spotlessApply` fixes what it reports.
+#
+# It runs in this checkout when the pushed commit is HEAD with no uncommitted Kotlin, else in a
+# worktree of its own, kept in .git/sovemu-pre-push (with this checkout's local.properties).
+#
+# Turn it on once per clone:  git config core.hooksPath .githooks
+# Skip it for one push:       git push --no-verify
+set -euo pipefail
+
+root=$(git rev-parse --show-toplevel)
+zero=0000000000000000000000000000000000000000
+kotlin='\.(kt|kts)$'
+
+# The commits being pushed whose changes (from the remote's commit, or where a new branch left
+# origin/main) touch Kotlin or Gradle.
+commits=$(
+  while read -r _local_ref local_sha _remote_ref remote_sha; do
+    [ "$local_sha" = "$zero" ] && continue # a deletion
+    if [ "$remote_sha" = "$zero" ] || ! git cat-file -e "$remote_sha" 2>/dev/null; then
+      base=$(git merge-base "$local_sha" origin/main 2>/dev/null || true)
+    else
+      base=$remote_sha
+    fi
+    if [ -n "$base" ]; then
+      files=$(git diff --name-only "$base" "$local_sha")
+    else
+      files=$(git ls-tree -r --name-only "$local_sha")
+    fi
+    if grep -qE "$kotlin" <<<"$files"; then
+      echo "$local_sha"
+    fi
+  done | sort -u
+)
+[ -z "$commits" ] && exit 0
+
+worktree="$(cd "$(git rev-parse --git-common-dir)" && pwd)/sovemu-pre-push"
+for commit in $commits; do
+  if [ "$(git rev-parse HEAD)" = "$commit" ] &&
+    [ -z "$(git status --porcelain | awk '{print $NF}' | grep -E "$kotlin" || true)" ]; then
+    dir=$root
+  else
+    if git -C "$worktree" rev-parse --git-dir >/dev/null 2>&1; then
+      git -C "$worktree" checkout -q --force --detach "$commit"
+      git -C "$worktree" clean -q -fd -e .gradle -e build -e '*/build'
+    else
+      git worktree prune
+      git worktree add -q --force --detach "$worktree" "$commit"
+    fi
+    # Gradle configures the Android modules even to format them: it needs the SDK's path.
+    [ -f "$root/local.properties" ] && cp "$root/local.properties" "$worktree/"
+    dir=$worktree
+  fi
+  echo "pre-push: [${commit:0:7}] spotlessCheck" >&2
+  if ! (cd "$dir" && ./gradlew --quiet spotlessCheck) >&2; then
+    {
+      echo
+      echo "pre-push: FAILED: the format, on commit ${commit:0:7}"
+      echo "  fix it:  ./gradlew spotlessApply, then commit"
+      echo "  The push was stopped. Fix it and push again, or skip the check: git push --no-verify"
+    } >&2
+    exit 1
+  fi
+done
+echo "pre-push: the format is clean" >&2
