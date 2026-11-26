@@ -20,6 +20,8 @@ Needs JDK 21 and the Android SDK (platform 37). Put the SDK path in `local.prope
 
 ```bash
 ./gradlew spotlessCheck :core:test :app:testDebugUnitTest :app:assembleDebug   # what CI runs
+./gradlew spotlessApply                     # formats every Kotlin and Gradle file (ktlint)
+git config core.hooksPath .githooks         # once per clone: the format is checked before a push
 ```
 
 To use the app, install the release build: R8 makes Compose several times faster than a debug
