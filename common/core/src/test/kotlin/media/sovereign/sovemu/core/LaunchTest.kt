@@ -59,7 +59,7 @@ class LaunchTest {
     private var ids = 0
 
     private fun session(servers: Servers): Session {
-        val store = AccountStore(prefs, FakeSealer(), { servers.current }, newId = { "id${++ids}" })
+        val store = AccountStore(prefs, FakeSealer(), newId = { "id${++ids}" })
         listOf("http://one" to "7", "http://one" to "8", "http://two" to "9", "http://three" to "7")
             .forEach { (server, sub) -> store.upsert(sub, server, "c", "u$sub", 0) }
         // Revocations go nowhere: these tests are about where the app lands.

@@ -17,7 +17,7 @@ class AccountsTest {
     fun theCodecRoundTripsEveryField() {
         val accounts = listOf(
             StoredAccount("a", "7", "http://x:8080", "phone-app", "ada\tlovelace\n%", 1700L),
-            StoredAccount("b", null, "https://y", null, null, 0L),
+            StoredAccount("b", "8", "https://y", null, null, 0L),
             StoredAccount("c", "", "http://z", "", "", 5L),
         )
         assertEquals(accounts, StoredAccountCodec.decode(StoredAccountCodec.encode(accounts)))

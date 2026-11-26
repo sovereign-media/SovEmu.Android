@@ -38,9 +38,12 @@ class AuthTest {
     /** The active account's refresh token, as stored. */
     private val storedToken: String? get() = accounts.activeId()?.let(accounts::refreshToken)
 
-    /** A single-account install's sign-in, from before accounts: moved over on first read. */
-    private fun legacySignIn(token: String) {
-        prefs.put(AccountStore.LEGACY_SEALED, FakeSealer().seal(token))
+    /** A sign-in from an earlier launch: user 7's account, active, holding [token]. */
+    private fun earlierSignIn(token: String) {
+        val earlier = AccountStore(prefs, FakeSealer())
+        val stored = earlier.upsert("7", address(), null, null, 0) as AccountUpsert.Stored
+        earlier.setRefreshToken(stored.account.id, token)
+        earlier.setActive(stored.account.id, 0)
         auth = auth()
         runBlocking { auth.launch() }
     }
@@ -70,7 +73,7 @@ class AuthTest {
     private fun address() = server.url("/").toString().trimEnd('/')
 
     private fun auth(): Session {
-        accounts = AccountStore(prefs, FakeSealer(), legacyServer = ::address)
+        accounts = AccountStore(prefs, FakeSealer())
         return Session(
             TokenClient(http, ::address, {
                 config
@@ -239,9 +242,8 @@ class AuthTest {
 
     @Test
     fun aRefreshTokenFromAnEarlierLaunchIsUsedFirst() = runBlocking {
-        legacySignIn("r0")
+        earlierSignIn("r0")
         assertTrue(auth.signedIn)
-        assertNull("no sub until the first refresh", auth.active!!.subject)
         server.enqueue(tokens("a1", "r1"))
         assertEquals("a1", auth.accessToken())
         assertEquals("r0", server.takeRequest().form()["refresh_token"])
@@ -252,7 +254,7 @@ class AuthTest {
 
     @Test
     fun invalidGrantOnRefreshSignsOut() = runBlocking {
-        legacySignIn("revoked")
+        earlierSignIn("revoked")
         server.enqueue(error(400, "invalid_grant", "The sign-in has expired"))
         assertNull(auth.accessToken())
         assertNull(storedToken)
@@ -266,7 +268,7 @@ class AuthTest {
 
     @Test
     fun anyOtherRefreshFailureKeepsTheSignIn() = runBlocking {
-        legacySignIn("r0")
+        earlierSignIn("r0")
         server.enqueue(error(500, "server_error", "Try again"))
         assertThrows(OAuthException::class.java) { runBlocking { auth.accessToken() } }
         assertEquals("r0", storedToken)
@@ -275,7 +277,7 @@ class AuthTest {
 
     @Test
     fun concurrentCallersShareOneRefresh() = runBlocking {
-        legacySignIn("r0")
+        earlierSignIn("r0")
         val refreshes = AtomicInteger()
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse {

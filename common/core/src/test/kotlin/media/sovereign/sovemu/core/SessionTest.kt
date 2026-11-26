@@ -47,7 +47,7 @@ class SessionTest {
     )
 
     private fun session(): Session {
-        accounts = AccountStore(prefs, FakeSealer(), { address })
+        accounts = AccountStore(prefs, FakeSealer())
         return Session(
             TokenClient(http, {
                 address

@@ -9,16 +9,15 @@ package media.sovereign.sovemu.core
  * [id] is minted on the device (a UUID) when the account is first stored and never changes; it
  * is not the server's user id. [subject] is the ID token's `sub`, the server's user id: signing
  * in to an account already on the device (the same `sub` on the same server) replaces that
- * account's session rather than adding a second one. It is null only on the sign-in moved over
- * from a single-account install, until its first refresh brings an ID token. [clientId] is the
- * OAuth client the refresh token was issued to, which every refresh and the revocation must use
- * (null: the device client, as a migrated sign-in always was). [userName] labels the account
+ * account's session rather than adding a second one. [clientId] is the OAuth client the refresh
+ * token was issued to, which every refresh and the revocation must use (null: the device
+ * client). [userName] labels the account
  * (the ID token's `preferred_username`). [lastUsedAt] is when it was last made active (wall
  * clock, ms), for the picker's initial focus.
  */
 data class StoredAccount(
     val id: String,
-    val subject: String?,
+    val subject: String,
     val server: String,
     val clientId: String?,
     val userName: String?,
@@ -200,7 +199,7 @@ object StoredAccountCodec {
             append(
                 listOf(
                     present(a.id),
-                    optional(a.subject),
+                    present(a.subject),
                     present(a.server),
                     optional(a.clientId),
                     optional(a.userName),
@@ -224,11 +223,12 @@ object StoredAccountCodec {
         if (parts.size != FIELDS) return null
         val fields = parts.map { field(it) ?: return null }
         val id = fields[0].value?.takeIf { it.isNotBlank() } ?: return null
+        val subject = fields[1].value ?: return null
         val server = fields[2].value?.takeIf { it.isNotBlank() } ?: return null
         val lastUsed = fields[5].value?.toLongOrNull() ?: return null
         return StoredAccount(
             id,
-            fields[1].value,
+            subject,
             server,
             fields[3].value,
             fields[4].value,
