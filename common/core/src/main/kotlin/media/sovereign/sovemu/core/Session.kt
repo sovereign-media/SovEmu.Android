@@ -107,6 +107,18 @@ class Session(
         return decision
     }
 
+    @Volatile private var started = false
+
+    /**
+     * [launch], once for the life of the process: a window made again (a language change, say)
+     * keeps whoever is signed in rather than going back to the picker.
+     */
+    suspend fun start() {
+        if (started) return
+        started = true
+        launch()
+    }
+
     /**
      * Makes [accountId] the active account: the picker's choice. The previous account's access
      * token is dropped first, so nothing after this goes out as it; the first request refreshes.

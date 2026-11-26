@@ -12,9 +12,12 @@ paths:
 - **Versions live in `gradle/libs.versions.toml`**, never inline in a build file. Remove a
   dependency, and its catalog entry, once nothing uses it.
 - **Modules are configured by the convention plugins in `build-logic/`** (`sovemu.jvm.library`,
-  `sovemu.android.library`, `sovemu.android.application`, `sovemu.android.compose`): SDK levels,
+  `sovemu.android.library`, `sovemu.android.application`, `sovemu.android.compose`,
+  `sovemu.android.hilt`): SDK levels,
   Java 21, the release build and the debug ABIs are set there once, never in a module's build
   file. A module's build file names its namespace and its dependencies.
+- **`sovemu.android.hilt` only where something is injected** (today `:common:data`,
+  `:common:feature` and the apps), after the Android plugin: each costs a KSP pass on every build.
 - `:common:core` applies only `sovemu.jvm.library` and Apollo: never give it an Android or
   Compose dependency.
 - **CI** (`.github/workflows/ci.yml`, JDK 21) runs exactly the PR command:

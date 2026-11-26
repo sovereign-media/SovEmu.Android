@@ -3,6 +3,7 @@
 // common/.
 plugins {
     id("sovemu.android.application")
+    id("sovemu.android.hilt")
 }
 
 android {

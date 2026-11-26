@@ -1,8 +1,8 @@
 package media.sovereign.sovemu.tv
 
+import dagger.hilt.android.AndroidEntryPoint
 import media.sovereign.sovemu.SovEmuActivity
 
-/** The app, in the TV form. */
-class MainActivity : SovEmuActivity() {
-    override val tv = true
-}
+/** The app, for Android TV and Google TV: which one it is comes from this app's own [di.ClientInfoModule]. */
+@AndroidEntryPoint
+class MainActivity : SovEmuActivity()

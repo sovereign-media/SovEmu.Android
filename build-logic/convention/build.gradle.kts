@@ -27,6 +27,10 @@ gradlePlugin {
             implementationClass =
                 "media.sovereign.sovemu.buildlogic.AndroidApplicationConventionPlugin"
         }
+        register("androidHilt") {
+            id = "sovemu.android.hilt"
+            implementationClass = "media.sovereign.sovemu.buildlogic.HiltConventionPlugin"
+        }
         register("androidCompose") {
             id = "sovemu.android.compose"
             implementationClass = "media.sovereign.sovemu.buildlogic.AndroidComposeConventionPlugin"

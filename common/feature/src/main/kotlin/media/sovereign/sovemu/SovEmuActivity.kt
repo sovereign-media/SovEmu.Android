@@ -38,10 +38,12 @@ import androidx.navigation3.ui.NavDisplay
 import coil3.ImageLoader
 import coil3.compose.setSingletonImageLoaderFactory
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
+import javax.inject.Inject
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import media.sovereign.sovemu.core.AuthState
+import media.sovereign.sovemu.core.ClientInfo
 import media.sovereign.sovemu.core.Game
 import media.sovereign.sovemu.core.IdlePicker
 import media.sovereign.sovemu.core.SystemSummary
@@ -98,17 +100,25 @@ sealed interface Route {
 }
 
 /**
- * The app: every app's `MainActivity` extends it and says which form it is. The TV apps
- * ([tv] true) draw for a D-pad from the sofa and type with the app's own keyboard; the phone and
- * tablet app draws for touch and shows the touch controller.
+ * The app: every app's `MainActivity` extends it, as an `@AndroidEntryPoint`, and Hilt hands it
+ * what lives as long as the process (the settings, the server and its session, the library's
+ * state) and which app it is ([clientInfo]). The TV apps draw for a D-pad from the sofa and type
+ * with the app's own keyboard; the phone and tablet app draws for touch and shows the touch
+ * controller. What lives with the window (controllers, game sessions, music) is made here.
  */
 abstract class SovEmuActivity : ComponentActivity() {
-    /** True in the Android TV and Fire TV apps, false in the phone and tablet app. */
-    protected abstract val tv: Boolean
+    // Injected by the app's MainActivity (Hilt cannot construct an activity).
+    @Inject lateinit var clientInfo: ClientInfo
 
-    private lateinit var settings: Settings
-    private lateinit var api: SovEmuApi
-    private lateinit var store: Store
+    @Inject lateinit var settings: Settings
+
+    @Inject lateinit var api: SovEmuApi
+
+    @Inject lateinit var store: Store
+
+    /** True in the Android TV and Fire TV apps, false in the phone and tablet app. */
+    private val tv: Boolean get() = clientInfo.tv
+
     private lateinit var sessions: Sessions
     private lateinit var presence: InputPresence
     private val controller = Controller()
@@ -146,20 +156,16 @@ abstract class SovEmuActivity : ComponentActivity() {
         // Compose paints every pixel: the window's own background would be a wasted full-screen
         // fill on every frame (fill rate is what a TV's GPU runs out of first).
         window.setBackgroundDrawable(null)
-        settings = Settings(this)
         gameMode = settings.gameMode
         musicOn = settings.music
-        api = SovEmuApi(settings, ClientEvents.deviceName(this))
-        ClientEvents.recordCrashes(this)
         ClientEvents.attach(this, api, lifecycleScope)
-        store = Store(api, lifecycleScope)
         sessions = Sessions(api, lifecycleScope)
         controller.start(this)
         presence = InputPresence(this, controller, tv)
         music = MenuMusic(this, lifecycleScope)
         // Where the app opens, from the accounts stored for the server (no request): undispatched,
         // so the state is decided before the first frame.
-        lifecycleScope.launch(start = CoroutineStart.UNDISPATCHED) { api.session.launch() }
+        lifecycleScope.launch(start = CoroutineStart.UNDISPATCHED) { api.session.start() }
         if (settings.serverUrl.isNotEmpty() && api.session.allAccounts.value.isNotEmpty()) {
             // The server's sign-in details, asked again on each launch it can be reached (the
             // stored copy lets a sign-in refresh when it cannot).
@@ -189,10 +195,7 @@ abstract class SovEmuActivity : ComponentActivity() {
         val auth by api.session.state.collectAsStateWithLifecycle()
         val account = (auth as? AuthState.Authenticated)?.accountId
         // Each account's own library: whatever the last one loaded, or still has in flight, goes.
-        LaunchedEffect(account) {
-            store.clear()
-            if (account != null) store.refresh()
-        }
+        LaunchedEffect(account) { store.showFor(account) }
         // The TV's game mode for the whole app, not per game: each switch blinks some TVs.
         TvGameMode(gameMode)
         if (account == null) {

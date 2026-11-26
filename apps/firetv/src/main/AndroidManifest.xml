@@ -12,6 +12,7 @@
       (http://192.168.x.y:8080). Media is always encrypted (DTLS-SRTP) regardless.
     -->
     <application
+        android:name=".SovEmuFireTvApplication"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"

@@ -7,9 +7,9 @@ paths:
 # SovEmu.Android: Compose
 
 Rules from the official Compose guidance (tags point at the sources at the end), with a few
-learned in Sovereign.Android; "(judgement)" marks ours. The app has no ViewModel and no DI
-framework on purpose: `Store` and each screen's remembered state stand in for a ViewModel, and
-constructor defaults for DI.
+learned in Sovereign.Android; "(judgement)" marks ours. Dependency injection is Hilt, as
+Sovereign.Android's (see android-kotlin.md). The app has no ViewModel yet: `Store` and each
+screen's remembered state stand in for one.
 
 ## Naming and shape
 

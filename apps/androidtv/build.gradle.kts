@@ -3,6 +3,7 @@
 // common/.
 plugins {
     id("sovemu.android.application")
+    id("sovemu.android.hilt")
     // Folds the profile :baselineprofile generates into release builds.
     alias(libs.plugins.baselineprofile)
 }

@@ -6,7 +6,10 @@ import com.apollographql.apollo.api.Mutation
 import com.apollographql.apollo.api.Optional
 import com.apollographql.apollo.api.Query
 import com.apollographql.apollo.network.okHttpClient
+import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.concurrent.TimeUnit
+import javax.inject.Inject
+import javax.inject.Singleton
 import media.sovereign.sovemu.core.AccountStore
 import media.sovereign.sovemu.core.ApiException
 import media.sovereign.sovemu.core.BearerInterceptor
@@ -99,7 +102,8 @@ import okhttp3.OkHttpClient
  * stores leaves the device (`allowBackup="false"` and the data-extraction rules); the access
  * token lives only in memory.
  */
-class Settings(context: Context) {
+@Singleton
+class Settings @Inject constructor(@ApplicationContext context: Context) {
     internal val prefs = context.getSharedPreferences("sovemu", Context.MODE_PRIVATE)
 
     /** The preferences as [AccountStore] reads and writes them. */
