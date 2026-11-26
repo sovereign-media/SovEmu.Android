@@ -3,6 +3,7 @@
 // game sessions (`Sessions`) and client events. No Compose and no WebRTC.
 plugins {
     id("sovemu.android.library")
+    id("sovemu.android.hilt")
 }
 
 android {

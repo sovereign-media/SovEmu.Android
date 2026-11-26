@@ -31,9 +31,15 @@ the end). "(judgement)" marks a rule that is ours rather than the docs'. Compose
   Catch specific exception types otherwise. [CO]
 - **Suspend functions are main-safe**: the class doing blocking work (OkHttp, WebRTC, decoding)
   moves itself off Main with `withContext(dispatcher)`. [CO][UI]
-- **Inject dispatchers and long-lived scopes through constructors**, with a default argument
-  standing in for DI (as `Store`'s `compute` and `Auth`'s `io`); never `GlobalScope`, and no new
-  hard-coded `Dispatchers.*` in a class. [CO]
+- **What lives as long as the process comes from Hilt**, as in Sovereign.Android: `Settings`,
+  `SovEmuApi` (and its `Session`, the one owner of every token) and `Store` are `@Singleton`s
+  (`:common:data`'s `DataModule`, with the `@ApplicationScope` coroutine scope); each app has
+  its `@HiltAndroidApp` application, its `ClientInfoModule` (which app it is) and an
+  `@AndroidEntryPoint` `MainActivity`. Never build one of those singletons by hand outside a
+  test. What lives with the window (controllers, game sessions, music) is made by the activity.
+- **Inject dispatchers and scopes through constructors**, with a default argument where Hilt
+  does not build the class (as `Store`'s `compute` and `TokenClient`'s `io`); never
+  `GlobalScope`, and no new hard-coded `Dispatchers.*` in a class. [CO]
 - Collect flows in UI with `collectAsStateWithLifecycle()`. [UI]
 
 ## Ownership

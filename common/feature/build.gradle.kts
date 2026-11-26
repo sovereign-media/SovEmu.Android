@@ -4,6 +4,7 @@
 plugins {
     id("sovemu.android.library")
     id("sovemu.android.compose")
+    id("sovemu.android.hilt")
 }
 
 android {

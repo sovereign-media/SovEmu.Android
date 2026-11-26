@@ -178,6 +178,20 @@ class Store(
         flow.value = Load.Ready(withContext(compute) { GameIndex(list) })
     }
 
+    /** The account the lists were loaded for, if any. */
+    private var loadedFor: String? = null
+
+    /**
+     * Shows [account]'s library (null: nobody's): what another account loaded, or still has in
+     * flight, goes. The same account again (a window made again) keeps what is loaded.
+     */
+    fun showFor(account: String?) {
+        if (account == loadedFor) return
+        clear()
+        loadedFor = account
+        if (account != null) refresh()
+    }
+
     /** Signed out: forget everything, and cancel what the old sign-in still has in flight. */
     fun clear() {
         signIn.cancel()

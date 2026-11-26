@@ -108,6 +108,20 @@ class SessionTest {
     }
 
     @Test
+    fun aWindowMadeAgainKeepsWhoeverIsSignedIn() = runBlocking {
+        signIn("ada", "7")
+        signIn("ben", "8")
+        session = session()
+        session.start()
+        assertEquals(AuthState.Choosing, session.state.value)
+        session.activate(session.accountsHere().first().id)
+        // The activity is made again (a language change): the same session, nobody sent back.
+        session.start()
+        assertEquals("ada", session.active!!.userName)
+        assertTrue(session.signedIn)
+    }
+
+    @Test
     fun signingInAgainReplacesTheSameUser() = runBlocking {
         signIn("ada", "7", refresh = "r1")
         signIn("ada", "7", refresh = "r2")
