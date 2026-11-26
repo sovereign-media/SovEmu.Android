@@ -17,6 +17,9 @@ interface SignInService {
     /** Asks [address] how to sign in (`bootstrapConfig`), and keeps it as the server. */
     suspend fun bootstrapAt(address: String): SignInConfig
 
+    /** Makes [address] the server without asking it anything (putting one back). */
+    fun setServer(address: String)
+
     /** No account exists yet: first-run setup happens in a browser. */
     suspend fun setupRequired(): Boolean
 
@@ -89,35 +92,59 @@ class SignInFlow(
         _error.value = message
     }
 
-    /** Asks [address] how to sign in; [quiet] keeps a failure off the screen (on launch). */
-    suspend fun check(address: String, quiet: Boolean = false) {
-        try {
-            val answer = service.bootstrapAt(address)
-            _config.value = answer
-            _error.value = answer.problem
-            if (answer.problem == null && service.setupRequired()) {
-                _config.value = null
-                _error.value = "Finish first-run setup in a browser at $address first."
+    /**
+     * Asks the address typed, [input], how to sign in: each of its [ServerAddress.candidates] in
+     * turn (a bare host over https, then http unless [secureOnly]), the first that answers kept
+     * as the server. [quiet] keeps a failure off the screen (on launch).
+     */
+    suspend fun check(input: String, secureOnly: Boolean = false, quiet: Boolean = false) {
+        val candidates = ServerAddress.candidates(input, secureOnly)
+        if (candidates.isEmpty()) {
+            if (!quiet) {
+                _error.value = if (ServerAddress.isInsecure(input)) {
+                    ServerAddress.INSECURE
+                } else {
+                    "Enter the server's address."
+                }
             }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            if (!quiet) failed(e)
+            return
+        }
+        // Asking an address keeps it as the server; one that never answers puts the last back.
+        val previous = service.server
+        for ((i, address) in candidates.withIndex()) {
+            try {
+                val answer = service.bootstrapAt(address)
+                _config.value = answer
+                _error.value = answer.problem
+                if (answer.problem == null && service.setupRequired()) {
+                    _config.value = null
+                    _error.value = "Finish first-run setup in a browser at $address first."
+                }
+                return
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (i == candidates.lastIndex) {
+                    service.setServer(previous)
+                    if (!quiet) failed(e)
+                }
+            }
         }
     }
 
     /**
-     * The form's button: checks [address] while it is new (or not yet checked), else signs in
-     * with [username] and [password].
+     * The form's button: checks the address typed, [input], while it is new (or not yet
+     * checked), else signs in with [username] and [password].
      */
-    fun submit(address: String, username: String, password: String) = busyWhile {
-        if (!ready || address.trimEnd('/') != service.server) {
-            check(address)
-        } else {
-            service.signIn(username.trim(), password)
-            onSignedIn()
+    fun submit(input: String, username: String, password: String, secureOnly: Boolean = false) =
+        busyWhile {
+            if (!ready || !ServerAddress.names(input, service.server)) {
+                check(input, secureOnly)
+            } else {
+                service.signIn(username.trim(), password)
+                onSignedIn()
+            }
         }
-    }
 
     /** A browser sign-in to open, kept for its redirect; null when the server offers none. */
     fun startBrowserSignIn(): BrowserSignInRequest? {

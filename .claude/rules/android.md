@@ -55,6 +55,11 @@ A module depends only on those below it; the graph is in `settings.gradle.kts`.
   pushed over the app by the account menu's *Change user or server*. The picker returns after an
   hour in the background with two or more accounts (`IdlePicker`), never over a game. Their
   choices live in `:common:core` (`ServerChooser`, `pickerFocusMoves`), tested on the JVM.
+- **Connecting is Sovereign's** (`Connection.kt`): a bare address is asked over https first, then
+  http unless *Secure connections only* (on by default; off on an install already using http); an
+  address that never answers puts the previous one back. Proxy headers (`CustomHeaderRules`: 5 at
+  most, token names, never one the app sets, one per name in any case) go on every request to the
+  server's host and port and nowhere else; a value is never logged or shown.
 - **An update signs nobody out**: `AccountStore` moves a single-account install's sealed token,
   client and device name into the first account on first read, without unsealing the token.
 

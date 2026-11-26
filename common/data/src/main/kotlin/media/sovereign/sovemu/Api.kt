@@ -19,6 +19,9 @@ import media.sovereign.sovemu.core.CheatService
 import media.sovereign.sovemu.core.CollectionChoice
 import media.sovereign.sovemu.core.CollectionService
 import media.sovereign.sovemu.core.ControllerMapping
+import media.sovereign.sovemu.core.CustomHeader
+import media.sovereign.sovemu.core.CustomHeaderInterceptor
+import media.sovereign.sovemu.core.CustomHeaderRules
 import media.sovereign.sovemu.core.DeviceCode
 import media.sovereign.sovemu.core.DevicePoll
 import media.sovereign.sovemu.core.Game
@@ -120,6 +123,32 @@ class Settings(context: Context) {
         set(value) = prefs.edit().putString("server", value.trim().trimEnd('/')).apply()
 
     /**
+     * *Secure connections only*: a bare address is asked over https alone, and `http://` is
+     * refused ([media.sovereign.sovemu.core.ServerAddress]). On by default, as Sovereign's, except on an install already
+     * using an `http://` server, which has shown it needs it.
+     */
+    var secureOnly: Boolean
+        get() = if (prefs.contains("secure_only")) {
+            prefs.getBoolean("secure_only", true)
+        } else {
+            !serverUrl.startsWith("http://", ignoreCase = true)
+        }
+        set(value) = prefs.edit().putBoolean("secure_only", value).apply()
+
+    /**
+     * The proxy headers sent with every request to the server ([CustomHeaderRules]). Kept with
+     * the rest, never backed up or logged: a value is usually a credential.
+     */
+    var customHeaders: List<CustomHeader>
+        get() = CustomHeaderRules.decode(prefs.getString("custom_headers", null))
+        set(value) {
+            val blob = CustomHeaderRules.encode(value)
+            prefs.edit().apply {
+                if (blob.isEmpty()) remove("custom_headers") else putString("custom_headers", blob)
+            }.apply()
+        }
+
+    /**
      * The browser sign-in in flight, from opening the browser to its redirect: kept here, in the
      * app's private storage, because Android may end the app while the person is in the browser,
      * and the redirect that starts it again must still be checked and exchanged. Its verifier is
@@ -192,10 +221,15 @@ class SovEmuApi(
     CollectionService,
     SignInService,
     ServerService {
-    /** The sign-in's token client: plain HTTP, without the bearer interceptor. */
+    /**
+     * The sign-in's token client: plain HTTP, without the bearer interceptor, but with the proxy
+     * headers, which every request to the server carries (asking it how to sign in included:
+     * that is the request a proxy must let through first).
+     */
     private val plain: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
+        .addInterceptor(CustomHeaderInterceptor({ settings.customHeaders }, { settings.serverUrl }))
         .build()
 
     /** The sign-in: OAuth tokens from the endpoints the server's `bootstrapConfig` names. */
