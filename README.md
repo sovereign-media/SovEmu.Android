@@ -15,8 +15,8 @@ Checked out as a submodule of `SovEmu` (unpinned, `branch = main`); it builds on
 | `common/stream` | The game's stream: Stream's libwebrtc build (`Stream`, `StreamView`, the low-latency decoder factory) and the controllers (`Controller`, `InputPresence`). The only module with WebRTC. |
 | `common/designsystem` | The theme, colours, Lucide icons, focus, and the widgets that know nothing of the server (buttons, chips, filter fields, the side panel, the TV keyboard and text field). |
 | `common/feature` | Navigation 3 over a back stack of routes, and Jetpack Compose UI after the web client's (sign-in; home with the featured hero and rows of games to continue, systems and new arrivals; a system's cover grid with sort, filters, A–Z jump and a game panel; the player), Coil for artwork, and `SovEmuActivity`, which every app's `MainActivity` extends. |
-| `apps/mobile` | The phone and tablet app (`media.sovereign.sovemu.mobile`): touch, the touch controller, the browser sign-in. |
-| `apps/androidtv` | The Android TV and Google TV app (`media.sovereign.sovemu.tv`): the D-pad, the TV keyboard, sign-in with a code. Its baseline profile (`:baselineprofile`) is shared by all three. |
+| `apps/mobile` | The phone and tablet app (`media.sovereign.sovemu.mobile`): touch, the touch controller, the browser sign-in. Its baseline profile comes from `:baselineprofile-mobile`. |
+| `apps/androidtv` | The Android TV and Google TV app (`media.sovereign.sovemu.tv`): the D-pad, the TV keyboard, sign-in with a code. Its baseline profile (`:baselineprofile`) is the Fire TV app's too. |
 | `apps/firetv` | The Fire TV app (`media.sovereign.sovemu.firetv`): the Android TV app with a manifest for Fire OS. |
 
 The apps are thin shells over `common/`, as in Sovereign.Android: a module depends only on those

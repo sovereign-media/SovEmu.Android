@@ -39,5 +39,7 @@ include(":apps:mobile") //    phones and tablets
 include(":apps:androidtv") // Android TV / Google TV
 include(":apps:firetv") //    Amazon Fire TV
 
-// Not shipped: generates the TV apps' baseline profile from :apps:androidtv.
+// Not shipped: generate the baseline profiles, one module per app driven (a test module's
+// target is one project): the TV apps' from :apps:androidtv, the phone's from :apps:mobile.
 include(":baselineprofile")
+include(":baselineprofile-mobile")

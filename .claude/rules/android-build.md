@@ -33,13 +33,16 @@ paths:
 - **Performance is judged on the R8 release build** (`assembleRelease`), compiled with its profile
   (`adb shell cmd package compile -m speed-profile`), or with Macrobenchmark / `dumpsys gfxinfo`;
   never on a debug build.
-- **The release builds ship a Baseline Profile**
-  (`apps/androidtv/src/release/generated/baselineProfiles/`, committed; the Fire TV and phone
-  apps compile in the same files; `profileinstaller` installs it on first run).
-  `:baselineprofile` generates it: sign the Android TV app's debug build in on an Android TV
-  emulator of API 33+ (no root needed) to a server with games, then
-  `./gradlew :apps:androidtv:generateBaselineProfile`. The run uninstalls the app, so sign in
-  again before the next one. A green run can still be a thin walk: check the file names
-  `HomeKt` and `SystemKt`. Regenerate when the walk's screens change a lot.
+- **The release builds ship Baseline Profiles**, one per surface, committed:
+  `apps/androidtv/src/release/generated/baselineProfiles/` (the Fire TV app compiles in the same
+  files) and `apps/mobile/src/release/generated/baselineProfiles/`; `profileinstaller` installs
+  them on first run. `:baselineprofile` generates the TV's and `:baselineprofile-mobile` the
+  phone's (a test module drives one app). Sign the app's debug build in on an emulator of API 33+
+  of its kind (no root needed) to a server with games, then
+  `ANDROID_SERIAL=<emulator> ./gradlew :apps:androidtv:generateBaselineProfile` (or
+  `:apps:mobile:`): without `ANDROID_SERIAL` it runs on every attached device, Fire TVs included.
+  The run uninstalls the app, so sign in again before the next one. A green run can still be a
+  thin walk: check the file names `HomeKt`, `SystemKt` and `SystemPartsKt`. Regenerate when the
+  walk's screens change a lot, or classes move between files.
 - The WebRTC library is a pinned binary dependency: move its version deliberately, with an
   emulator check of a game session.
