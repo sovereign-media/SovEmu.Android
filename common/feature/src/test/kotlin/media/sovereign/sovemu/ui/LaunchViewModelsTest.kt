@@ -26,7 +26,6 @@ class LaunchViewModelsTest {
                 override fun seal(plaintext: String) = plaintext
                 override fun unseal(sealed: String) = sealed
             },
-            { settings.serverUrl },
         )
         for ((subject, server, used) in accounts) {
             store.upsert(

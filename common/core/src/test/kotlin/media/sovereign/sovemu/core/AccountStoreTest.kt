@@ -9,50 +9,9 @@ import org.junit.Test
 class AccountStoreTest {
     private val prefs = MemoryKeyValue()
     private val sealer = FakeSealer()
-    private var server: String? = "http://tv.local:8080"
     private var ids = 0
 
-    private fun store() = AccountStore(prefs, sealer, { server }, newId = { "id${++ids}" })
-
-    @Test
-    fun aSingleSignInBecomesTheActiveAccountWithItsTokenUntouched() {
-        val sealed = sealer.seal("r0")
-        prefs.put(AccountStore.LEGACY_SEALED, sealed)
-        prefs.put(AccountStore.LEGACY_CLIENT, "phone-app")
-        prefs.put(AccountStore.LEGACY_DEVICE, "Living room TV")
-        val store = store()
-        val account = store.all().single()
-        assertEquals(
-            StoredAccount("id1", null, "http://tv.local:8080", "phone-app", null, 0L),
-            account,
-        )
-        assertEquals("id1", store.activeId())
-        assertEquals("r0", store.refreshToken("id1"))
-        // Moved, not decrypted and sealed again.
-        assertEquals(sealed, prefs.get(AccountStore.tokenKey("id1")))
-        assertEquals("Living room TV", store.namedDevice("id1"))
-        for (key in listOf("refresh_token_sealed", "token_client", "named_device")) {
-            assertNull(key, prefs.get(key))
-        }
-        // Once: another launch finds the account, and no second one.
-        assertEquals(listOf(account), store().all())
-    }
-
-    @Test
-    fun aPlainTokenFromBeforeSealingIsSealedAsItMoves() {
-        prefs.put(AccountStore.LEGACY_PLAIN, "r0")
-        val store = store()
-        assertEquals("r0", store.refreshToken(store.activeId()!!))
-        assertFalse(prefs.map.values.any { it == "r0" })
-    }
-
-    @Test
-    fun aTokenWithNoServerIsDropped() {
-        server = ""
-        prefs.put(AccountStore.LEGACY_SEALED, sealer.seal("r0"))
-        assertTrue(store().all().isEmpty())
-        assertNull(prefs.get(AccountStore.LEGACY_SEALED))
-    }
+    private fun store() = AccountStore(prefs, sealer, newId = { "id${++ids}" })
 
     @Test
     fun theSameUserOnTheSameServerIsOneAccount() {
@@ -141,9 +100,9 @@ class AccountStoreTest {
     }
 
     @Test
-    fun aRefreshTeachesAMigratedAccountWhoItIs() {
-        prefs.put(AccountStore.LEGACY_SEALED, sealer.seal("r0"))
+    fun aRefreshTeachesTheAccountItsNameAndClientButNeverAnotherSub() {
         val store = store()
+        store.upsert("7", "http://tv.local:8080", null, null, 0)
         store.recordRefresh("id1", IdToken("7", "ada"), "sovemu-native")
         assertEquals(
             StoredAccount("id1", "7", "http://tv.local:8080", "sovemu-native", "ada", 0L),

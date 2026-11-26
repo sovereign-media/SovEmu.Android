@@ -116,15 +116,6 @@ class Settings @Inject constructor(@ApplicationContext context: Context) {
         override fun remove(key: String) = prefs.edit().remove(key).apply()
     }
 
-    init {
-        // Before OAuth the app signed in with a session cookie, which the server no longer
-        // accepts: dropping it shows the sign-in screen once after the upgrade.
-        if (prefs.contains("cookie")) prefs.edit().remove("cookie").apply()
-        // The "Low-latency decoding" switch is gone: the decoder gets low latency wherever it
-        // supports it.
-        if (prefs.contains("low_latency_decode")) prefs.edit().remove("low_latency_decode").apply()
-    }
-
     private val _server = MutableStateFlow(prefs.getString("server", "") ?: "")
 
     /** The server the app talks to, as it changes ([serverUrl]). */
@@ -140,15 +131,10 @@ class Settings @Inject constructor(@ApplicationContext context: Context) {
 
     /**
      * *Secure connections only*: a bare address is asked over https alone, and `http://` is
-     * refused ([media.sovereign.sovemu.core.ServerAddress]). On by default, as Sovereign's, except on an install already
-     * using an `http://` server, which has shown it needs it.
+     * refused ([media.sovereign.sovemu.core.ServerAddress]). On by default, as Sovereign's.
      */
     var secureOnly: Boolean
-        get() = if (prefs.contains("secure_only")) {
-            prefs.getBoolean("secure_only", true)
-        } else {
-            !serverUrl.startsWith("http://", ignoreCase = true)
-        }
+        get() = prefs.getBoolean("secure_only", true)
         set(value) = prefs.edit().putBoolean("secure_only", value).apply()
 
     /**
@@ -261,7 +247,7 @@ class SovEmuApi(
     /** The accounts signed in on this device, and the active one's tokens. */
     val session = Session(
         tokenClient,
-        AccountStore(settings.keyValue, KeystoreSealer, legacyServer = { settings.serverUrl }),
+        AccountStore(settings.keyValue, KeystoreSealer),
         server = { settings.serverUrl },
     )
 
