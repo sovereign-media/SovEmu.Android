@@ -28,15 +28,23 @@ A module depends only on those below it; the graph is in `settings.gradle.kts`.
 - **`:common:stream`**: `Stream` and `StreamView` (the WebRTC session), the low-latency decoder
   factory, `Controller` (the pads) and `InputPresence`. The only module with WebRTC.
 - **`:common:designsystem`**: the theme and colours (`Ui.kt`), Lucide icons, focus, and widgets
-  that know nothing of the server. Anything that loads from it (`Art`, `VideoSnap`, `Decorated`,
-  `EsrbBadge`) is in `:common:feature`, with `LocalApi`.
-- **`:common:feature`**: the screens (`ui/`), `Nav` and `Route`, and `SovEmuActivity`, the
-  activity every app's `MainActivity` extends.
-- **`apps/*` are thin shells**: a manifest and a `MainActivity` that sets `tv`, the form
-  (`LocalForm.current.tv`: D-pad, TV keyboard, no touch controller). Nothing asks
-  `FEATURE_LEANBACK`: which app is running decides it. Only `:apps:mobile` registers the browser
-  sign-in's redirect scheme. Kotlin packages stay `media.sovereign.sovemu` and `.ui` across the
-  modules (the baseline profile names classes by them); each module's namespace is its own.
+  that know nothing of the server or of one surface. Anything that loads from the server (`Art`,
+  `VideoSnap`, `Decorated`, `EsrbBadge`) is in `:common:feature`, with `LocalApi`.
+- **`:common:ui-tv`**: the TV's own widgets (its on-screen keyboard and the text field that types
+  with it), as Sovereign's `:common:ui-tv`.
+- **`:common:feature`**: the ViewModels, the shared app (`Shell.kt`: `SovEmuApp`, the back stack,
+  settings, screensaver, quit question; `Route`), and `SovEmuActivity`, the activity every app's
+  `MainActivity` extends.
+- **Each surface draws its own screens, as Sovereign's two UI stacks do**: `:common:feature-tv`
+  (`TvSurface`, the Android TV and Fire TV apps) and `:common:feature-mobile` (`MobileSurface`, the
+  phone and tablet app) each give a `Surface`: the signed-out screens and one Navigation 3 entry per
+  `Route`, over the shared ViewModels. A screen being split still comes from `sharedRoutes`
+  until both surfaces have their own; a new screen is written for each surface, never as one
+  layout that reshapes itself for the other.
+- **`apps/*` are thin shells**: a manifest, a `MainActivity` naming its `Surface`, and a
+  `ClientInfoModule`. Only `:apps:mobile` registers the browser sign-in's redirect scheme. Kotlin
+  packages stay `media.sovereign.sovemu` and `.ui` across the shared modules (the baseline
+  profile names classes by them); each module's namespace is its own.
 
 ## Accounts, as Sovereign.Android keeps them
 

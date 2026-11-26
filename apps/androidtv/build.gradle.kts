@@ -16,7 +16,7 @@ android {
 }
 
 dependencies {
-    implementation(project(":common:feature"))
+    implementation(project(":common:feature-tv"))
     // Installs the shipped baseline profile on first run, so a sideloaded app starts compiled.
     implementation(libs.androidx.profileinstaller)
     baselineProfile(project(":baselineprofile"))

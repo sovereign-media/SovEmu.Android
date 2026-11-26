@@ -15,6 +15,8 @@ dependencies {
     api(project(":common:data"))
     api(project(":common:stream"))
     api(project(":common:designsystem"))
+    // Until each surface has its own screens: the shared ones type with the TV's keyboard.
+    api(project(":common:ui-tv"))
     implementation(libs.androidx.core.ktx)
     api(libs.androidx.activity.compose)
     implementation(libs.androidx.browser)
