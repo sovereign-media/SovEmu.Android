@@ -8,6 +8,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import media.sovereign.sovemu.core.DeviceCode
 import media.sovereign.sovemu.core.PairingText
+import media.sovereign.sovemu.core.PairingUi
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test

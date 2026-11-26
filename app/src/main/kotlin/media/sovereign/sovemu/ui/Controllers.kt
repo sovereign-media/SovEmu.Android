@@ -57,6 +57,7 @@ import media.sovereign.sovemu.core.MappingScope
 import media.sovereign.sovemu.core.highlight
 import media.sovereign.sovemu.core.Protocol
 import media.sovereign.sovemu.core.RebindCapture
+import media.sovereign.sovemu.core.Binding
 import media.sovereign.sovemu.core.SystemStick
 
 
@@ -92,7 +93,21 @@ fun ControllersScreen(
         if (device == null) {
             DeviceList(devices, controller, onOpen = { selected = it }, onClose = onClose)
         } else {
-            Bindings(api, controller, book, controls, systemShort, device, onBack = { selected = null })
+            Bindings(
+                controller, book, controls, systemShort, device,
+                // Saving and resetting go to the server, then everything in force is read again
+                // (both scopes), so the game and this page use what now applies.
+                save = { model, scope, name, bindings ->
+                    api.saveControllerMapping(model, book.systemArg(scope), name, bindings)
+                    book.refresh(api::controllerMappings)
+                    controller.mixer.setMappings(book.forSystem)
+                },
+                reset = { model, scope ->
+                    book.reset(model, scope, api::resetControllerMapping, api::controllerMappings)
+                    controller.mixer.setMappings(book.forSystem)
+                },
+                onBack = { selected = null },
+            )
         }
     }
 }
@@ -161,12 +176,15 @@ private fun ColumnScope.DeviceList(devices: List<InputDeviceInfo>, controller: C
  */
 @Composable
 private fun ColumnScope.Bindings(
-    api: SovEmuApi,
     controller: Controller,
     book: MappingBook,
     controls: Controls,
     systemShort: String,
     device: InputDeviceInfo,
+    /** Saves a model's [Mapping]'s bindings for a scope, and reads back what is in force. */
+    save: suspend (model: String, scope: MappingScope, name: String, bindings: List<Binding>) -> Unit,
+    /** Removes the user's own mapping for a model in a scope, and reads back what is in force. */
+    reset: suspend (model: String, scope: MappingScope) -> Unit,
     onBack: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -183,21 +201,19 @@ private fun ColumnScope.Bindings(
 
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
 
-    /** After a save or reset: fetch both scopes again, so the game and this page use what is now in force. */
-    suspend fun refresh() {
-        book.refresh(api::controllerMappings)
-        controller.mixer.setMappings(book.forSystem)
+    /** After a save or reset: this page shows what is now in force. */
+    fun refreshed() {
         mapping = book.mapping(model.id, mappingScope)
         canReset = book.canReset(model.id, mappingScope)
         inForce = MappingBook.sourceText(book.entry(model.id, MappingScope.SYSTEM))
     }
 
     fun save(m: Mapping) {
-        val system = book.systemArg(mappingScope)
+        val s = mappingScope
         scope.launch {
             message = attempt {
-                api.saveControllerMapping(model.id, system, device.name, m.bindings)
-                refresh()
+                save(model.id, s, device.name, m.bindings)
+                refreshed()
             }.fold({ "Saved" }, { e -> "Not saved: ${e.message}" })
         }
     }
@@ -346,8 +362,7 @@ private fun ColumnScope.Bindings(
             val s = mappingScope
             scope.launch {
                 message = attempt {
-                    book.reset(model.id, s, api::resetControllerMapping, api::controllerMappings)
-                    controller.mixer.setMappings(book.forSystem)
+                    reset(model.id, s)
                     mapping = book.mapping(model.id, s)
                     canReset = book.canReset(model.id, s)
                     inForce = MappingBook.sourceText(book.entry(model.id, MappingScope.SYSTEM))

@@ -1,5 +1,9 @@
 package media.sovereign.sovemu.ui
 
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import media.sovereign.sovemu.core.SearchResults
+import media.sovereign.sovemu.core.GameSearch
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -35,7 +39,6 @@ import media.sovereign.sovemu.core.Game
 import media.sovereign.sovemu.core.SystemSummary
 
 /** How long typing must pause before the server is asked. */
-private const val SEARCH_DELAY_MS = 250L
 
 /** How many results the server sends (`Query.search`'s default). */
 private const val SEARCH_LIMIT = 48
@@ -55,22 +58,16 @@ fun SearchScreen(
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var typing by remember { mutableStateOf(false) }
-    var results by remember { mutableStateOf<Load<List<Game>>?>(null) }
+    // Asking (after a pause in typing, the latest query only) is the search's; this draws it.
+    val scope = rememberCoroutineScope()
+    val search = remember(api) { GameSearch(api::search, scope) }
+    val results by search.results.collectAsStateWithLifecycle()
     val byId = remember(systems) { systems.associateBy { it.id } }
     val memory = rememberFocusMemory()
 
-    // Asks after a pause in typing; a new query cancels the one before it.
-    LaunchedEffect(query) {
-        val q = query.trim()
-        if (q.isEmpty()) {
-            results = null
-            return@LaunchedEffect
-        }
-        delay(SEARCH_DELAY_MS)
-        results = attempt { api.search(q) }.fold({ Load.Ready(it) }, { Load.Failed(it.message ?: "Search failed") })
-    }
+    LaunchedEffect(query) { search.query(query) }
 
-    val found = (results as? Load.Ready)?.value.orEmpty()
+    val found = (results as? SearchResults.Found)?.games.orEmpty()
     Box(modifier.fillMaxSize()) {
         LazyVerticalGrid(
             columns = GridCells.Adaptive(160.dp),
@@ -95,16 +92,15 @@ fun SearchScreen(
                     }
                     val line = when (val r = results) {
                         null -> ""
-                        is Load.Failed -> r.message
-                        Load.Loading -> ""
-                        is Load.Ready -> when (r.value.size) {
+                        is SearchResults.Failed -> r.message
+                        is SearchResults.Found -> when (r.games.size) {
                             0 -> "No games match. Try fewer words."
                             1 -> "1 game"
                             SEARCH_LIMIT -> "The first $SEARCH_LIMIT games"
-                            else -> "${r.value.size} games"
+                            else -> "${r.games.size} games"
                         }
                     }
-                    Text(line, color = if (results is Load.Failed) Sov.Red300 else Sov.Slate400, fontSize = 14.sp)
+                    Text(line, color = if (results is SearchResults.Failed) Sov.Red300 else Sov.Slate400, fontSize = 14.sp)
                 }
             }
             items(found, key = { it.id }, contentType = { "game" }) { g ->

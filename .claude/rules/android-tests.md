@@ -14,8 +14,8 @@ Rules from the official Android testing guidance (tags point at the sources at t
   and `mockwebserver3` for HTTP in `core`; no mocks or spies. Shared fixtures are `TestData.kt`
   (`core`) and `ui/Fixtures.kt` (`app`). [TD]
 - **Coroutines**: `runBlocking` is fine for driving a suspend call against a fake or
-  mockwebserver. A test that involves delays, timeouts or Main uses `runTest` with injected test
-  dispatchers sharing one scheduler (add `kotlinx-coroutines-test` with the first one), never a
+  mockwebserver. A test that involves delays or timeouts uses `runTest`'s virtual time
+  (`kotlinx-coroutines-test`, in `core`), as `SignInFlowTest` and `GameSearchTest` do, never a
   real sleep. Assert a `StateFlow` on `.value`; use `first()` / `take(n).toList()` for finite
   checks. [CT][FT]
 - **Compose UI tests** (`createComposeRule`) render the stateless composable with fake state and
