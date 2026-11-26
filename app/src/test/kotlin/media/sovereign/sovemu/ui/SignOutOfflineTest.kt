@@ -65,7 +65,9 @@ class SignOutOfflineTest {
     fun unreachableStartsOnTryAgainAndOffersSignOut() {
         rule.setContent {
             TestApp {
-                Unreachable("https://sovemu.example", "Unable to resolve host", { retried++ }, { signedOut++ })
+                Unreachable("https://sovemu.example", "Unable to resolve host", {
+                    retried++
+                }, { signedOut++ })
             }
         }
         rule.onNodeWithText("https://sovemu.example").assertExists()

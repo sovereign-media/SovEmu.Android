@@ -1,29 +1,32 @@
 package media.sovereign.sovemu
 
 import android.content.Context
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.CoroutineScope
-import androidx.annotation.RequiresApi
-import android.os.VibrationEffect
-import android.os.Build
-import android.hardware.lights.LightsRequest
-import android.hardware.lights.LightState
-import android.hardware.lights.Light
 import android.hardware.input.InputManager
+import android.hardware.lights.Light
+import android.hardware.lights.LightState
+import android.hardware.lights.LightsRequest
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.VibrationEffect
 import android.util.Log
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
-import kotlinx.coroutines.flow.MutableSharedFlow
+import androidx.annotation.RequiresApi
+import kotlin.math.abs
+import kotlin.math.roundToInt
+import kotlin.math.sign
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import media.sovereign.sovemu.core.Button
 import media.sovereign.sovemu.core.ControllerModel
 import media.sovereign.sovemu.core.Controllers
@@ -33,9 +36,6 @@ import media.sovereign.sovemu.core.Keys
 import media.sovereign.sovemu.core.Protocol
 import media.sovereign.sovemu.core.RebindCapture
 import media.sovereign.sovemu.core.axisInputs
-import kotlin.math.abs
-import kotlin.math.roundToInt
-import kotlin.math.sign
 
 /**
  * Android's input devices, fed into an [InputMixer] (core): each controller is identified by
@@ -102,7 +102,11 @@ class Controller {
      */
     private fun isPad(d: InputDevice): Boolean {
         if (d.isVirtual) return false
-        if (!d.supportsSource(InputDevice.SOURCE_GAMEPAD) && !d.supportsSource(InputDevice.SOURCE_JOYSTICK)) return false
+        if (!d.supportsSource(InputDevice.SOURCE_GAMEPAD) &&
+            !d.supportsSource(InputDevice.SOURCE_JOYSTICK)
+        ) {
+            return false
+        }
         val faceButtons = d.hasKeys(KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_BUTTON_B).all { it }
         return !Controllers.isRemote(d.name, d.vendorId, d.productId, faceButtons)
     }
@@ -114,6 +118,7 @@ class Controller {
         val d = InputDevice.getDevice(id) ?: return
         when {
             isPad(d) -> connectPad(id, d)
+
             isKeyboard(d) -> {
                 keyboards += id
                 mixer.setKeyboardPresent(true)
@@ -135,7 +140,12 @@ class Controller {
         val port = mixer.connect(id, name, model, physical = d.descriptor)
         Log.i(TAG, "controller $id ($name, ${model.id}) connected as player ${port?.plus(1)}")
         // A model docs/CONTROLLERS.md does not know yet: worth adding.
-        if (model.id.startsWith("pad:")) ClientEvents.report("CONTROLLER_UNKNOWN", "$name → ${model.id}")
+        if (model.id.startsWith(
+                "pad:",
+            )
+        ) {
+            ClientEvents.report("CONTROLLER_UNKNOWN", "$name → ${model.id}")
+        }
     }
 
     /**
@@ -173,7 +183,8 @@ class Controller {
             did = true
         }
         val lights = d.lightsManager.lights.filter {
-            it.hasRgbControl() || it.type == Light.LIGHT_TYPE_PLAYER_ID || it.type == Light.LIGHT_TYPE_INPUT
+            it.hasRgbControl() || it.type == Light.LIGHT_TYPE_PLAYER_ID ||
+                it.type == Light.LIGHT_TYPE_INPUT
         }
         if (lights.isNotEmpty()) {
             scope.launch {
@@ -200,7 +211,11 @@ class Controller {
         LightsRequest.Builder().apply {
             for (light in lights) {
                 val state = LightState.Builder()
-                if (light.hasRgbControl()) state.setColor(if (on) 0xFFFFFFFF.toInt() else 0xFF000000.toInt())
+                if (light.hasRgbControl()) {
+                    state.setColor(
+                        if (on) 0xFFFFFFFF.toInt() else 0xFF000000.toInt(),
+                    )
+                }
                 if (light.type == Light.LIGHT_TYPE_PLAYER_ID) state.setPlayerId(if (on) 4 else 0)
                 addLight(light, state.build())
             }
@@ -259,22 +274,32 @@ class Controller {
         val sx = event.getAxisValue(MotionEvent.AXIS_X)
         val sy = event.getAxisValue(MotionEvent.AXIS_Y)
         val analog = Protocol.Analog(
-            lx = stick(sx), ly = stick(sy),
-            rx = stick(event.getAxisValue(MotionEvent.AXIS_Z)), ry = stick(event.getAxisValue(MotionEvent.AXIS_RZ)),
-            l2 = trigger(leftTrigger(event)), r2 = trigger(rightTrigger(event)),
+            lx = stick(sx),
+            ly = stick(sy),
+            rx = stick(event.getAxisValue(MotionEvent.AXIS_Z)),
+            ry = stick(event.getAxisValue(MotionEvent.AXIS_RZ)),
+            l2 = trigger(leftTrigger(event)),
+            r2 = trigger(rightTrigger(event)),
         )
         mixer.padAxes(id, axes(event), sx, sy, analog)
         return true
     }
 
-    private fun leftTrigger(e: MotionEvent) = maxOf(e.getAxisValue(MotionEvent.AXIS_LTRIGGER), e.getAxisValue(MotionEvent.AXIS_BRAKE))
-    private fun rightTrigger(e: MotionEvent) = maxOf(e.getAxisValue(MotionEvent.AXIS_RTRIGGER), e.getAxisValue(MotionEvent.AXIS_GAS))
+    private fun leftTrigger(e: MotionEvent) =
+        maxOf(e.getAxisValue(MotionEvent.AXIS_LTRIGGER), e.getAxisValue(MotionEvent.AXIS_BRAKE))
+    private fun rightTrigger(e: MotionEvent) =
+        maxOf(e.getAxisValue(MotionEvent.AXIS_RTRIGGER), e.getAxisValue(MotionEvent.AXIS_GAS))
 
     /** The hat as `up`/`down`/`left`/`right`, the analog triggers as `l2`/`r2`. */
     private fun axes(e: MotionEvent): Set<String> = axisInputs(
-        e.getAxisValue(MotionEvent.AXIS_HAT_X), e.getAxisValue(MotionEvent.AXIS_HAT_Y), leftTrigger(e), rightTrigger(e),
-        e.getAxisValue(MotionEvent.AXIS_X), e.getAxisValue(MotionEvent.AXIS_Y),
-        e.getAxisValue(MotionEvent.AXIS_Z), e.getAxisValue(MotionEvent.AXIS_RZ),
+        e.getAxisValue(MotionEvent.AXIS_HAT_X),
+        e.getAxisValue(MotionEvent.AXIS_HAT_Y),
+        leftTrigger(e),
+        rightTrigger(e),
+        e.getAxisValue(MotionEvent.AXIS_X),
+        e.getAxisValue(MotionEvent.AXIS_Y),
+        e.getAxisValue(MotionEvent.AXIS_Z),
+        e.getAxisValue(MotionEvent.AXIS_RZ),
     )
 
     fun setTouch(button: Button, pressed: Boolean) {
@@ -326,9 +351,14 @@ class Controller {
     )
 
     @Volatile private var capture: Capture? = null
-    /** Every device's held keys and axis inputs, tracked always so a capture knows what was already held. */
+
+    /**
+     * Every device's held keys and axis inputs, tracked always so a capture knows what was already
+     * held.
+     */
     private val heldKeys = HashMap<Int, MutableSet<Int>>()
     private val heldAxes = HashMap<Int, Set<String>>()
+
     /** Keys whose press a capture consumed: their release is consumed too. */
     private val swallow = HashSet<Int>()
     private val main = Handler(Looper.getMainLooper())
@@ -348,9 +378,15 @@ class Controller {
      * (the pad's B/east, Escape) cancels and holding it 1 s binds it; home/guide, the system Back
      * or 8 s without input cancel. Callbacks run on the main thread.
      */
-    fun startCapture(model: ControllerModel, onInput: (String) -> Unit, onCancel: (timedOut: Boolean) -> Unit, onRejected: (String) -> Unit) {
+    fun startCapture(
+        model: ControllerModel,
+        onInput: (String) -> Unit,
+        onCancel: (timedOut: Boolean) -> Unit,
+        onRejected: (String) -> Unit,
+    ) {
         val back = RebindCapture.backInput(model.id)
-        capture = Capture(model, RebindCapture(back, held(model), now()), onInput, onCancel, onRejected)
+        capture =
+            Capture(model, RebindCapture(back, held(model), now()), onInput, onCancel, onRejected)
         main.removeCallbacks(tick)
         main.postDelayed(tick, 50)
     }
@@ -362,7 +398,10 @@ class Controller {
 
     private fun now() = android.os.SystemClock.uptimeMillis()
 
-    /** The inputs held now on devices of [model]: bindable keyboard codes, or a pad's positional inputs. */
+    /**
+     * The inputs held now on devices of [model]: bindable keyboard codes, or a pad's positional
+     * inputs.
+     */
     private fun held(model: ControllerModel): Set<String> = buildSet {
         for ((id, codes) in heldKeys) {
             val pad = mixer.isPad(id)
@@ -384,10 +423,12 @@ class Controller {
                 cancelCapture()
                 c.onInput(outcome.input)
             }
+
             is RebindCapture.Outcome.Cancel -> {
                 cancelCapture()
                 c.onCancel(outcome.timedOut)
             }
+
             RebindCapture.Outcome.Waiting -> {}
         }
     }
@@ -420,10 +461,18 @@ class Controller {
             val code = Keys.keyboardCode(event.keyCode)
             when {
                 code == null -> c.onRejected("That key can't be bound")
-                !Keys.bindable(code) -> c.onRejected("$code is the ${if (code == Keys.FAST_FORWARD) "fast-forward" else "rewind"} key")
+
+                !Keys.bindable(
+                    code,
+                ) -> c.onRejected(
+                    "$code is the " +
+                        "${if (code == Keys.FAST_FORWARD) "fast-forward" else "rewind"} key",
+                )
             }
         }
-        val guide = !keyboard && event.keyCode == KeyEvent.KEYCODE_BUTTON_MODE && mixer.model(id)?.id == c.model.id
+        val guide =
+            !keyboard && event.keyCode == KeyEvent.KEYCODE_BUTTON_MODE &&
+                mixer.model(id)?.id == c.model.id
         evaluate(guide)
         return true
     }

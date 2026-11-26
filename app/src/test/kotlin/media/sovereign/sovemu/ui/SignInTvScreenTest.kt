@@ -3,9 +3,9 @@ package media.sovereign.sovemu.ui
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onLast
-import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -18,7 +18,10 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-/** *Sign in a TV* on a phone: the code, a confirmation naming the server and account, and what came of it. */
+/**
+ * *Sign in a TV* on a phone: the code, a confirmation naming the server and account, and what came
+ * of it.
+ */
 @Config(qualifiers = "w411dp-h891dp")
 @RunWith(RobolectricTestRunner::class)
 class SignInTvScreenTest {
@@ -26,7 +29,9 @@ class SignInTvScreenTest {
     val rule = createComposeRule()
 
     private fun show(approve: suspend (String) -> Unit) = rule.setContent {
-        TestApp(tv = false) { SignInTvScreen("http://192.168.1.10:8080", "ada", approve, onDone = {}) }
+        TestApp(tv = false) {
+            SignInTvScreen("http://192.168.1.10:8080", "ada", approve, onDone = {})
+        }
     }
 
     private fun type(text: String) {

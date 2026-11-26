@@ -23,7 +23,11 @@ class FilterFieldsTest {
     @get:Rule
     val rule = createAndroidComposeRule<ComponentActivity>()
 
-    private val series = listOf(FilterOption("Castlevania", "Castlevania", 4), FilterOption("Mega Man", "Mega Man", 2))
+    private val series =
+        listOf(
+            FilterOption("Castlevania", "Castlevania", 4),
+            FilterOption("Mega Man", "Mega Man", 2),
+        )
 
     @Test
     fun aMultiSelectStaysOpenWhileValuesAreTicked() {
@@ -42,7 +46,11 @@ class FilterFieldsTest {
     @Test
     fun aChoiceShowsWhatIsPicked() {
         var stars by mutableStateOf<Double?>(null)
-        val options = listOf<FilterOption<Double?>>(FilterOption(null, "Any"), FilterOption(4.0, "4 stars or more"))
+        val options =
+            listOf<FilterOption<Double?>>(
+                FilterOption(null, "Any"),
+                FilterOption(4.0, "4 stars or more"),
+            )
         rule.setContent { TestApp { ChoiceField("Rating", options, stars, { stars = it }) } }
         rule.onNodeWithContentDescription("Rating: Any").performClick()
         rule.onNodeWithText("4 stars or more").performClick()

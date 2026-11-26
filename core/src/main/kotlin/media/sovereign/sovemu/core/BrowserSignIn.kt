@@ -8,12 +8,11 @@ import java.security.SecureRandom
 import java.util.Base64
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
-/**
- * A phone signing in through the system browser, as Sovereign's phones do: the server's own
- * sign-in page in a Custom Tab, the authorization code flow with PKCE as the mobile client, back
- * to the app's scheme (`media.sovereign.sovemu:/oauth2redirect`). The app never sees the
- * password. The pure half: the request, and what came back; the exchange is [TokenClient.exchangeCode].
- */
+// A phone signing in through the system browser, as Sovereign's phones do: the server's own
+// sign-in page in a Custom Tab, the authorization code flow with PKCE as the mobile client, back
+// to the app's scheme (`media.sovereign.sovemu:/oauth2redirect`). The app never sees the
+// password. The pure half: the request, and what came back; the exchange is
+// [TokenClient.exchangeCode].
 
 /**
  * A PKCE pair (RFC 7636): the verifier the app keeps, and the S256 challenge the browser carries.
@@ -32,8 +31,10 @@ data class Pkce(val verifier: String, val challenge: String) {
         }
 
         /** `BASE64URL(SHA256(ASCII(verifier)))`, RFC 7636 section 4.2. */
-        fun challengeOf(verifier: String): String =
-            base64Url(MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray(StandardCharsets.US_ASCII)))
+        fun challengeOf(verifier: String): String = base64Url(
+            MessageDigest.getInstance("SHA-256")
+                .digest(verifier.toByteArray(StandardCharsets.US_ASCII)),
+        )
     }
 }
 
@@ -50,7 +51,10 @@ data class BrowserSignInRequest(
     val state: String,
     val pkce: Pkce,
 ) {
-    /** The URL for the system browser: the code flow with PKCE and the scopes every sign-in asks for. */
+    /**
+     * The URL for the system browser: the code flow with PKCE and the scopes every sign-in asks
+     * for.
+     */
     val authorizeUrl: String
         get() = authorizationEndpoint + "?" + listOf(
             "client_id" to clientId,
@@ -70,9 +74,16 @@ data class BrowserSignInRequest(
          * A request for the server [config] describes, at [server] (the address the user typed,
          * which a relative endpoint resolves against). Null when it offers no browser sign-in.
          */
-        fun create(server: String, config: SignInConfig, random: SecureRandom = SecureRandom()): BrowserSignInRequest? {
+        fun create(
+            server: String,
+            config: SignInConfig,
+            random: SecureRandom = SecureRandom(),
+        ): BrowserSignInRequest? {
             if (!config.browser) return null
-            val endpoint = server.toHttpUrlOrNull()?.resolve(config.authorizationEndpoint!!)?.toString() ?: return null
+            val endpoint = server.toHttpUrlOrNull()
+                ?.resolve(config.authorizationEndpoint!!)
+                ?.toString()
+                ?: return null
             return BrowserSignInRequest(
                 clientId = config.mobileClientId!!,
                 redirectUri = config.mobileRedirectUri!!,
@@ -111,7 +122,9 @@ sealed interface BrowserRedirect {
          */
         fun parse(uri: String, request: BrowserSignInRequest): BrowserRedirect {
             val at = uri.indexOf('?')
-            if (at < 0 || uri.substring(0, at).substringBefore('#') != request.redirectUri) return Malformed
+            if (at < 0 || uri.substring(0, at).substringBefore('#') != request.redirectUri) {
+                return Malformed
+            }
             val params = linkedMapOf<String, String>()
             for (pair in uri.substring(at + 1).substringBefore('#').split('&')) {
                 if (pair.isEmpty()) continue
@@ -121,16 +134,17 @@ sealed interface BrowserRedirect {
                 params.putIfAbsent(name, value)
             }
             if (params["state"] != request.state) return StateMismatch
-            params["error"]?.takeIf { it.isNotEmpty() }?.let { return Refused(it, params["error_description"]) }
+            params["error"]?.takeIf { it.isNotEmpty() }?.let {
+                return Refused(it, params["error_description"])
+            }
             return params["code"]?.takeIf { it.isNotEmpty() }?.let(::Code) ?: Malformed
         }
 
-        private fun decode(text: String): String? =
-            try {
-                URLDecoder.decode(text, StandardCharsets.UTF_8)
-            } catch (_: IllegalArgumentException) {
-                null
-            }
+        private fun decode(text: String): String? = try {
+            URLDecoder.decode(text, StandardCharsets.UTF_8)
+        } catch (_: IllegalArgumentException) {
+            null
+        }
     }
 }
 
@@ -142,8 +156,11 @@ fun BrowserRedirect.message(): String = when (this) {
     BrowserRedirect.Malformed -> "The browser came back without signing in. Try again."
 }
 
-private fun token(random: SecureRandom, bytes: Int): String = base64Url(ByteArray(bytes).also(random::nextBytes))
+private fun token(random: SecureRandom, bytes: Int): String =
+    base64Url(ByteArray(bytes).also(random::nextBytes))
 
-private fun base64Url(bytes: ByteArray): String = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+private fun base64Url(bytes: ByteArray): String =
+    Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
 
-private fun encode(value: String): String = URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20")
+private fun encode(value: String): String =
+    URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20")

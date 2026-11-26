@@ -51,7 +51,8 @@ class BaselineProfileGenerator {
             press { device.pressBack() }
         }
         // Search, from the rail.
-        device.findObject(By.desc("Search"))?.click() ?: device.findObject(By.text("Search"))?.click()
+        device.findObject(By.desc("Search"))?.click()
+            ?: device.findObject(By.text("Search"))?.click()
         device.waitForIdle()
         press { device.pressBack() }
     }

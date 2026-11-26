@@ -1,8 +1,6 @@
 package media.sovereign.sovemu.ui
 
 import android.view.SurfaceView
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.draw.drawBehind
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateFloatAsState
@@ -33,6 +31,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -154,7 +154,11 @@ fun Screensaver(
             AndroidView(
                 // In front of any other video surface (a paused game's stream), or it would play
                 // unseen behind it.
-                factory = { SurfaceView(it).apply { setZOrderMediaOverlay(true) }.also(player::setVideoSurfaceView) },
+                factory = {
+                    SurfaceView(it).apply {
+                        setZOrderMediaOverlay(true)
+                    }.also(player::setVideoSurfaceView)
+                },
                 modifier = Modifier.aspectRatio(aspect),
             )
             Box(Modifier.fillMaxSize().graphicsLayer { alpha = veil }.background(Color.Black))
@@ -177,21 +181,41 @@ private fun InfoBar(game: Game?, system: SystemSummary?) {
     Row(
         Modifier.fillMaxWidth().height(64.dp)
             .background(Sov.Surface)
-            .drawBehind { drawLine(Color.White.copy(alpha = 0.1f), Offset(0f, 0f), Offset(size.width, 0f), 1.dp.toPx()) }
+            .drawBehind {
+                drawLine(
+                    Color.White.copy(alpha = 0.1f),
+                    Offset(0f, 0f),
+                    Offset(size.width, 0f),
+                    1.dp.toPx(),
+                )
+            }
             .padding(horizontal = 32.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         if (game == null) return@Row
         // The game's details take what the hint leaves; a long title is the one that gives way.
-        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Row(
+            Modifier.weight(1f),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
             if (game.thumb != null) {
-                Art(game.thumb, Modifier.height(48.dp).aspectRatio(3 / 4f).clip(RoundedCornerShape(4.dp)), scale = ContentScale.Fit)
+                Art(
+                    game.thumb,
+                    Modifier.height(48.dp).aspectRatio(3 / 4f).clip(RoundedCornerShape(4.dp)),
+                    scale = ContentScale.Fit,
+                )
             }
             SystemBadge(system?.short ?: game.system.uppercase(), system?.colour() ?: Sov.Accent)
             Text(
-                game.title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold,
-                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
+                game.title,
+                color = Color.White,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
             )
             system?.let { Text(it.name, color = Sov.Slate400, fontSize = 14.sp, maxLines = 1) }
             formatReleaseDate(game.releaseDate)?.let { Fact(Lucide.CalendarDays, it) }
@@ -202,8 +226,10 @@ private fun InfoBar(game: Game?, system: SystemSummary?) {
 }
 
 @Composable
-private fun Fact(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) =
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        LucideIcon(icon, tint = Sov.Slate400, size = 16.dp)
-        Text(text, color = Sov.Slate300, fontSize = 15.sp)
-    }
+private fun Fact(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) = Row(
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(6.dp),
+) {
+    LucideIcon(icon, tint = Sov.Slate400, size = 16.dp)
+    Text(text, color = Sov.Slate300, fontSize = 15.sp)
+}

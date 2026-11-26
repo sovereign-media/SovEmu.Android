@@ -51,8 +51,11 @@ fun LowLatencyWhilePlaying() {
 
 @Suppress("DEPRECATION") // WIFI_MODE_FULL_HIGH_PERF is the only choice before Android 10.
 private val WIFI_LOCK_MODE =
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) WifiManager.WIFI_MODE_FULL_LOW_LATENCY
-    else WifiManager.WIFI_MODE_FULL_HIGH_PERF
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+    } else {
+        WifiManager.WIFI_MODE_FULL_HIGH_PERF
+    }
 
 /**
  * Whether the display this app is on says it can be switched to minimal post-processing (its
@@ -60,7 +63,9 @@ private val WIFI_LOCK_MODE =
  */
 fun minimalPostProcessingSupported(context: Context): Boolean? {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
-    val display = context.getSystemService(DisplayManager::class.java)?.getDisplay(Display.DEFAULT_DISPLAY)
+    val display = context.getSystemService(
+        DisplayManager::class.java,
+    )?.getDisplay(Display.DEFAULT_DISPLAY)
     return display?.isMinimalPostProcessingSupported ?: false
 }
 

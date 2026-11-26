@@ -18,7 +18,9 @@ import kotlinx.coroutines.launch
  */
 class MenuMusic(private val context: Context, private val scope: CoroutineScope) {
     private val tracks: List<String> =
-        context.assets.list(FOLDER).orEmpty().filter { it.endsWith(".mp3", ignoreCase = true) }.map { "$FOLDER/$it" }
+        context.assets.list(FOLDER).orEmpty().filter {
+            it.endsWith(".mp3", ignoreCase = true)
+        }.map { "$FOLDER/$it" }
     private var order: List<String> = tracks.shuffled()
     private var next = 0
     private var player: MediaPlayer? = null
@@ -36,8 +38,13 @@ class MenuMusic(private val context: Context, private val scope: CoroutineScope)
         .setOnAudioFocusChangeListener { change ->
             when (change) {
                 // Another app's audio (or a call): stop rather than talk over it.
-                AudioManager.AUDIOFOCUS_LOSS, AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> fadeTo(0f, pause = true)
+                AudioManager.AUDIOFOCUS_LOSS, AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> fadeTo(
+                    0f,
+                    pause = true,
+                )
+
                 AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> fadeTo(DUCKED)
+
                 AudioManager.AUDIOFOCUS_GAIN -> if (wanted) resume()
             }
         }
@@ -70,12 +77,17 @@ class MenuMusic(private val context: Context, private val scope: CoroutineScope)
         fadeTo(VOLUME)
     }
 
-    /** Opens [path] from the assets and plays it; at its end, the next track (reshuffled after the last). */
+    /**
+     * Opens [path] from the assets and plays it; at its end, the next track (reshuffled after the
+     * last).
+     */
     private fun start(path: String): MediaPlayer? {
         val p = runCatching {
             MediaPlayer().apply {
                 setAudioAttributes(attributes)
-                context.assets.openFd(path).use { setDataSource(it.fileDescriptor, it.startOffset, it.length) }
+                context.assets.openFd(path).use {
+                    setDataSource(it.fileDescriptor, it.startOffset, it.length)
+                }
                 setVolume(volume, volume)
                 setOnCompletionListener { finished ->
                     finished.release()
@@ -91,7 +103,10 @@ class MenuMusic(private val context: Context, private val scope: CoroutineScope)
         return p
     }
 
-    /** Ramps the volume to [target] over [FADE_MS]; at silence, pauses (keeping its place) if [pause]. */
+    /**
+     * Ramps the volume to [target] over [FADE_MS]; at silence, pauses (keeping its place) if
+     * [pause].
+     */
     private fun fadeTo(target: Float, pause: Boolean = false) {
         fade?.cancel()
         fade = scope.launch {
@@ -108,6 +123,7 @@ class MenuMusic(private val context: Context, private val scope: CoroutineScope)
 
     private companion object {
         const val FOLDER = "music"
+
         /** Under the menus' sounds and a TV's usual volume: background, not foreground. */
         const val VOLUME = 0.5f
         const val DUCKED = 0.15f

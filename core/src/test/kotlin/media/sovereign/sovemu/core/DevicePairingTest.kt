@@ -4,20 +4,36 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** Waiting for a code's approval, on a clock the test moves (Sovereign's poll controller's cases). */
+/**
+ * Waiting for a code's approval, on a clock the test moves (Sovereign's poll controller's cases).
+ */
 class DevicePairingTest {
     private var clock = 0L
     private val waits = mutableListOf<Long>()
-    private val code = DeviceCode("dc", "BCDF-GHJK", "http://tv.local/device", null, expiresInSeconds = 60, intervalSeconds = 5)
+    private val code =
+        DeviceCode(
+            "dc",
+            "BCDF-GHJK",
+            "http://tv.local/device",
+            null,
+            expiresInSeconds = 60,
+            intervalSeconds = 5,
+        )
 
-    private fun pairing(vararg answers: DevicePoll, reach: MutableList<Boolean> = mutableListOf()): PairingResult {
+    private fun pairing(
+        vararg answers: DevicePoll,
+        reach: MutableList<Boolean> = mutableListOf(),
+    ): PairingResult {
         val queue = ArrayDeque(answers.toList())
         return runBlocking {
             awaitApproval(
                 code,
                 poll = { queue.removeFirstOrNull() ?: DevicePoll.Pending },
                 now = { clock },
-                sleep = { waits += it; clock += it },
+                sleep = {
+                    waits += it
+                    clock += it
+                },
                 reachable = { reach += it },
             )
         }
@@ -34,7 +50,12 @@ class DevicePairingTest {
 
     @Test
     fun slowDownWidensTheIntervalForGood() {
-        pairing(DevicePoll.SlowDown, DevicePoll.Pending, DevicePoll.SlowDown, DevicePoll.Refused(PairingFailure.Denied))
+        pairing(
+            DevicePoll.SlowDown,
+            DevicePoll.Pending,
+            DevicePoll.SlowDown,
+            DevicePoll.Refused(PairingFailure.Denied),
+        )
         assertEquals(listOf(5_000L, 10_000L, 10_000L, 15_000L), waits)
     }
 
@@ -42,14 +63,24 @@ class DevicePairingTest {
     fun aPollWithNoAnswerIsTriedAgainAndSaidSo() {
         val reach = mutableListOf<Boolean>()
         val tokens = Tokens("a", 3600, "r")
-        val result = pairing(DevicePoll.NoAnswer, DevicePoll.NoAnswer, DevicePoll.Pending, DevicePoll.Approved(tokens), reach = reach)
+        val result =
+            pairing(
+                DevicePoll.NoAnswer,
+                DevicePoll.NoAnswer,
+                DevicePoll.Pending,
+                DevicePoll.Approved(tokens),
+                reach = reach,
+            )
         assertEquals(PairingResult.Approved(tokens), result)
         assertEquals(listOf(false, false, true), reach)
     }
 
     @Test
     fun theServersNoEndsIt() {
-        assertEquals(PairingResult.Failed(PairingFailure.Denied), pairing(DevicePoll.Refused(PairingFailure.Denied)))
+        assertEquals(
+            PairingResult.Failed(PairingFailure.Denied),
+            pairing(DevicePoll.Refused(PairingFailure.Denied)),
+        )
         assertEquals(1, waits.size)
     }
 

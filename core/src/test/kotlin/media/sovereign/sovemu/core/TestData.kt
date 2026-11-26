@@ -23,11 +23,15 @@ fun game(
     series: List<String> = emptyList(),
     themes: List<String> = emptyList(),
 ): Game = Game(
-    id = id, system = system, title = title, fileTitle = fileTitle, tags = tags, path = "$system/$title", size = 0.0,
-    lastPlayedAt = lastPlayedAt, playCount = playCount, image = null, imageSmall = null, cover = null, thumb = null, video = null, description = null,
-    releaseDate = releaseDate, developer = developer, publisher = null, genre = genre, genres = emptyList(), players = players, rating = rating, esrb = esrb, esrbBadgeUrl = null,
+    id = id, system = system, title = title, fileTitle = fileTitle, tags = tags,
+    path = "$system/$title", size = 0.0,
+    lastPlayedAt = lastPlayedAt, playCount = playCount, image = null, imageSmall = null,
+    cover = null, thumb = null, video = null, description = null,
+    releaseDate = releaseDate, developer = developer, publisher = null, genre = genre,
+    genres = emptyList(), players = players, rating = rating, esrb = esrb, esrbBadgeUrl = null,
     modes = modes, series = series, themes = themes,
-    discs = 1, partKind = null, favourite = favourite, release = null, patch = null, autoSave = null,
+    discs = 1, partKind = null, favourite = favourite, release = null, patch = null,
+    autoSave = null,
 )
 
 fun system(
@@ -37,8 +41,11 @@ fun system(
     rendering: Rendering? = null,
     biosMissing: Boolean = false,
 ): SystemSummary = SystemSummary(
-    id = id, name = id.uppercase(), short = id.uppercase(), manufacturer = "Nintendo", year = 1985, color = "#c0392b",
-    photoUrl = null, gameCount = 1, playable = playable, needsGpu = needsGpu, rendering = rendering, biosMissing = biosMissing, boxAspect = 0.72,
+    id = id, name = id.uppercase(), short = id.uppercase(), manufacturer = "Nintendo", year = 1985,
+    color = "#c0392b",
+    photoUrl = null, gameCount = 1, playable = playable, needsGpu = needsGpu, rendering = rendering,
+    biosMissing = biosMissing, boxAspect = 0.72,
 )
 
-fun save(slot: Int, savedAt: Double = 1_700_000_000.0): SaveSlot = SaveSlot(slot, savedAt, "/media/games/1/saves/$slot")
+fun save(slot: Int, savedAt: Double = 1_700_000_000.0): SaveSlot =
+    SaveSlot(slot, savedAt, "/media/games/1/saves/$slot")

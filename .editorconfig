@@ -1,0 +1,19 @@
+# The Kotlin format (android-kotlin.md): ktlint, through Spotless (`./gradlew spotlessApply`).
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+
+[*.{kt,kts}]
+indent_style = space
+indent_size = 4
+max_line_length = 100
+ktlint_code_style = android_studio
+# Composables are PascalCase functions.
+ktlint_function_naming_ignore_when_annotated_with = Composable
+# A file is named for what it holds, as in the web and iOS clients, not for its one class.
+ktlint_standard_filename = disabled
+ij_kotlin_allow_trailing_comma = true
+ij_kotlin_allow_trailing_comma_on_call_site = true

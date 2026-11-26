@@ -11,11 +11,11 @@ import android.media.MediaFormat
 import android.os.Build
 import android.os.Bundle
 import android.view.Surface
+import java.nio.ByteBuffer
+import java.util.concurrent.atomic.AtomicBoolean
 import media.sovereign.sovemu.core.DecoderChoice
 import media.sovereign.sovemu.core.DecoderLatency
 import media.sovereign.sovemu.core.DecoderSetup
-import java.nio.ByteBuffer
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * [DefaultVideoDecoderFactory]'s choice of decoders (software with the hardware one preferred,
@@ -46,7 +46,9 @@ class LowLatencyVideoDecoderFactory(
      * the software one. Nothing is opened but, on a hardware decoder without the standard
      * low-latency feature, the codec itself for a moment, to read which vendor keys it knows.
      */
-    fun describe(): List<DecoderChoice> = supportedCodecs.distinctBy { it.name }.mapNotNull { info ->
+    fun describe(): List<DecoderChoice> = supportedCodecs.distinctBy {
+        it.name
+    }.mapNotNull { info ->
         runCatching { describe(info) }.getOrNull()
     }
 
@@ -54,32 +56,59 @@ class LowLatencyVideoDecoderFactory(
         val hw = hardware.createDecoder(info)
         if (hw is AndroidVideoDecoder && !softwareInstead(info, hw)) {
             val name = hw.implementationName
-            val codec = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.firstOrNull { it.name == name && !it.isEncoder }
+            val codec = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos
+                .firstOrNull { it.name == name && !it.isEncoder }
             // A decoder named as software is one, whatever the platform calls it.
-            val hardware = !DecoderLatency.softwareByName(name) && (codec?.let(::hardwareAccelerated) ?: true)
-            return DecoderChoice(info.name, hardware = hardware, lowLatency = lowLatency(info, name), name = name)
+            val hardware = !DecoderLatency.softwareByName(name) &&
+                (codec?.let(::hardwareAccelerated) ?: true)
+            return DecoderChoice(
+                info.name,
+                hardware = hardware,
+                lowLatency = lowLatency(info, name),
+                name = name,
+            )
         }
         if (hw is AndroidVideoDecoder) {
             // The hardware decoder holds frames back, so createDecoder gives WebRTC's own.
             val sw = software.createDecoder(info) ?: return null
-            return DecoderChoice(info.name, hardware = false, lowLatency = true, name = sw.javaClass.simpleName)
+            return DecoderChoice(
+                info.name,
+                hardware = false,
+                lowLatency = true,
+                name = sw.javaClass.simpleName,
+            )
         }
-        if (hw != null) return DecoderChoice(info.name, hardware = true, lowLatency = false, name = hw.javaClass.simpleName)
+        if (hw != null) {
+            return DecoderChoice(
+                info.name,
+                hardware = true,
+                lowLatency = false,
+                name = hw.javaClass.simpleName,
+            )
+        }
         val sw = software.createDecoder(info) ?: platformSoftware.createDecoder(info) ?: return null
         // WebRTC's own decoders (libvpx, dav1d) run in native code and return each frame as it
         // is decoded; a platform software codec says nothing about holding frames.
         val native = sw is WrappedNativeVideoDecoder
-        val name = if (native) sw.javaClass.simpleName else runCatching { sw.implementationName }.getOrNull()
+        val name = if (native) {
+            sw.javaClass.simpleName
+        } else {
+            runCatching { sw.implementationName }.getOrNull()
+        }
         return DecoderChoice(info.name, hardware = false, lowLatency = native, name = name)
     }
 
-    /** Whether the platform calls [codec] hardware; before Android 10, whether it is not one of Google's software ones. */
-    private fun hardwareAccelerated(codec: MediaCodecInfo): Boolean =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            codec.isHardwareAccelerated
-        } else {
-            !codec.name.startsWith("OMX.google.") && !codec.name.startsWith("c2.android.")
-        }
+    /**
+     * Whether the platform calls [codec] hardware; before Android 10, whether it is not one of
+     * Google's software ones.
+     */
+    private fun hardwareAccelerated(codec: MediaCodecInfo): Boolean = if (Build.VERSION.SDK_INT >=
+        Build.VERSION_CODES.Q
+    ) {
+        codec.isHardwareAccelerated
+    } else {
+        !codec.name.startsWith("OMX.google.") && !codec.name.startsWith("c2.android.")
+    }
 
     /** The vendor parameters the decoder [name] lists (Android 12+), opening it only to ask. */
     private fun vendorParameters(name: String): List<String> {
@@ -112,14 +141,20 @@ class LowLatencyVideoDecoderFactory(
     private fun lowLatency(info: VideoCodecInfo, name: String): Boolean {
         val mime = VideoCodecMimeType.valueOf(info.name).mimeType()
         return lowLatencyModes.getOrPut("$name $mime") {
-            val codec = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.firstOrNull { it.name == name && !it.isEncoder }
+            val codec = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos
+                .firstOrNull { it.name == name && !it.isEncoder }
             val feature = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-                codec?.let { capabilities(it, mime) }?.isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_LowLatency) == true
-            DecoderLatency.keys(feature, if (feature) emptyList() else vendorParameters(name)).isNotEmpty()
+                codec?.let { capabilities(it, mime) }?.isFeatureSupported(
+                    MediaCodecInfo.CodecCapabilities.FEATURE_LowLatency,
+                ) == true
+            DecoderLatency.keys(feature, if (feature) emptyList() else vendorParameters(name))
+                .isNotEmpty()
         }
     }
 
-    /** [DecoderLatency.prefersSoftware] for the hardware decoder the library [chosen] for [info]. */
+    /**
+     * [DecoderLatency.prefersSoftware] for the hardware decoder the library [chosen] for [info].
+     */
     private fun softwareInstead(info: VideoCodecInfo, chosen: VideoDecoder?): Boolean {
         if (chosen !is AndroidVideoDecoder) return false
         val name = chosen.implementationName
@@ -138,7 +173,8 @@ class LowLatencyVideoDecoderFactory(
         val caps = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos
             .firstOrNull { it.name == name && !it.isEncoder }
             ?.let { capabilities(it, type.mimeType()) } ?: return chosen
-        val colour = MediaCodecUtils.selectColorFormat(MediaCodecUtils.DECODER_COLOR_FORMATS, caps) ?: return chosen
+        val colour = MediaCodecUtils.selectColorFormat(MediaCodecUtils.DECODER_COLOR_FORMATS, caps)
+            ?: return chosen
         val feature = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
             caps.isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_LowLatency)
         return AndroidVideoDecoder(Codecs(type.mimeType(), feature), name, type, colour, egl)
@@ -148,35 +184,54 @@ class LowLatencyVideoDecoderFactory(
     private fun watched(decoder: VideoDecoder): VideoDecoder =
         if (decoder is WrappedNativeVideoDecoder) decoder else Watched(decoder, onFrameEntered)
 
-    private fun capabilities(codec: MediaCodecInfo, mime: String): MediaCodecInfo.CodecCapabilities? = try {
+    private fun capabilities(
+        codec: MediaCodecInfo,
+        mime: String,
+    ): MediaCodecInfo.CodecCapabilities? = try {
         codec.getCapabilitiesForType(mime)
     } catch (_: IllegalArgumentException) {
         null
     }
 
     /** Creates one decoder's MediaCodecs (again after a resolution change); reports the first. */
-    private inner class Codecs(private val mime: String, private val featureLowLatency: Boolean) : MediaCodecWrapperFactory {
+    private inner class Codecs(private val mime: String, private val featureLowLatency: Boolean) :
+        MediaCodecWrapperFactory {
         private val reported = AtomicBoolean(false)
 
-        override fun createByCodecName(name: String): MediaCodecWrapper = Codec(MediaCodec.createByCodecName(name)) { codec, format ->
-            val vendor = if (!featureLowLatency && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                codec.supportedVendorParameters
-            } else {
-                emptyList()
+        override fun createByCodecName(name: String): MediaCodecWrapper =
+            Codec(MediaCodec.createByCodecName(name)) {
+                    codec,
+                    format,
+                ->
+                val vendor = if (
+                    !featureLowLatency && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                ) {
+                    codec.supportedVendorParameters
+                } else {
+                    emptyList()
+                }
+                val keys = DecoderLatency.keys(featureLowLatency, vendor)
+                for (key in keys) format.setInteger(key, 1)
+                if (reported.compareAndSet(false, true)) {
+                    onConfigured(DecoderSetup(name, mime, keys))
+                }
             }
-            val keys = DecoderLatency.keys(featureLowLatency, vendor)
-            for (key in keys) format.setInteger(key, 1)
-            if (reported.compareAndSet(false, true)) onConfigured(DecoderSetup(name, mime, keys))
-        }
     }
 }
 
-/** A MediaCodec as WebRTC drives it (MediaCodecWrapperImpl's), with [tune] applied to its format. */
+/**
+ * A MediaCodec as WebRTC drives it (MediaCodecWrapperImpl's), with [tune] applied to its format.
+ */
 private class Codec(
     private val codec: MediaCodec,
     private val tune: (MediaCodec, MediaFormat) -> Unit,
 ) : MediaCodecWrapper {
-    override fun configure(format: MediaFormat, surface: Surface?, crypto: MediaCrypto?, flags: Int) {
+    override fun configure(
+        format: MediaFormat,
+        surface: Surface?,
+        crypto: MediaCrypto?,
+        flags: Int,
+    ) {
         tune(codec, format)
         codec.configure(format, surface, crypto, flags)
     }
@@ -185,10 +240,17 @@ private class Codec(
     override fun stop() = codec.stop()
     override fun release() = codec.release()
     override fun dequeueInputBuffer(timeoutUs: Long): Int = codec.dequeueInputBuffer(timeoutUs)
-    override fun queueInputBuffer(index: Int, offset: Int, size: Int, presentationTimeUs: Long, flags: Int) =
-        codec.queueInputBuffer(index, offset, size, presentationTimeUs, flags)
-    override fun dequeueOutputBuffer(info: MediaCodec.BufferInfo, timeoutUs: Long): Int = codec.dequeueOutputBuffer(info, timeoutUs)
-    override fun releaseOutputBuffer(index: Int, render: Boolean) = codec.releaseOutputBuffer(index, render)
+    override fun queueInputBuffer(
+        index: Int,
+        offset: Int,
+        size: Int,
+        presentationTimeUs: Long,
+        flags: Int,
+    ) = codec.queueInputBuffer(index, offset, size, presentationTimeUs, flags)
+    override fun dequeueOutputBuffer(info: MediaCodec.BufferInfo, timeoutUs: Long): Int =
+        codec.dequeueOutputBuffer(info, timeoutUs)
+    override fun releaseOutputBuffer(index: Int, render: Boolean) =
+        codec.releaseOutputBuffer(index, render)
     override fun getInputFormat(): MediaFormat = codec.inputFormat
     override fun getOutputFormat(): MediaFormat = codec.outputFormat
     override fun getOutputFormat(index: Int): MediaFormat = codec.getOutputFormat(index)
@@ -207,9 +269,12 @@ internal class Watched(
     private val decoder: VideoDecoder,
     private val onFrameEntered: (renderTimeMs: Long, captureTimeNs: Long) -> Unit,
 ) : VideoDecoder {
-    override fun initDecode(settings: VideoDecoder.Settings, callback: VideoDecoder.Callback): VideoCodecStatus =
-        decoder.initDecode(settings, callback)
+    override fun initDecode(
+        settings: VideoDecoder.Settings,
+        callback: VideoDecoder.Callback,
+    ): VideoCodecStatus = decoder.initDecode(settings, callback)
     override fun release(): VideoCodecStatus = decoder.release()
+
     // WebRTC's native side passes a null DecodeInfo (it is `@Nullable` there in practice): a
     // non-null parameter here threw on the first frame, and an exception on the decoding thread
     // aborts the whole process. Without it the render time is unknown (-1, which matches no

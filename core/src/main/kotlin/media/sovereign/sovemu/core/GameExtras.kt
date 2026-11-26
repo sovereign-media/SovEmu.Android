@@ -6,11 +6,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-/**
- * A game's cheats and collections, as the in-game menu's Cheats page and a game's Collections
- * drawer show them: the state and what changes it, out of the composables (which only draw it
- * and forward taps), so it can be tested on the JVM with a fake service.
- */
+// A game's cheats and collections, as the in-game menu's Cheats page and a game's Collections
+// drawer show them: the state and what changes it, out of the composables (which only draw it
+// and forward taps), so it can be tested on the JVM with a fake service.
 
 /** The cheat calls [CheatsModel] needs (`SovEmuApi`, or a fake in tests). */
 interface CheatService {
@@ -25,7 +23,11 @@ interface CheatService {
  * change failed (null once one works). Every change answers with the game's cheats after it,
  * which replace the list. Work runs in [scope]: the screen's, so it stops when the menu closes.
  */
-class CheatsModel(private val service: CheatService, private val gameId: Int, private val scope: CoroutineScope) {
+class CheatsModel(
+    private val service: CheatService,
+    private val gameId: Int,
+    private val scope: CoroutineScope,
+) {
     private val _cheats = MutableStateFlow<List<Cheat>?>(null)
     val cheats: StateFlow<List<Cheat>?> = _cheats.asStateFlow()
     private val _message = MutableStateFlow<String?>(null)
@@ -34,7 +36,10 @@ class CheatsModel(private val service: CheatService, private val gameId: Int, pr
     fun load() {
         scope.launch {
             _cheats.value = attempt { service.cheats(gameId) }
-                .getOrElse { e -> _message.value = "Could not load cheats: ${e.message}"; emptyList() }
+                .getOrElse { e ->
+                    _message.value = "Could not load cheats: ${e.message}"
+                    emptyList()
+                }
         }
     }
 
@@ -56,7 +61,10 @@ class CheatsModel(private val service: CheatService, private val gameId: Int, pr
     private fun change(block: suspend () -> List<Cheat>) {
         scope.launch {
             attempt { block() }
-                .onSuccess { _cheats.value = it; _message.value = null }
+                .onSuccess {
+                    _cheats.value = it
+                    _message.value = null
+                }
                 .onFailure { e -> _message.value = e.message }
         }
     }
@@ -96,7 +104,10 @@ class CollectionsModel(
         set(choice.id, now)
         scope.launch {
             attempt { service.setInCollection(choice.id, gameId, now) }
-                .onSuccess { _error.value = null; onChanged() }
+                .onSuccess {
+                    _error.value = null
+                    onChanged()
+                }
                 .onFailure { e ->
                     set(choice.id, !now)
                     _error.value = "Could not change ${choice.name}: ${e.message}"
@@ -118,7 +129,8 @@ class CollectionsModel(
                 id
             }.onSuccess { id ->
                 _error.value = null
-                _choices.value = (_choices.value.orEmpty() + CollectionChoice(id, wanted, true)).sortedBy { it.name.lowercase() }
+                _choices.value = (_choices.value.orEmpty() + CollectionChoice(id, wanted, true))
+                    .sortedBy { it.name.lowercase() }
                 onChanged()
             }.onFailure { e ->
                 _error.value = e.message ?: "Could not create the collection"

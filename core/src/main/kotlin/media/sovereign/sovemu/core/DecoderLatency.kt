@@ -27,7 +27,8 @@ object DecoderLatency {
      */
     fun softwareByName(name: String): Boolean {
         val n = name.lowercase()
-        return n.startsWith("omx.google.") || n.startsWith("c2.android.") || n.endsWith(".sw") || n.contains(".sw.")
+        return n.startsWith("omx.google.") || n.startsWith("c2.android.") || n.endsWith(".sw") ||
+            n.contains(".sw.")
     }
 
     /**
@@ -39,7 +40,11 @@ object DecoderLatency {
      * few milliseconds. A device with no hardware decoder, or one named as software, or one
      * with a low-latency mode, is left as it is.
      */
-    fun prefersSoftware(hardwareName: String?, lowLatency: Boolean, nativeSoftware: Boolean): Boolean =
+    fun prefersSoftware(
+        hardwareName: String?,
+        lowLatency: Boolean,
+        nativeSoftware: Boolean,
+    ): Boolean =
         hardwareName != null && nativeSoftware && !lowLatency && !softwareByName(hardwareName)
 
     /**
@@ -61,7 +66,9 @@ object DecoderLatency {
  * `c2.amlogic.avc.decoder`), its [mime] type and the low-latency [keys] set on it.
  */
 data class DecoderSetup(val codec: String, val mime: String, val keys: List<String>) {
-    /** Low latency was applied. Keys are set whenever the decoder supports one, so also: supported. */
+    /**
+     * Low latency was applied. Keys are set whenever the decoder supports one, so also: supported.
+     */
     val lowLatency: Boolean get() = keys.isNotEmpty()
 
     /** The key(s) in words: `KEY_LOW_LATENCY` for the standard one, else the vendor names. */
@@ -76,7 +83,6 @@ data class DecoderSetup(val codec: String, val mime: String, val keys: List<Stri
     val label: String get() = if (lowLatency) "low latency: on" else "low latency: not supported"
 
     /** The one logcat line per stream (logfmt, beside the stats lines). */
-    fun logfmt(): String =
-        "decoder=$codec mime=$mime low_latency_supported=$lowLatency low_latency_applied=$lowLatency " +
-            "low_latency_key=${keyName ?: "none"}"
+    fun logfmt(): String = "decoder=$codec mime=$mime low_latency_supported=$lowLatency " +
+        "low_latency_applied=$lowLatency low_latency_key=${keyName ?: "none"}"
 }

@@ -51,23 +51,23 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/**
- * The app's own on-screen keyboard for TVs. Fire TV's system keyboard is a full-screen panel no
- * app can shrink or move, which hides the form being filled in; this one is a strip along the
- * bottom of the screen, below whatever is being typed into, driven by the D-pad. A [TvTextField]
- * asks for it while it is being typed in (on a TV, under a [TvKeyboardHost]); A presses a key,
- * Back closes it, and a hardware keyboard types into it too.
- */
+// The app's own on-screen keyboard for TVs. Fire TV's system keyboard is a full-screen panel no
+// app can shrink or move, which hides the form being filled in; this one is a strip along the
+// bottom of the screen, below whatever is being typed into, driven by the D-pad. A [TvTextField]
+// asks for it while it is being typed in (on a TV, under a [TvKeyboardHost]); A presses a key,
+// Back closes it, and a hardware keyboard types into it too.
 
 /** A key on the keyboard. */
 sealed interface TvKey {
     /** Types its text (a letter, digit or symbol). */
     data class Text(val text: String) : TvKey
     data object Shift : TvKey
+
     /** Between the letters and the symbols. */
     data object Page : TvKey
     data object Space : TvKey
     data object Delete : TvKey
+
     /** The field's action: Done, Search, Next … */
     data object Action : TvKey
 }
@@ -110,21 +110,30 @@ fun tvKeyRows(page: TvKeyPage, shift: Boolean, type: KeyboardType): List<List<Tv
 }
 
 /** What a key's cap shows. */
-fun tvKeyLabel(key: TvKey, page: TvKeyPage, shift: Boolean, action: ImeAction): String = when (key) {
-    is TvKey.Text -> key.text
-    TvKey.Shift -> if (shift) "⇧ on" else "⇧"
-    TvKey.Page -> if (page == TvKeyPage.LETTERS) "#+=" else "abc"
-    TvKey.Space -> "Space"
-    TvKey.Delete -> "⌫"
-    TvKey.Action -> when (action) {
-        ImeAction.Search -> "Search"
-        ImeAction.Next -> "Next"
-        ImeAction.Go -> "Go"
-        else -> "Done"
-    }
-}
+fun tvKeyLabel(key: TvKey, page: TvKeyPage, shift: Boolean, action: ImeAction): String =
+    when (key) {
+        is TvKey.Text -> key.text
 
-/** The text after typing [key] into [value]: only letters, digits, symbols, Space and Delete change it. */
+        TvKey.Shift -> if (shift) "⇧ on" else "⇧"
+
+        TvKey.Page -> if (page == TvKeyPage.LETTERS) "#+=" else "abc"
+
+        TvKey.Space -> "Space"
+
+        TvKey.Delete -> "⌫"
+
+        TvKey.Action -> when (action) {
+            ImeAction.Search -> "Search"
+            ImeAction.Next -> "Next"
+            ImeAction.Go -> "Go"
+            else -> "Done"
+        }
+    }
+
+/**
+ * The text after typing [key] into [value]: only letters, digits, symbols, Space and Delete
+ * change it.
+ */
 fun tvKeyTyped(value: String, key: TvKey): String = when (key) {
     is TvKey.Text -> value + key.text
     TvKey.Space -> "$value "
@@ -146,7 +155,10 @@ class TvKeyboardRequest(
     val onClose: () -> Unit,
 )
 
-/** The keyboard's one request at a time (the field being typed in), shared through [LocalTvKeyboard]. */
+/**
+ * The keyboard's one request at a time (the field being typed in), shared through
+ * [LocalTvKeyboard].
+ */
 @Stable
 class TvKeyboardState {
     var request by mutableStateOf<TvKeyboardRequest?>(null)
@@ -157,7 +169,10 @@ class TvKeyboardState {
     }
 }
 
-/** The app's keyboard, where one is hosted (on a TV); null elsewhere, where fields use the system's. */
+/**
+ * The app's keyboard, where one is hosted (on a TV); null elsewhere, where fields use the
+ * system's.
+ */
 val LocalTvKeyboard = staticCompositionLocalOf<TvKeyboardState?> { null }
 
 /**
@@ -194,8 +209,15 @@ private fun TvKeyboard(request: TvKeyboardRequest, modifier: Modifier = Modifier
     fun press(key: TvKey) {
         when (key) {
             TvKey.Shift -> shift = !shift
-            TvKey.Page -> page = if (page == TvKeyPage.LETTERS) TvKeyPage.SYMBOLS else TvKeyPage.LETTERS
+
+            TvKey.Page -> page = if (page == TvKeyPage.LETTERS) {
+                TvKeyPage.SYMBOLS
+            } else {
+                TvKeyPage.LETTERS
+            }
+
             TvKey.Action -> request.onAction()
+
             else -> {
                 request.onValue(tvKeyTyped(request.value(), key))
                 // Shift is for the next letter, as on a phone.
@@ -215,17 +237,30 @@ private fun TvKeyboard(request: TvKeyboardRequest, modifier: Modifier = Modifier
             // A hardware keyboard types too: its characters, Backspace and Enter. (Only a real
             // keyboard's: some remotes send Enter for select, which must press the focused key.)
             .onPreviewKeyEvent { e ->
-                val typing = e.nativeKeyEvent.device?.keyboardType == InputDevice.KEYBOARD_TYPE_ALPHABETIC
-                if (!typing || e.type != KeyEventType.KeyDown || e.isCtrlPressed || e.isAltPressed) {
+                val typing =
+                    e.nativeKeyEvent.device?.keyboardType == InputDevice.KEYBOARD_TYPE_ALPHABETIC
+                if (
+                    !typing || e.type != KeyEventType.KeyDown || e.isCtrlPressed ||
+                    e.isAltPressed
+                ) {
                     return@onPreviewKeyEvent false
                 }
                 when {
-                    e.key == Key.Backspace -> { press(TvKey.Delete); true }
-                    e.key == Key.Enter || e.key == Key.NumPadEnter -> { press(TvKey.Action); true }
+                    e.key == Key.Backspace -> {
+                        press(TvKey.Delete)
+                        true
+                    }
+
+                    e.key == Key.Enter || e.key == Key.NumPadEnter -> {
+                        press(TvKey.Action)
+                        true
+                    }
+
                     e.utf16CodePoint >= ' '.code -> {
                         request.onValue(request.value() + e.utf16CodePoint.toChar())
                         true
                     }
+
                     else -> false
                 }
             },
@@ -245,7 +280,11 @@ private fun TvKeyboard(request: TvKeyboardRequest, modifier: Modifier = Modifier
                         tvKeyLabel(key, page, shift, request.action),
                         width,
                         accent = key == TvKey.Action || (key == TvKey.Shift && shift),
-                        modifier = if (r == 1 && c == 0) Modifier.focusRequester(first) else Modifier,
+                        modifier = if (r == 1 && c == 0) {
+                            Modifier.focusRequester(first)
+                        } else {
+                            Modifier
+                        },
                     ) { press(key) }
                 }
             }
@@ -254,7 +293,13 @@ private fun TvKeyboard(request: TvKeyboardRequest, modifier: Modifier = Modifier
 }
 
 @Composable
-private fun KeyCap(label: String, width: Dp, accent: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun KeyCap(
+    label: String,
+    width: Dp,
+    accent: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
     val source = remember { MutableInteractionSource() }
     val focused by source.collectIsFocusedAsState()
     val shape = RoundedCornerShape(8.dp)

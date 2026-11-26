@@ -24,11 +24,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -89,24 +89,48 @@ fun CollectionsDrawer(
         contentAlignment = Alignment.CenterEnd,
     ) {
         Column(
-            Modifier.fillMaxHeight().widthIn(max = 384.dp).fillMaxWidth().background(Sov.Surface.copy(alpha = 0.97f))
-                .border(1.dp, Color.White.copy(alpha = 0.1f)).clickable(remember { MutableInteractionSource() }, null) {}
+            Modifier.fillMaxHeight().widthIn(
+                max = 384.dp,
+            ).fillMaxWidth().background(Sov.Surface.copy(alpha = 0.97f))
+                .border(1.dp, Color.White.copy(alpha = 0.1f)).clickable(
+                    remember {
+                        MutableInteractionSource()
+                    },
+                    null,
+                ) {}
                 .focusProperties { onExit = { cancelFocusChange() } }
                 .focusGroup(),
         ) {
             Row(
-                Modifier.statusBarsPadding().padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 16.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+                Modifier.statusBarsPadding().padding(
+                    start = 20.dp,
+                    end = 20.dp,
+                    top = 20.dp,
+                    bottom = 16.dp,
+                ),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 LucideIcon(Lucide.FolderHeart)
-                Text("Collections", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Collections",
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
                 Box(Modifier.weight(1f))
                 Box(
-                    Modifier.focusProperties { canFocus = false }.size(36.dp).clip(CircleShape).clickable(onClick = onClose),
+                    Modifier.focusProperties {
+                        canFocus = false
+                    }.size(36.dp).clip(CircleShape).clickable(onClick = onClose),
                     contentAlignment = Alignment.Center,
                 ) { LucideIcon(Lucide.X, tint = Sov.Slate400) }
             }
-            Box(Modifier.padding(horizontal = 20.dp).fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.1f)))
+            Box(
+                Modifier.padding(
+                    horizontal = 20.dp,
+                ).fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.1f)),
+            )
             Column(
                 Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(20.dp),
@@ -114,11 +138,31 @@ fun CollectionsDrawer(
                 Text(game.title, color = Sov.Slate300, fontSize = 14.sp)
                 val list = choices
                 when {
-                    list == null && error == null -> Text("Loading…", color = Sov.Slate500, fontSize = 14.sp)
-                    list.isNullOrEmpty() -> Text("No collections yet: name one below to start it with this game.", color = Sov.Slate500, fontSize = 14.sp)
+                    list == null && error == null -> Text(
+                        "Loading…",
+                        color = Sov.Slate500,
+                        fontSize = 14.sp,
+                    )
+
+                    list.isNullOrEmpty() -> Text(
+                        "No collections yet: name one below to start it with this game.",
+                        color = Sov.Slate500,
+                        fontSize = 14.sp,
+                    )
+
                     else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         list.forEachIndexed { i, c ->
-                            Toggle(c.member, { toggle(c) }, if (i == 0) Modifier.focusRequester(first) else Modifier) {
+                            Toggle(
+                                c.member,
+                                { toggle(c) },
+                                if (i ==
+                                    0
+                                ) {
+                                    Modifier.focusRequester(first)
+                                } else {
+                                    Modifier
+                                },
+                            ) {
                                 Text(c.name, color = Sov.Slate200, fontSize = 14.sp)
                             }
                         }
@@ -127,12 +171,23 @@ fun CollectionsDrawer(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Eyebrow("New collection")
                     TvTextField(
-                        "Name", name, { name = it.take(64) }, typing, { typing = it },
+                        "Name",
+                        name,
+                        { name = it.take(64) },
+                        typing,
+                        { typing = it },
                         if (choices.isNullOrEmpty()) Modifier.focusRequester(first) else Modifier,
                         action = ImeAction.Done,
                         onAction = ::create,
                     )
-                    SovButton("Create", ::create, icon = Lucide.FolderPlus, variant = Variant.Outline, enabled = name.isNotBlank(), large = false)
+                    SovButton(
+                        "Create",
+                        ::create,
+                        icon = Lucide.FolderPlus,
+                        variant = Variant.Outline,
+                        enabled = name.isNotBlank(),
+                        large = false,
+                    )
                 }
                 error?.let { Text(it, color = Sov.Red300, fontSize = 14.sp) }
             }

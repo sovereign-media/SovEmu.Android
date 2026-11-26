@@ -49,31 +49,59 @@ internal fun ContinuePanel(
             PanelClose(onClose, Modifier.align(Alignment.TopEnd))
         }
         Column(
-            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 24.dp),
+            Modifier.weight(
+                1f,
+            ).verticalScroll(
+                rememberScrollState(),
+            ).padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             val short = system?.short ?: g.system.uppercase()
             Column {
                 SystemBadge(short, system?.colour() ?: Sov.Accent)
                 Text(
-                    g.title, color = Color.White, fontSize = 24.sp, lineHeight = 28.sp, fontWeight = FontWeight.Black,
+                    g.title,
+                    color = Color.White,
+                    fontSize = 24.sp,
+                    lineHeight = 28.sp,
+                    fontWeight = FontWeight.Black,
                     modifier = Modifier.padding(top = 10.dp),
                 )
-                g.release?.let { Text(it, color = Sov.Amber200, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 4.dp)) }
+                g.release?.let {
+                    Text(
+                        it,
+                        color = Sov.Amber200,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
             }
             val now = remember(g.id) { System.currentTimeMillis() / 1000 }
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                g.autoSave?.let { Fact(Lucide.Save, "Saved ${formatAgo(it.savedAt.toLong(), now)}") }
+                g.autoSave?.let {
+                    Fact(Lucide.Save, "Saved ${formatAgo(it.savedAt.toLong(), now)}")
+                }
                 if (g.playCount > 0) {
-                    Fact(Lucide.History, "Played ${g.playCount}× · last ${formatAgo(GameIndex.playedAt(g.lastPlayedAt), now)}")
+                    Fact(
+                        Lucide.History,
+                        "Played ${g.playCount}× · last ${formatAgo(
+                            GameIndex.playedAt(g.lastPlayedAt),
+                            now,
+                        )}",
+                    )
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 // A game played without an auto save (it never got one) has nothing to continue.
                 if (g.autoSave != null) {
-                    SovButton("Continue", { onPlay(Start.Continue) }, Modifier.focusRequester(first), icon = Lucide.Play, filledIcon = true)
+                    SovButton("Continue", {
+                        onPlay(Start.Continue)
+                    }, Modifier.focusRequester(first), icon = Lucide.Play, filledIcon = true)
                 } else {
-                    SovButton("Play", { onPlay(Start.New) }, Modifier.focusRequester(first), icon = Lucide.Play, filledIcon = true)
+                    SovButton("Play", {
+                        onPlay(Start.New)
+                    }, Modifier.focusRequester(first), icon = Lucide.Play, filledIcon = true)
                 }
                 SovButton("Game details", onDetails, variant = Variant.Outline, icon = Lucide.Info)
             }
@@ -88,14 +116,32 @@ internal fun ContinuePanel(
 @Composable
 private fun LeftOff(g: Game, system: SystemSummary?) {
     val shot = g.autoSave?.screenshotUrl
-    Box(Modifier.fillMaxWidth().aspectRatio(16 / 9f).background(Color.Black), contentAlignment = Alignment.Center) {
+    Box(
+        Modifier.fillMaxWidth().aspectRatio(16 / 9f).background(Color.Black),
+        contentAlignment = Alignment.Center,
+    ) {
         if (shot != null) {
             Screenshot(shot, Modifier.fillMaxSize())
         } else {
             val brush = remember(system?.color) { tile(system?.colour() ?: Sov.Accent) }
             Box(Modifier.fillMaxSize().background(brush), contentAlignment = Alignment.Center) {
-                Text(system?.short ?: g.system.uppercase(), color = Color.White.copy(alpha = 0.8f), fontSize = 60.sp, fontWeight = FontWeight.Black)
-                Art(g.image ?: g.cover ?: g.thumb, Modifier.fillMaxSize(), scale = if (g.image != null) ContentScale.Crop else ContentScale.Fit)
+                Text(
+                    system?.short ?: g.system.uppercase(),
+                    color = Color.White.copy(alpha = 0.8f),
+                    fontSize = 60.sp,
+                    fontWeight = FontWeight.Black,
+                )
+                Art(
+                    g.image ?: g.cover ?: g.thumb,
+                    Modifier.fillMaxSize(),
+                    scale = if (g.image !=
+                        null
+                    ) {
+                        ContentScale.Crop
+                    } else {
+                        ContentScale.Fit
+                    },
+                )
             }
         }
     }
@@ -103,8 +149,10 @@ private fun LeftOff(g: Game, system: SystemSummary?) {
 
 /** A line of the panel's facts, as the game panel's. */
 @Composable
-private fun Fact(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) =
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        LucideIcon(icon, tint = Sov.Slate500, size = 16.dp)
-        Text(text, color = Sov.Slate300, fontSize = 14.sp)
-    }
+private fun Fact(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) = Row(
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(6.dp),
+) {
+    LucideIcon(icon, tint = Sov.Slate500, size = 16.dp)
+    Text(text, color = Sov.Slate300, fontSize = 14.sp)
+}

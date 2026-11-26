@@ -13,7 +13,8 @@ enum class Family(val title: String, val layoutId: String) {
     XBOX("Xbox", "xbox"),
     PLAYSTATION("PlayStation", "playstation"),
     NINTENDO("Nintendo", "nintendo"),
-    GENERIC("Controller", "generic");
+    GENERIC("Controller", "generic"),
+    ;
 
     /** What this family prints on [input] (a positional name: `south`, `l1`, `up` …). */
     fun label(input: String): String {
@@ -22,7 +23,9 @@ enum class Family(val title: String, val layoutId: String) {
             NINTENDO -> 2
             else -> 0
         }
-        STICK.matchEntire(input)?.let { m -> return "${m.groupValues[1].uppercase()} ${ARROWS[m.groupValues[2]]}" }
+        STICK.matchEntire(input)?.let { m ->
+            return "${m.groupValues[1].uppercase()} ${ARROWS[m.groupValues[2]]}"
+        }
         return LABELS[input]?.get(i) ?: input
     }
 
@@ -67,13 +70,15 @@ object Controllers {
         return !faceButtons || REMOTE_NAMES.any { it in n }
     }
 
-    private val REMOTE_NAMES = listOf("remote", " rc ", "consumer control", "keypad", "virtual", "cec", "rcu")
+    private val REMOTE_NAMES =
+        listOf("remote", " rc ", "consumer control", "keypad", "virtual", "cec", "rcu")
 
     /** Every keyboard shares this mapping. */
     const val KEYBOARD = "keyboard"
 
     /** A controller's stick directions (pushed past half-way), bindable like buttons. */
-    val STICK_INPUTS = listOf("ls_up", "ls_down", "ls_left", "ls_right", "rs_up", "rs_down", "rs_left", "rs_right")
+    val STICK_INPUTS =
+        listOf("ls_up", "ls_down", "ls_left", "ls_right", "rs_up", "rs_down", "rs_left", "rs_right")
 
     /** The diagram key an input lights: a stick direction lights its stick. */
     fun diagramKey(input: String): String = when {
@@ -96,7 +101,9 @@ object Controllers {
         for (p in intArrayOf(
             0x028e, 0x0291, 0x0719, 0x02d1, 0x02dd, 0x02e0, 0x02e3, 0x02ea, 0x02fd,
             0x0b00, 0x0b05, 0x0b12, 0x0b13, 0x0b20, 0x0b22,
-        )) put(key(MICROSOFT, p), "xbox")
+        )) {
+            put(key(MICROSOFT, p), "xbox")
+        }
         put(key(SONY, 0x0ce6), "dualsense")
         put(key(SONY, 0x0df2), "dualsense")
         put(key(SONY, 0x05c4), "dualshock4")
@@ -122,8 +129,11 @@ object Controllers {
     }
 
     /** Lowercase; every run of other characters a `-`; trimmed of `-`; at most 48 characters. */
-    fun slug(name: String): String =
-        name.lowercase(Locale.ROOT).replace(Regex("[^a-z0-9]+"), "-").trim('-').take(48).trimEnd('-')
+    fun slug(name: String): String = name.lowercase(Locale.ROOT)
+        .replace(Regex("[^a-z0-9]+"), "-")
+        .trim('-')
+        .take(48)
+        .trimEnd('-')
 
     /** From the model, else the vendor, else the name, else generic. */
     fun family(id: String, vendorId: Int, name: String): Family {
@@ -167,7 +177,13 @@ object Controllers {
 
     /** How a remap screen shows an input of this controller (a keyboard key, or a pad input). */
     fun inputLabel(controllerId: String, family: Family, input: String): String =
-        if (controllerId == KEYBOARD) Keys.label(input) else family.label(input)
+        if (controllerId ==
+            KEYBOARD
+        ) {
+            Keys.label(input)
+        } else {
+            family.label(input)
+        }
 }
 
 /**
@@ -175,7 +191,9 @@ object Controllers {
  * have several inputs. A saved mapping replaces the defaults.
  */
 class Mapping private constructor(private val byInput: Map<String, Button>) {
-    /** Whether any of the left stick's directions is bound (then it no longer doubles as the D-pad). */
+    /**
+     * Whether any of the left stick's directions is bound (then it no longer doubles as the D-pad).
+     */
     val bindsLeftStick: Boolean = byInput.keys.any { it.startsWith("ls_") }
 
     val bindings: List<Binding> get() = byInput.map { (input, button) -> Binding(input, button) }
@@ -185,14 +203,20 @@ class Mapping private constructor(private val byInput: Map<String, Button>) {
     fun inputs(button: Button): List<String> = byInput.filterValues { it == button }.keys.toList()
 
     /** The RetroPad state (bits) for the inputs held. */
-    fun buttons(held: Collection<String>): Int = held.fold(0) { state, input -> state or (byInput[input]?.bit ?: 0) }
+    fun buttons(held: Collection<String>): Int = held.fold(0) { state, input ->
+        state or
+            (byInput[input]?.bit ?: 0)
+    }
 
     /**
      * [button] is now driven by [input] alone: its other inputs are unbound, and [input] leaves
      * whatever button it drove before.
      */
-    fun rebind(button: Button, input: String): Mapping =
-        Mapping(byInput.filter { (i, b) -> b != button && i != input } + (input to button))
+    fun rebind(button: Button, input: String): Mapping = Mapping(
+        byInput.filter { (i, b) ->
+            b != button && i != input
+        } + (input to button),
+    )
 
     override fun equals(other: Any?) = other is Mapping && other.byInput == byInput
     override fun hashCode() = byInput.hashCode()
@@ -211,22 +235,30 @@ class Mapping private constructor(private val byInput: Map<String, Button>) {
             linkedMapOf(
                 "south" to Button.B, "east" to Button.A, "west" to Button.Y, "north" to Button.X,
                 "l1" to Button.L, "r1" to Button.R, "l2" to Button.L2, "r2" to Button.R2,
-                "select" to Button.SELECT, "start" to Button.START, "l3" to Button.L3, "r3" to Button.R3,
-                "up" to Button.UP, "down" to Button.DOWN, "left" to Button.LEFT, "right" to Button.RIGHT,
+                "select" to Button.SELECT, "start" to Button.START, "l3" to Button.L3,
+                "r3" to Button.R3,
+                "up" to Button.UP, "down" to Button.DOWN, "left" to Button.LEFT,
+                "right" to Button.RIGHT,
             ),
         )
 
         val KEYBOARD_DEFAULT = Mapping(
             linkedMapOf(
-                "ArrowUp" to Button.UP, "ArrowDown" to Button.DOWN, "ArrowLeft" to Button.LEFT, "ArrowRight" to Button.RIGHT,
+                "ArrowUp" to Button.UP, "ArrowDown" to Button.DOWN, "ArrowLeft" to Button.LEFT,
+                "ArrowRight" to Button.RIGHT,
                 "KeyZ" to Button.B, "KeyX" to Button.A, "KeyA" to Button.Y, "KeyS" to Button.X,
                 "KeyQ" to Button.L, "KeyW" to Button.R, "Enter" to Button.START,
                 "ShiftLeft" to Button.SELECT, "ShiftRight" to Button.SELECT,
             ),
         )
 
-        fun defaults(controllerId: String): Mapping =
-            if (controllerId == Controllers.KEYBOARD) KEYBOARD_DEFAULT else PAD_DEFAULT
+        fun defaults(controllerId: String): Mapping = if (controllerId ==
+            Controllers.KEYBOARD
+        ) {
+            KEYBOARD_DEFAULT
+        } else {
+            PAD_DEFAULT
+        }
     }
 }
 
@@ -283,14 +315,19 @@ object Keys {
         Android.ESCAPE to "Escape", Android.TAB to "Tab", Android.DEL to "Backspace",
         Android.FORWARD_DEL to "Delete", Android.INSERT to "Insert",
         Android.MOVE_HOME to "Home", Android.MOVE_END to "End",
-        Android.PAGE_UP to "PageUp", Android.PAGE_DOWN to "PageDown", Android.CAPS_LOCK to "CapsLock",
+        Android.PAGE_UP to "PageUp", Android.PAGE_DOWN to "PageDown",
+        Android.CAPS_LOCK to "CapsLock",
         Android.MINUS to "Minus", Android.EQUALS to "Equal",
         Android.LEFT_BRACKET to "BracketLeft", Android.RIGHT_BRACKET to "BracketRight",
-        Android.BACKSLASH to "Backslash", Android.SEMICOLON to "Semicolon", Android.APOSTROPHE to "Quote",
-        Android.GRAVE to "Backquote", Android.COMMA to "Comma", Android.PERIOD to "Period", Android.SLASH to "Slash",
+        Android.BACKSLASH to "Backslash", Android.SEMICOLON to "Semicolon",
+        Android.APOSTROPHE to "Quote",
+        Android.GRAVE to "Backquote", Android.COMMA to "Comma", Android.PERIOD to "Period",
+        Android.SLASH to "Slash",
     )
 
-    /** A `KeyboardEvent.code` for people: `KeyZ` is "Z", `ArrowUp` "↑", `ShiftLeft` "Left Shift". */
+    /**
+     * A `KeyboardEvent.code` for people: `KeyZ` is "Z", `ArrowUp` "↑", `ShiftLeft` "Left Shift".
+     */
     fun label(code: String): String = when {
         code.startsWith("Key") && code.length == 4 -> code.substring(3)
         code.startsWith("Digit") -> code.substring(5)
@@ -370,7 +407,12 @@ object Keys {
  * it is held.
  */
 object Hotkeys {
-    data class Result(val ports: List<Int>, val fastForward: Boolean, val rewind: Boolean, val menu: Boolean)
+    data class Result(
+        val ports: List<Int>,
+        val fastForward: Boolean,
+        val rewind: Boolean,
+        val menu: Boolean,
+    )
 
     fun apply(ports: List<Int>): Result {
         var ff = false
@@ -379,9 +421,18 @@ object Hotkeys {
         val masked = ports.map { state ->
             if (state and Button.SELECT.bit == 0) return@map state
             var mask = 0
-            if (state and Button.R.bit != 0) { ff = true; mask = mask or Button.SELECT.bit or Button.R.bit }
-            if (state and Button.L.bit != 0) { rewind = true; mask = mask or Button.SELECT.bit or Button.L.bit }
-            if (state and Button.START.bit != 0) { menu = true; mask = mask or Button.SELECT.bit or Button.START.bit }
+            if (state and Button.R.bit != 0) {
+                ff = true
+                mask = mask or Button.SELECT.bit or Button.R.bit
+            }
+            if (state and Button.L.bit != 0) {
+                rewind = true
+                mask = mask or Button.SELECT.bit or Button.L.bit
+            }
+            if (state and Button.START.bit != 0) {
+                menu = true
+                mask = mask or Button.SELECT.bit or Button.START.bit
+            }
             state and mask.inv()
         }
         return Result(masked, ff, rewind, menu)
@@ -473,15 +524,22 @@ fun axisInputs(
 /** Two devices on one port: each axis takes whichever is further from centre. */
 fun mixAnalog(a: Protocol.Analog, b: Protocol.Analog): Protocol.Analog {
     fun pick(x: Int, y: Int) = if (kotlin.math.abs(y) > kotlin.math.abs(x)) y else x
-    return Protocol.Analog(pick(a.lx, b.lx), pick(a.ly, b.ly), pick(a.rx, b.rx), pick(a.ry, b.ry), pick(a.l2, b.l2), pick(a.r2, b.r2))
+    return Protocol.Analog(
+        pick(a.lx, b.lx),
+        pick(a.ly, b.ly),
+        pick(a.rx, b.rx),
+        pick(a.ry, b.ry),
+        pick(a.l2, b.l2),
+        pick(a.r2, b.r2),
+    )
 }
 
-/** A connected device as a remap screen lists it. */
 /**
  * Whether the player needs on-screen controls: a touch screen and nothing else to play with.
  * Any controller or keyboard in [devices] (the connected ones) takes over from them.
  */
-fun touchControlsWanted(touchscreen: Boolean, devices: List<InputDeviceInfo>): Boolean = touchscreen && devices.isEmpty()
+fun touchControlsWanted(touchscreen: Boolean, devices: List<InputDeviceInfo>): Boolean =
+    touchscreen && devices.isEmpty()
 
 data class InputDeviceInfo(
     /** Android's device ID; [InputMixer.KEYBOARD_DEVICE] for the keyboard(s). */
@@ -539,9 +597,16 @@ class InputMixer {
      * device ID (a Bluetooth pad reconnecting before its old ID was removed) replaces its old
      * self, on its old player, rather than leaving the old one holding whatever it last pressed.
      */
-    fun connect(device: Int, name: String, model: ControllerModel, physical: String? = null): Int? = synchronized(lock) {
+    fun connect(
+        device: Int,
+        name: String,
+        model: ControllerModel,
+        physical: String? = null,
+    ): Int? = synchronized(lock) {
         if (device in pads) return@synchronized players.connect(device)
-        val stale = physical?.let { key -> pads.entries.firstOrNull { it.value.physical == key }?.key }
+        val stale = physical?.let { key ->
+            pads.entries.firstOrNull { it.value.physical == key }?.key
+        }
         val oldPort = stale?.let(players::port)
         if (stale != null) {
             pads.remove(stale)
@@ -585,7 +650,9 @@ class InputMixer {
         }
     }
 
-    /** [preferred] if no controller holds it (and it is not [except]), else the lowest such player. */
+    /**
+     * [preferred] if no controller holds it (and it is not [except]), else the lowest such player.
+     */
     private fun free(preferred: Int?, except: Int): Int? {
         val ok = { p: Int -> p != except && players.holder(p) == null }
         return preferred?.takeIf(ok) ?: (0 until Protocol.MAX_PORTS).firstOrNull(ok)
@@ -593,7 +660,8 @@ class InputMixer {
 
     /**
      * The mappings in force for this user (`controllerMappings`: theirs, else the server's
-     * default), replacing whatever was loaded before. A model not listed uses the built-in defaults.
+     * default), replacing whatever was loaded before. A model not listed uses the built-in
+     * defaults.
      */
     fun setMappings(inForce: List<ControllerMapping>) = synchronized(lock) {
         mappings.clear()
@@ -605,15 +673,16 @@ class InputMixer {
     }
 
     /** One model's mapping and where it comes from; null puts it on the built-in defaults. */
-    fun setMapping(controllerId: String, mapping: Mapping?, source: String = MappingSource.USER) = synchronized(lock) {
-        if (mapping == null) {
-            mappings.remove(controllerId)
-            sources.remove(controllerId)
-        } else {
-            mappings[controllerId] = mapping
-            sources[controllerId] = source
+    fun setMapping(controllerId: String, mapping: Mapping?, source: String = MappingSource.USER) =
+        synchronized(lock) {
+            if (mapping == null) {
+                mappings.remove(controllerId)
+                sources.remove(controllerId)
+            } else {
+                mappings[controllerId] = mapping
+                sources[controllerId] = source
+            }
         }
-    }
 
     /** Where a model's mapping comes from (a [MappingSource]); null for the built-in defaults. */
     fun source(controllerId: String): String? = synchronized(lock) { sources[controllerId] }
@@ -629,7 +698,13 @@ class InputMixer {
     }
 
     /** A controller's sticks, triggers and hat. */
-    fun padAxes(device: Int, axes: Set<String>, stickX: Float, stickY: Float, analog: Protocol.Analog) = synchronized(lock) {
+    fun padAxes(
+        device: Int,
+        axes: Set<String>,
+        stickX: Float,
+        stickY: Float,
+        analog: Protocol.Analog,
+    ) = synchronized(lock) {
         val pad = pads[device] ?: return@synchronized
         pad.axes = axes
         pad.stick = dpadBits(stickX, stickY)
@@ -643,7 +718,8 @@ class InputMixer {
     }
 
     /** Whether the keyboard mapping (or a hotkey) uses this key, so the game should get it. */
-    fun keyUsed(code: String): Boolean = !Keys.bindable(code) || mapping(Controllers.KEYBOARD).button(code) != null
+    fun keyUsed(code: String): Boolean =
+        !Keys.bindable(code) || mapping(Controllers.KEYBOARD).button(code) != null
 
     fun touch(button: Button, down: Boolean) = synchronized(lock) {
         touch = if (down) touch or button.bit else touch and button.bit.inv()
@@ -695,8 +771,12 @@ class InputMixer {
     /** The keyboard (if any) first, then the controllers in the order they connected. */
     fun devices(): List<InputDeviceInfo> = synchronized(lock) {
         buildList {
-            if (keyboardPresent) add(InputDeviceInfo(KEYBOARD_DEVICE, "Keyboard", keyboardModel, keyboardPort))
-            for ((device, pad) in pads) add(InputDeviceInfo(device, pad.name, pad.model, players.port(device)))
+            if (keyboardPresent) {
+                add(InputDeviceInfo(KEYBOARD_DEVICE, "Keyboard", keyboardModel, keyboardPort))
+            }
+            for ((device, pad) in pads) {
+                add(InputDeviceInfo(device, pad.name, pad.model, players.port(device)))
+            }
         }
     }
 
@@ -736,10 +816,14 @@ class RebindCapture(private val back: String, alreadyHeld: Set<String>, startMs:
                 backSince = nowMs
                 lastInput = nowMs
             }
+
             back in fresh && since != null && nowMs - since >= HOLD_MS -> return Outcome.Bind(back)
+
             back !in fresh && since != null -> return Outcome.Cancel(timedOut = false)
         }
-        if (backSince == null && nowMs - lastInput >= TIMEOUT_MS) return Outcome.Cancel(timedOut = true)
+        if (backSince == null && nowMs - lastInput >= TIMEOUT_MS) {
+            return Outcome.Cancel(timedOut = true)
+        }
         return Outcome.Waiting
     }
 
@@ -748,7 +832,13 @@ class RebindCapture(private val back: String, alreadyHeld: Set<String>, startMs:
         const val TIMEOUT_MS = 8000L
 
         /** The input that is the menu's Back on this kind of device. */
-        fun backInput(controllerId: String) = if (controllerId == Controllers.KEYBOARD) "Escape" else "east"
+        fun backInput(controllerId: String) = if (controllerId ==
+            Controllers.KEYBOARD
+        ) {
+            "Escape"
+        } else {
+            "east"
+        }
     }
 }
 
@@ -763,23 +853,36 @@ enum class MappingScope { SYSTEM, ALL }
 class MappingBook(val system: String) {
     @Volatile var forSystem: List<ControllerMapping> = emptyList()
         private set
+
     @Volatile var forAll: List<ControllerMapping> = emptyList()
         private set
 
     /** The `system` argument a scope saves and resets with. */
     fun systemArg(scope: MappingScope): String? = if (scope == MappingScope.SYSTEM) system else null
 
-    /** The mapping in force for a model in a scope, as the server sent it; null: built-in defaults. */
-    fun entry(controllerId: String, scope: MappingScope): ControllerMapping? =
-        (if (scope == MappingScope.SYSTEM) forSystem else forAll).firstOrNull { it.controller == controllerId }
+    /**
+     * The mapping in force for a model in a scope, as the server sent it; null: built-in defaults.
+     */
+    fun entry(controllerId: String, scope: MappingScope): ControllerMapping? = (
+        if (scope ==
+            MappingScope.SYSTEM
+        ) {
+            forSystem
+        } else {
+            forAll
+        }
+        )
+        .firstOrNull { it.controller == controllerId }
 
     fun mapping(controllerId: String, scope: MappingScope): Mapping =
-        entry(controllerId, scope)?.let { Mapping.of(it.bindings) } ?: Mapping.defaults(controllerId)
+        entry(controllerId, scope)?.let { Mapping.of(it.bindings) }
+            ?: Mapping.defaults(controllerId)
 
     /** The user has a mapping of their own in exactly this scope, which a reset removes. */
     fun canReset(controllerId: String, scope: MappingScope): Boolean {
         val e = entry(controllerId, scope) ?: return false
-        return e.source == MappingSource.USER && (e.system != null) == (scope == MappingScope.SYSTEM)
+        return e.source == MappingSource.USER &&
+            (e.system != null) == (scope == MappingScope.SYSTEM)
     }
 
     /** Fetches both lists again (after a save or a reset, so the next layer applies). */
@@ -829,7 +932,8 @@ data class Bounds(val x: Double, val y: Double, val w: Double, val h: Double)
  * the layout has no shapes.
  */
 fun PadLayout.bounds(padding: Double = 3.0): Bounds {
-    val rects = body.map { listOf(it.x, it.y, it.w, it.h) } + keys.map { listOf(it.x, it.y, it.w, it.h) }
+    val rects =
+        body.map { listOf(it.x, it.y, it.w, it.h) } + keys.map { listOf(it.x, it.y, it.w, it.h) }
     if (rects.isEmpty()) return Bounds(0.0, 0.0, width, height)
     val left = rects.minOf { it[0] } - padding
     val top = rects.minOf { it[1] } - padding
@@ -844,7 +948,11 @@ data class Fit(val scale: Float, val dx: Float, val dy: Float) {
         fun of(width: Double, height: Double, boxWidth: Float, boxHeight: Float): Fit {
             if (width <= 0 || height <= 0) return Fit(1f, 0f, 0f)
             val scale = minOf(boxWidth / width.toFloat(), boxHeight / height.toFloat())
-            return Fit(scale, (boxWidth - width.toFloat() * scale) / 2, (boxHeight - height.toFloat() * scale) / 2)
+            return Fit(
+                scale,
+                (boxWidth - width.toFloat() * scale) / 2,
+                (boxHeight - height.toFloat() * scale) / 2,
+            )
         }
     }
 }

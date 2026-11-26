@@ -31,7 +31,7 @@ class LoginScreenTest {
 
     private fun show() = rule.setContent {
         val settings = Settings(ApplicationProvider.getApplicationContext())
-        TestApp { LoginScreen(settings, SovEmuApi(settings)) {} }
+        TestApp { LoginScreen(settings, SovEmuApi(settings), onSignedIn = {}) }
     }
 
     private fun noField() = rule.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isEmpty()

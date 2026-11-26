@@ -94,7 +94,10 @@ fun <T> MultiSelectField(
                         onChange(emptySet())
                     },
                     leadingIcon = { LucideIcon(Lucide.X, size = 14.dp) },
-                    colors = MenuDefaults.itemColors(textColor = Sov.Slate400, leadingIconColor = Sov.Slate400),
+                    colors = MenuDefaults.itemColors(
+                        textColor = Sov.Slate400,
+                        leadingIconColor = Sov.Slate400,
+                    ),
                     modifier = Modifier.height(40.dp),
                 )
             }
@@ -104,7 +107,13 @@ fun <T> MultiSelectField(
 
 /** The field's label above a box showing the [summary]; [menu] is anchored under it. */
 @Composable
-private fun Field(label: String, summary: String, onOpen: () -> Unit, modifier: Modifier, menu: @Composable () -> Unit) {
+private fun Field(
+    label: String,
+    summary: String,
+    onOpen: () -> Unit,
+    modifier: Modifier,
+    menu: @Composable () -> Unit,
+) {
     val source = remember { MutableInteractionSource() }
     val focused by source.collectIsFocusedAsState()
     val shape = RoundedCornerShape(8.dp)
@@ -117,8 +126,17 @@ private fun Field(label: String, summary: String, onOpen: () -> Unit, modifier: 
                     .heightIn(min = 40.dp)
                     .clip(shape)
                     .background(Color.White.copy(alpha = if (focused) 0.1f else 0.05f))
-                    .border(if (focused) 2.dp else 1.dp, Color.White.copy(alpha = if (focused) 0.6f else 0.15f), shape)
-                    .clickable(interactionSource = source, indication = null, role = Role.DropdownList, onClick = onOpen)
+                    .border(
+                        if (focused) 2.dp else 1.dp,
+                        Color.White.copy(alpha = if (focused) 0.6f else 0.15f),
+                        shape,
+                    )
+                    .clickable(
+                        interactionSource = source,
+                        indication = null,
+                        role = Role.DropdownList,
+                        onClick = onOpen,
+                    )
                     .semantics { contentDescription = "$label: $summary" }
                     .padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -142,19 +160,34 @@ private fun Field(label: String, summary: String, onOpen: () -> Unit, modifier: 
 @Composable
 private fun Menu(expanded: Boolean, onDismiss: () -> Unit, content: @Composable () -> Unit) =
     DropdownMenu(
-        expanded, onDismiss,
+        expanded,
+        onDismiss,
         modifier = Modifier.heightIn(max = 420.dp),
-        shape = RoundedCornerShape(12.dp), containerColor = Sov.Panel,
+        shape = RoundedCornerShape(12.dp),
+        containerColor = Sov.Panel,
         border = BorderStroke(1.dp, Sov.Edge),
     ) { content() }
 
 @Composable
 private fun <T> MenuItem(option: FilterOption<T>, on: Boolean, onClick: () -> Unit) =
     DropdownMenuItem(
-        text = { Text(option.label, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        text = {
+            Text(option.label, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        },
         onClick = onClick,
-        leadingIcon = { Box(Modifier.size(14.dp)) { if (on) LucideIcon(Lucide.Check, size = 14.dp) } },
-        trailingIcon = option.count?.let { n -> { Text("$n", color = Sov.Slate500, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp)) } },
+        leadingIcon = {
+            Box(Modifier.size(14.dp)) { if (on) LucideIcon(Lucide.Check, size = 14.dp) }
+        },
+        trailingIcon = option.count?.let { n ->
+            {
+                Text(
+                    "$n",
+                    color = Sov.Slate500,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
+        },
         colors = MenuDefaults.itemColors(textColor = Sov.Slate200),
         modifier = Modifier.height(40.dp),
     )

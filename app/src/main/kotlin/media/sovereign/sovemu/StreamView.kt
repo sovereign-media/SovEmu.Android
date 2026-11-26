@@ -19,7 +19,9 @@ import org.webrtc.VideoSink
  * and bottom. Here the layout aspect ratio is always the frame's own, so the renderer crops
  * nothing and stretches the whole frame onto the surface.
  */
-class StreamView(context: Context, egl: EglBase.Context) : SurfaceView(context), VideoSink {
+class StreamView(context: Context, egl: EglBase.Context) :
+    SurfaceView(context),
+    VideoSink {
     private val renderer = SurfaceEglRenderer("stream")
 
     init {

@@ -42,7 +42,11 @@ private const val START_DELAY_MS = 900L
  */
 @OptIn(UnstableApi::class)
 @Composable
-fun VideoSnap(path: String?, modifier: Modifier = Modifier, cover: @Composable BoxScope.() -> Unit) {
+fun VideoSnap(
+    path: String?,
+    modifier: Modifier = Modifier,
+    cover: @Composable BoxScope.() -> Unit,
+) {
     val api = LocalApi.current
     val context = LocalContext.current
     val url = api.media(path)

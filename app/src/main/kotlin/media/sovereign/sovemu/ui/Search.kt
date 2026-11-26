@@ -1,9 +1,5 @@
 package media.sovereign.sovemu.ui
 
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import media.sovereign.sovemu.core.SearchResults
-import media.sovereign.sovemu.core.GameSearch
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -21,6 +17,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -31,14 +28,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 import media.sovereign.sovemu.Load
 import media.sovereign.sovemu.SovEmuApi
 import media.sovereign.sovemu.attempt
 import media.sovereign.sovemu.core.Game
+import media.sovereign.sovemu.core.GameSearch
+import media.sovereign.sovemu.core.SearchResults
 import media.sovereign.sovemu.core.SystemSummary
-
-/** How long typing must pause before the server is asked. */
 
 /** How many results the server sends (`Query.search`'s default). */
 private const val SEARCH_LIMIT = 48
@@ -81,10 +79,19 @@ fun SearchScreen(
                     Modifier.statusBarsPadding().padding(top = 40.dp, bottom = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    Text("Search", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Search",
+                        color = Color.White,
+                        fontSize = 30.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
                     Box(Modifier.widthIn(max = 640.dp)) {
                         TvTextField(
-                            "Search every system: titles, makers, genres", query, { query = it.take(100) }, typing, { typing = it },
+                            "Search every system: titles, makers, genres",
+                            query,
+                            { query = it.take(100) },
+                            typing,
+                            { typing = it },
                             Modifier.remembersFocus(memory, "field", initial = true),
                             action = ImeAction.Search,
                             onAction = { typing = false },
@@ -92,7 +99,9 @@ fun SearchScreen(
                     }
                     val line = when (val r = results) {
                         null -> ""
+
                         is SearchResults.Failed -> r.message
+
                         is SearchResults.Found -> when (r.games.size) {
                             0 -> "No games match. Try fewer words."
                             1 -> "1 game"
@@ -100,12 +109,22 @@ fun SearchScreen(
                             else -> "${r.games.size} games"
                         }
                     }
-                    Text(line, color = if (results is SearchResults.Failed) Sov.Red300 else Sov.Slate400, fontSize = 14.sp)
+                    Text(
+                        line,
+                        color = if (results is SearchResults.Failed) Sov.Red300 else Sov.Slate400,
+                        fontSize = 14.sp,
+                    )
                 }
             }
             items(found, key = { it.id }, contentType = { "game" }) { g ->
                 Box(contentAlignment = Alignment.TopCenter) {
-                    GameCard(g, byId[g.system], wide = false, memory = memory, key = "game:${g.id}") { onOpen(g) }
+                    GameCard(
+                        g,
+                        byId[g.system],
+                        wide = false,
+                        memory = memory,
+                        key = "game:${g.id}",
+                    ) { onOpen(g) }
                 }
             }
         }

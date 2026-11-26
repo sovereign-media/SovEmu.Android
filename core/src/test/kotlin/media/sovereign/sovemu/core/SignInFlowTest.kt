@@ -54,7 +54,8 @@ class SignInFlowTest {
             calls += "code"
             return DeviceCode("dc", "BCDF-GHJK", "http://tv.local/device", null, 60, 5)
         }
-        override suspend fun pollDeviceCode(code: DeviceCode) = polls.removeFirstOrNull() ?: DevicePoll.Pending
+        override suspend fun pollDeviceCode(code: DeviceCode) =
+            polls.removeFirstOrNull() ?: DevicePoll.Pending
         override suspend fun signedInWith(tokens: Tokens) {
             calls += "tokens ${tokens.accessToken}"
         }
@@ -63,8 +64,9 @@ class SignInFlowTest {
     private val service = FakeService()
     private var signedIn = 0
 
-    private fun TestScope.flow(stored: SignInConfig? = null) =
-        SignInFlow(service, this, stored, { signedIn++ }, now = { currentTime }, sleep = { kotlinx.coroutines.delay(it) })
+    private fun TestScope.flow(stored: SignInConfig? = null) = SignInFlow(service, this, stored, {
+        signedIn++
+    }, now = { currentTime }, sleep = { kotlinx.coroutines.delay(it) })
 
     @Test
     fun aNewAddressIsCheckedBeforeAnyoneSignsIn() = runTest {
@@ -87,7 +89,10 @@ class SignInFlowTest {
         val flow = flow()
         flow.check("http://tv.local:8080")
         assertNull(flow.config.value)
-        assertEquals("Finish first-run setup in a browser at http://tv.local:8080 first.", flow.error.value)
+        assertEquals(
+            "Finish first-run setup in a browser at http://tv.local:8080 first.",
+            flow.error.value,
+        )
     }
 
     @Test

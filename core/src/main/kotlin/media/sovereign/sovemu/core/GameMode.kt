@@ -20,13 +20,17 @@ enum class GameModeState(val label: String) {
     UNSUPPORTED("Asked - Display does not report status"),
 
     /** Asked for on an Android too old to pass the request on (before 11). */
-    UNAVAILABLE("needs Android 11");
+    UNAVAILABLE("needs Android 11"),
+    ;
 
     /** The display is being asked, and says it can: the only state known to be in effect. */
     val applied: Boolean get() = this == ON
 
     companion object {
-        /** [setting]: the "TV game mode" setting. [supported]: what the display says; null before Android 11. */
+        /**
+         * [setting]: the "TV game mode" setting. [supported]: what the display says; null before
+         * Android 11.
+         */
         fun of(setting: Boolean, supported: Boolean?): GameModeState = when {
             !setting -> OFF
             supported == null -> UNAVAILABLE

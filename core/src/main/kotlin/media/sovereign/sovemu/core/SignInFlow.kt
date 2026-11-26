@@ -37,7 +37,8 @@ sealed interface PairingUi {
      * A code on screen, waiting for approval until [deadline] (the flow's clock, ms). [trouble]:
      * the last poll got no answer; the code is still good and the next poll is the retry.
      */
-    data class Showing(val code: DeviceCode, val deadline: Long, val trouble: Boolean = false) : PairingUi
+    data class Showing(val code: DeviceCode, val deadline: Long, val trouble: Boolean = false) :
+        PairingUi
 
     /** Stopped: why, for people. */
     data class Failed(val message: String) : PairingUi
@@ -59,6 +60,7 @@ class SignInFlow(
     private val sleep: suspend (Long) -> Unit = { delay(it) },
 ) {
     private val _config = MutableStateFlow(stored)
+
     /** How to sign in at the server: null until an address has been checked. */
     val config: StateFlow<SignInConfig?> = _config.asStateFlow()
     private val _error = MutableStateFlow<String?>(null)
@@ -109,7 +111,9 @@ class SignInFlow(
      * with [username] and [password].
      */
     fun submit(address: String, username: String, password: String) = busyWhile {
-        if (!ready || address.trimEnd('/') != service.server) check(address) else {
+        if (!ready || address.trimEnd('/') != service.server) {
+            check(address)
+        } else {
             service.signIn(username.trim(), password)
             onSignedIn()
         }
@@ -146,7 +150,10 @@ class SignInFlow(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            _pairing.value = PairingUi.Failed((e as? OAuthException)?.message ?: "Cannot reach the server: ${e.message}")
+            _pairing.value =
+                PairingUi.Failed(
+                    (e as? OAuthException)?.message ?: "Cannot reach the server: ${e.message}",
+                )
             return
         }
         _pairing.value = PairingUi.Showing(code, now() + code.expiresInSeconds * 1_000)
@@ -155,7 +162,12 @@ class SignInFlow(
             poll = { service.pollDeviceCode(code) },
             now = now,
             sleep = sleep,
-            reachable = { ok -> (_pairing.value as? PairingUi.Showing)?.let { _pairing.value = it.copy(trouble = !ok) } },
+            reachable = { ok ->
+                (_pairing.value as? PairingUi.Showing)?.let {
+                    _pairing.value =
+                        it.copy(trouble = !ok)
+                }
+            },
         )
         when (result) {
             is PairingResult.Approved -> try {
@@ -166,6 +178,7 @@ class SignInFlow(
             } catch (e: Exception) {
                 _pairing.value = PairingUi.Failed(e.message ?: "Signing in failed.")
             }
+
             is PairingResult.Failed -> _pairing.value = PairingUi.Failed(result.failure.message)
         }
     }
@@ -187,7 +200,9 @@ class SignInFlow(
         }
     }
 
-    /** The server's own words (wrong password, wait N minutes …) as they are; else unreachable. */
+    /**
+     * The server's own words (wrong password, wait N minutes …) as they are; else unreachable.
+     */
     private fun failed(e: Exception) {
         _error.value = when (e) {
             is OAuthException, is ApiException -> e.message

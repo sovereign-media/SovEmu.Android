@@ -72,5 +72,6 @@ is not GraphQL, and is read with Apollo's `JsonReader`).
 
 ## Before a PR
 
-`./gradlew :core:test :app:testDebugUnitTest :app:assembleDebug`, which is what CI runs. Check
-TV and controller behaviour on an emulator.
+`./gradlew spotlessCheck :core:test :app:testDebugUnitTest :app:assembleDebug`, which is what CI
+runs (`./gradlew spotlessApply` fixes the format). Check TV and controller behaviour on an
+emulator.

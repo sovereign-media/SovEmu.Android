@@ -14,7 +14,11 @@ private const val DARKNESS = 0x73
 
 /** The tile: [PERIOD] pixels tall, the top one darkened. Built once. */
 private val tile: ImageBitmap by lazy {
-    val bitmap = android.graphics.Bitmap.createBitmap(1, PERIOD, android.graphics.Bitmap.Config.ARGB_8888)
+    val bitmap = android.graphics.Bitmap.createBitmap(
+        1,
+        PERIOD,
+        android.graphics.Bitmap.Config.ARGB_8888,
+    )
     bitmap.setPixel(0, 0, DARKNESS shl 24)
     bitmap.asImageBitmap()
 }
@@ -24,15 +28,14 @@ private val tile: ImageBitmap by lazy {
  * a single textured fill per frame (no per-line draws, no extra layer), in physical pixels so
  * the lines stay crisp at any density.
  */
-fun Modifier.scanlines(enabled: Boolean): Modifier =
-    if (!enabled) {
-        this
-    } else {
-        drawWithCache {
-            val brush = ShaderBrush(ImageShader(tile, TileMode.Repeated, TileMode.Repeated))
-            onDrawWithContent {
-                drawContent()
-                drawRect(brush)
-            }
+fun Modifier.scanlines(enabled: Boolean): Modifier = if (!enabled) {
+    this
+} else {
+    drawWithCache {
+        val brush = ShaderBrush(ImageShader(tile, TileMode.Repeated, TileMode.Repeated))
+        onDrawWithContent {
+            drawContent()
+            drawRect(brush)
         }
     }
+}

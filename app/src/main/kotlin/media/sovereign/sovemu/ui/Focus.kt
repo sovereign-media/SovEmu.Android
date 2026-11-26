@@ -27,10 +27,18 @@ class FocusMemory internal constructor(var last: String?) {
     /** The items composed right now, by key. */
     internal val requesters = HashMap<String, FocusRequester>()
 
-    /** Focuses [key] if it is composed (on screen or just off it); else it takes the focus when it is. */
+    /**
+     * Focuses [key] if it is composed (on screen or just off it); else it takes the focus when
+     * it is.
+     */
     fun focus(key: String): Boolean {
         val requester = requesters[key]
-        if (requester == null || !runCatching { requester.requestFocus(); true }.getOrDefault(false)) {
+        if (requester == null ||
+            !runCatching {
+                requester.requestFocus()
+                true
+            }.getOrDefault(false)
+        ) {
             pending = key
             return false
         }
@@ -39,10 +47,13 @@ class FocusMemory internal constructor(var last: String?) {
 }
 
 @Composable
-fun rememberFocusMemory(): FocusMemory =
-    rememberSaveable(saver = Saver<FocusMemory, String>(save = { it.last ?: "" }, restore = { FocusMemory(it.ifEmpty { null }) })) {
-        FocusMemory(null)
-    }
+fun rememberFocusMemory(): FocusMemory = rememberSaveable(
+    saver = Saver<FocusMemory, String>(save = {
+        it.last ?: ""
+    }, restore = { FocusMemory(it.ifEmpty { null }) }),
+) {
+    FocusMemory(null)
+}
 
 /**
  * Remembers in [memory] that [key] had the focus, and takes the focus back when the screen is

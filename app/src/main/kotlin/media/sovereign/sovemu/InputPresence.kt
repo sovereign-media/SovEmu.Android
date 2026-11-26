@@ -18,7 +18,9 @@ class InputPresence(context: Context, private val controller: Controller) {
         !pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
 
     /** Whether to draw the touch controller over the game. */
-    val touchControls: Flow<Boolean> = controller.devices.map { touchControlsWanted(touchscreen, it) }.distinctUntilChanged()
+    val touchControls: Flow<Boolean> = controller.devices.map {
+        touchControlsWanted(touchscreen, it)
+    }.distinctUntilChanged()
 
     /** The value right now, for the first frame. */
     val touchControlsNow: Boolean get() = touchControlsWanted(touchscreen, controller.devices.value)

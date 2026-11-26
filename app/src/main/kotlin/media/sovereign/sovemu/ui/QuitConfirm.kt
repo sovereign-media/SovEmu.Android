@@ -34,7 +34,8 @@ import androidx.compose.ui.unit.sp
  * activity, so the root needs a handler of its own.
  */
 @Composable
-fun QuitOnRootBack(atRoot: Boolean, onAsk: () -> Unit) = BackHandler(enabled = atRoot, onBack = onAsk)
+fun QuitOnRootBack(atRoot: Boolean, onAsk: () -> Unit) =
+    BackHandler(enabled = atRoot, onBack = onAsk)
 
 /**
  * Asks before Back on the home screen leaves the app, since one press too many on a remote
@@ -67,7 +68,12 @@ fun QuitConfirm(onStay: () -> Unit, onQuit: () -> Unit, modifier: Modifier = Mod
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            Text("Quit SovEmu?", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text(
+                "Quit SovEmu?",
+                color = Color.White,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 SovButton("Stay", onStay, Modifier.focusRequester(stay))
                 SovButton("Quit", onQuit, variant = Variant.Outline)

@@ -20,13 +20,22 @@ class TvSignInTest {
 
     @Test
     fun theConfirmationNamesTheServerAndTheAccount() {
-        assertEquals("Sign in a TV to http://192.168.1.10:8080 as ada?", TvSignIn.confirmation("http://192.168.1.10:8080", "ada"))
+        assertEquals(
+            "Sign in a TV to http://192.168.1.10:8080 as ada?",
+            TvSignIn.confirmation("http://192.168.1.10:8080", "ada"),
+        )
     }
 
     @Test
     fun eachRefusalHasItsSentence() {
-        assertTrue(TvSignIn.failure(ApiException("NOT_FOUND", "x")).startsWith("No TV is waiting with that code"))
-        assertTrue(TvSignIn.failure(ApiException("TOO_MANY_REQUESTS", "x")).startsWith("Too many codes"))
+        assertTrue(
+            TvSignIn.failure(
+                ApiException("NOT_FOUND", "x"),
+            ).startsWith("No TV is waiting with that code"),
+        )
+        assertTrue(
+            TvSignIn.failure(ApiException("TOO_MANY_REQUESTS", "x")).startsWith("Too many codes"),
+        )
         assertEquals("boom", TvSignIn.failure(ApiException("INTERNAL", "boom")))
     }
 }

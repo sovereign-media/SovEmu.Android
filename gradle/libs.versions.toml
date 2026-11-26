@@ -7,6 +7,9 @@ profileinstaller = "1.4.1"
 uiautomator = "2.4.1"
 androidxJunit = "1.3.0"
 androidxTest = "1.7.0"
+# Formatting: Spotless running ktlint (Android Studio style, 100 columns; .editorconfig).
+spotless = "8.12.0"
+ktlint = "1.8.0"
 agp = "9.5.1"
 kotlin = "2.4.21"
 compose-bom = "2026.09.00"
@@ -68,6 +71,7 @@ compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
 [plugins]
 android-test = { id = "com.android.test", version.ref = "agp" }
 baselineprofile = { id = "androidx.baselineprofile", version.ref = "benchmark" }
+spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
 apollo = { id = "com.apollographql.apollo", version.ref = "apollo" }
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

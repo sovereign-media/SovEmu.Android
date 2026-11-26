@@ -11,9 +11,11 @@ the end). "(judgement)" marks a rule that is ours rather than the docs'. Compose
 
 ## Style
 
-- Kotlin style: no wildcard imports, 100 columns, braces on multi-line `if`/`when`/`for`, trailing
-  commas in multi-line parameter and argument lists. Many existing lines run past 100; wrap the
-  ones you touch. [KS][KC]
+- **The format is ktlint's** (`android_studio` style, `.editorconfig`), through Spotless:
+  `./gradlew spotlessApply` formats every Kotlin and Gradle file, and CI's `spotlessCheck` fails
+  on anything it would change. Lines are at most 100 columns: ktlint can't wrap every line, so
+  wrap the ones it reports. No wildcard imports; a KDoc sits on a declaration (a file's
+  introduction is a `//` comment). [KS][KC]
 - `val` and read-only types (`List`, `Map`) by default; `var` and `Mutable*` only for private,
   local state. Expose a `StateFlow`, keep the `MutableStateFlow` private (`_x` / `x`, as `Store`
   does). [KC][CO]

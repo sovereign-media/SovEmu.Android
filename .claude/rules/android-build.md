@@ -14,7 +14,8 @@ paths:
 - `core` applies only `kotlin.jvm` and Apollo, with `jvmToolchain(21)`: never give it an Android
   or Compose dependency.
 - **CI** (`.github/workflows/ci.yml`, JDK 21) runs exactly the PR command:
-  `./gradlew :core:test :app:testDebugUnitTest :app:assembleDebug`. Keep the two in step.
+  `./gradlew spotlessCheck :core:test :app:testDebugUnitTest :app:assembleDebug`. Keep the two in
+  step.
 - **Performance is judged on the R8 release build** (`assembleRelease`), compiled with its profile
   (`adb shell cmd package compile -m speed-profile`), or with Macrobenchmark / `dumpsys gfxinfo`;
   never on a debug build.

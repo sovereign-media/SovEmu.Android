@@ -19,7 +19,12 @@ import media.sovereign.sovemu.core.shouldFrame
  * edges. The stream's SurfaceView renders below the window, so drawing over it is free.
  */
 @Composable
-fun Decorated(decoration: GameDecoration?, aspect: Float, modifier: Modifier = Modifier, picture: @Composable () -> Unit) {
+fun Decorated(
+    decoration: GameDecoration?,
+    aspect: Float,
+    modifier: Modifier = Modifier,
+    picture: @Composable () -> Unit,
+) {
     BoxWithConstraints(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         val screenAspect = if (maxHeight.value > 0) maxWidth.value / maxHeight.value else aspect
         if (decoration == null || !shouldFrame(screenAspect, aspect)) {
