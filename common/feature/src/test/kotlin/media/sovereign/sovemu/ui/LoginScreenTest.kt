@@ -4,6 +4,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
@@ -34,20 +35,23 @@ class LoginScreenTest {
         TestApp { LoginScreen(settings, SovEmuApi(settings), onSignedIn = {}) }
     }
 
+    /** The empty address field (the first node with its name is its label). */
+    private fun address() = rule.onAllNodesWithText("Server address", substring = true)[1]
+
     private fun noField() = rule.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isEmpty()
 
     @Test
     fun startsOnTheFirstFieldWithoutTheKeyboard() {
         show()
-        // A fresh app's address field holds "http://", ready to be completed.
-        rule.onNodeWithText("http://").assertIsFocused()
+        // A fresh app's address field is empty: a bare address is tried over https first.
+        address().assertIsFocused()
         assertTrue("no text field (and so no keyboard) until A", noField())
     }
 
     @Test
     fun typingShowsOnlyThatFieldAndDoneGoesBackToIt() {
         show()
-        rule.onNodeWithText("http://").performClick()
+        address().performClick()
         rule.waitForIdle()
         rule.onNode(hasSetTextAction()).assertIsFocused()
         // Only the field being typed in shows, at the top: the keyboard has the screen below it.
@@ -56,6 +60,6 @@ class LoginScreenTest {
         rule.waitForIdle()
         assertTrue("Done closes the field rather than moving on", noField())
         rule.onNodeWithText("Continue").assertExists()
-        rule.onNodeWithText("http://").assertIsFocused()
+        address().assertIsFocused()
     }
 }

@@ -27,17 +27,22 @@ class SignInFlowTest {
     )
 
     private inner class FakeService : SignInService {
-        override var server = ""
+        var current = ""
+        override val server get() = current
         var answer = config
         var setup = false
         val calls = mutableListOf<String>()
         var refuse: Exception? = null
         val polls = ArrayDeque<DevicePoll>()
 
+        override fun setServer(address: String) {
+            current = address
+        }
+
         override suspend fun bootstrapAt(address: String): SignInConfig {
             calls += "bootstrap $address"
             refuse?.let { throw it }
-            server = address
+            current = address
             return answer
         }
         override suspend fun setupRequired() = setup
@@ -98,7 +103,7 @@ class SignInFlowTest {
     @Test
     fun theServersWordsAreShownAsTheyAre() = runTest {
         val flow = flow(stored = config)
-        service.server = "http://tv.local:8080"
+        service.current = "http://tv.local:8080"
         service.refuse = OAuthException("invalid_grant", "wrong username or password", 400)
         flow.submit("http://tv.local:8080", "ada", "nope")
         advanceUntilIdle()

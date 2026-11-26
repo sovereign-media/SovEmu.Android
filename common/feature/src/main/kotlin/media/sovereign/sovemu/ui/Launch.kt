@@ -31,6 +31,9 @@ sealed interface LaunchPage {
     /** *Choose a server*. */
     data object Servers : LaunchPage
 
+    /** The proxy headers sent to the server. */
+    data object Headers : LaunchPage
+
     /**
      * The sign-in form: [addUser] for *Add a user*, [username] and [expired] after a sign-in
      * ended, [newServer] for *Add a server*, which puts [returnTo] back as the server on Back.
@@ -196,6 +199,19 @@ fun LaunchScreens(
                 busy = busy,
             )
 
+            LaunchPage.Headers -> {
+                var headers by remember { mutableStateOf(settings.customHeaders) }
+                CustomHeadersScreen(
+                    headers,
+                    onSave = {
+                        settings.customHeaders = it
+                        headers = settings.customHeaders
+                    },
+                    onDone = ::pop,
+                    modifier = modifier,
+                )
+            }
+
             is LaunchPage.SignIn -> LoginScreen(
                 settings,
                 api,
@@ -206,6 +222,7 @@ fun LaunchScreens(
                 username = page.username,
                 notice = LaunchText.EXPIRED.takeIf { page.expired },
                 newServer = page.newServer,
+                onCustomHeaders = { stack.add(LaunchPage.Headers) },
                 onChangeServer = if (!page.newServer && !page.addUser && servers.isNotEmpty()) {
                     {
                         serverError = null

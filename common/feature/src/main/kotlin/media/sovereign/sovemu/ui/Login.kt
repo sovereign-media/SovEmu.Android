@@ -59,6 +59,7 @@ import media.sovereign.sovemu.core.LaunchText
 import media.sovereign.sovemu.core.PairingText
 import media.sovereign.sovemu.core.PairingUi
 import media.sovereign.sovemu.core.QrCode
+import media.sovereign.sovemu.core.ServerAddress
 import media.sovereign.sovemu.core.SignInConfig
 import media.sovereign.sovemu.core.SignInFlow
 
@@ -72,7 +73,8 @@ import media.sovereign.sovemu.core.SignInFlow
  * As the account screens open it: [addUser] heads the form *Add a user*, and makes the browser
  * ask who is signing in even when it is signed in already; [username] fills its
  * field and [notice] says why (a sign-in that ended); [newServer] starts with an empty address
- * (*Add a server*), without asking the stored one; [onChangeServer] opens *Choose a server*, when the device holds other servers.
+ * (*Add a server*), without asking the stored one; [onChangeServer] opens *Choose a server*,
+ * when the device holds other servers; [onCustomHeaders] the proxy headers sent to the server.
  */
 @Composable
 fun LoginScreen(
@@ -85,12 +87,14 @@ fun LoginScreen(
     notice: String? = null,
     newServer: Boolean = false,
     onChangeServer: (() -> Unit)? = null,
+    onCustomHeaders: (() -> Unit)? = null,
 ) {
     var server by remember {
-        mutableStateOf(if (newServer) "http://" else settings.serverUrl.ifEmpty { "http://" })
+        mutableStateOf(if (newServer) "" else settings.serverUrl)
     }
     var username by remember { mutableStateOf(username) }
     var password by remember { mutableStateOf("") }
+    var secureOnly by remember { mutableStateOf(settings.secureOnly) }
     val scope = rememberCoroutineScope()
     // Signing in itself (checking the address, the password, the browser, a code) is the flow's;
     // this screen keeps its fields and which way in it shows.
@@ -148,7 +152,7 @@ fun LoginScreen(
     }
 
     fun submit() {
-        flow.submit(server.trim().let { if ("://" in it) it else "http://$it" }, username, password)
+        flow.submit(server, username, password, secureOnly)
     }
 
     // A code while the pairing screen shows; leaving it stops the poll.
@@ -227,6 +231,33 @@ fun LoginScreen(
                     type = KeyboardType.Uri,
                 )
             }
+            // How the address is reached, while it is being entered: as Sovereign's setup screen.
+            if (!ready && shown(null)) {
+                Toggle(
+                    secureOnly,
+                    {
+                        secureOnly = !secureOnly
+                        settings.secureOnly = secureOnly
+                        flow.clearError()
+                    },
+                ) {
+                    Text(
+                        SECURE_ONLY,
+                        fontSize = 14.sp,
+                        modifier = Modifier.padding(horizontal = 4.dp),
+                    )
+                }
+                if (onCustomHeaders != null) {
+                    val count = settings.customHeaders.size
+                    SovButton(
+                        if (count == 0) CUSTOM_HEADERS else "$CUSTOM_HEADERS ($count)",
+                        onCustomHeaders,
+                        Modifier.fillMaxWidth(),
+                        variant = Variant.Ghost,
+                        enabled = !busy,
+                    )
+                }
+            }
             if (ready && !browserFirst) {
                 if (shown(LoginField.USERNAME)) {
                     Field(
@@ -283,8 +314,7 @@ fun LoginScreen(
                         else -> "Sign in"
                     },
                     {
-                        val address = server.trim().let { if ("://" in it) it else "http://$it" }
-                        if (browserFirst && address.trimEnd('/') == settings.serverUrl) {
+                        if (browserFirst && ServerAddress.names(server, settings.serverUrl)) {
                             signInWithBrowser()
                         } else {
                             submit()
@@ -323,6 +353,10 @@ fun LoginScreen(
     }
 }
 
+/** The address's two settings, as Sovereign's setup screen names them. */
+internal const val SECURE_ONLY = "Secure connections only"
+internal const val CUSTOM_HEADERS = "Custom headers"
+
 /** A phone's way back to the browser sign-in, and its name for signing in with a code. */
 private const val BROWSER = "Sign in with your browser"
 private const val CODE = "Sign in with a code"
@@ -335,7 +369,7 @@ enum class LoginField { SERVER, USERNAME, PASSWORD }
  * own and its keyboard's action key (Done) closes the keyboard rather than moving on.
  */
 @Composable
-private fun Field(
+internal fun Field(
     label: String,
     value: String,
     onValue: (String) -> Unit,
