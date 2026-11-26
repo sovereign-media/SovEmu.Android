@@ -24,20 +24,26 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * The OAuth token client and the sign-in over it, against a server answering as SovEmu.Server's
+ * The OAuth token client and the session over it, against a server answering as SovEmu.Server's
  * `/oauth/…`.
  */
 class AuthTest {
-    private class MemoryStore(
-        override var refreshToken: String? = null,
-        override var tokenClientId: String? = null,
-    ) : TokenStore
-
     private val server = MockWebServer()
     private val http = OkHttpClient()
-    private val store = MemoryStore()
+    private val prefs = MemoryKeyValue()
     private var clock = 0L
-    private lateinit var auth: Auth
+    private lateinit var accounts: AccountStore
+    private lateinit var auth: Session
+
+    /** The active account's refresh token, as stored. */
+    private val storedToken: String? get() = accounts.activeId()?.let(accounts::refreshToken)
+
+    /** A single-account install's sign-in, from before accounts: moved over on first read. */
+    private fun legacySignIn(token: String) {
+        prefs.put(AccountStore.LEGACY_SEALED, FakeSealer().seal(token))
+        auth = auth()
+        runBlocking { auth.launch() }
+    }
 
     /** What the server's bootstrapConfig said: SovEmu's own paths, unless a test asks it. */
     private var config: SignInConfig? = null
@@ -63,7 +69,17 @@ class AuthTest {
 
     private fun address() = server.url("/").toString().trimEnd('/')
 
-    private fun auth() = Auth(TokenClient(http, ::address, { config }), store, now = { clock })
+    private fun auth(): Session {
+        accounts = AccountStore(prefs, FakeSealer(), legacyServer = ::address)
+        return Session(
+            TokenClient(http, ::address, {
+                config
+            }),
+            accounts,
+            ::address,
+            now = { clock },
+        )
+    }
 
     private fun bootstrapAnswer(available: Boolean = true, password: String? = "/auth/pw") =
         MockResponse.Builder()
@@ -108,7 +124,10 @@ class AuthTest {
             .body(
                 """{"access_token":"$access","token_type":"Bearer","expires_in":$expiresIn,""" +
                     """"refresh_token":"$refresh",""" +
-                    """"id_token":"x.y.z","scope":"openid profile offline_access"}""",
+                    """"id_token":"${idToken(
+                        "7",
+                        "ada",
+                    )}","scope":"openid profile offline_access"}""",
             )
             .build()
 
@@ -144,8 +163,9 @@ class AuthTest {
             ),
             request.form(),
         )
-        assertEquals("r1", store.refreshToken)
-        assertTrue(auth.signedIn.value)
+        assertEquals("r1", storedToken)
+        assertTrue(auth.signedIn)
+        assertEquals("ada", auth.active!!.userName)
         // Still fresh: no second request.
         assertEquals("a1", auth.accessToken())
         assertEquals(1, server.requestCount)
@@ -160,8 +180,8 @@ class AuthTest {
         assertEquals("invalid_grant", e.error)
         assertEquals(400, e.status)
         assertEquals("Wrong username or password", e.message)
-        assertNull(store.refreshToken)
-        assertFalse(auth.signedIn.value)
+        assertNull(storedToken)
+        assertFalse(auth.signedIn)
     }
 
     @Test
@@ -185,7 +205,7 @@ class AuthTest {
         }
         assertEquals("unsupported_grant_type", e.error)
         assertEquals("Password sign-in is off: sign in with a code", e.message)
-        assertFalse(auth.signedIn.value)
+        assertFalse(auth.signedIn)
     }
 
     @Test
@@ -209,33 +229,36 @@ class AuthTest {
             ),
             refresh.form(),
         )
-        assertEquals("r2", store.refreshToken)
+        assertEquals("r2", storedToken)
 
         clock += 3_600_000
         assertEquals("a3", auth.accessToken())
         assertEquals("r2", server.takeRequest().form()["refresh_token"])
-        assertEquals("r3", store.refreshToken)
+        assertEquals("r3", storedToken)
     }
 
     @Test
     fun aRefreshTokenFromAnEarlierLaunchIsUsedFirst() = runBlocking {
-        store.refreshToken = "r0"
-        auth = auth()
-        assertTrue(auth.signedIn.value)
+        legacySignIn("r0")
+        assertTrue(auth.signedIn)
+        assertNull("no sub until the first refresh", auth.active!!.subject)
         server.enqueue(tokens("a1", "r1"))
         assertEquals("a1", auth.accessToken())
         assertEquals("r0", server.takeRequest().form()["refresh_token"])
-        assertEquals("r1", store.refreshToken)
+        assertEquals("r1", storedToken)
+        assertEquals("7", auth.active!!.subject)
+        assertEquals("ada", auth.active!!.userName)
     }
 
     @Test
     fun invalidGrantOnRefreshSignsOut() = runBlocking {
-        store.refreshToken = "revoked"
-        auth = auth()
+        legacySignIn("revoked")
         server.enqueue(error(400, "invalid_grant", "The sign-in has expired"))
         assertNull(auth.accessToken())
-        assertNull(store.refreshToken)
-        assertFalse(auth.signedIn.value)
+        assertNull(storedToken)
+        assertFalse(auth.signedIn)
+        assertEquals(AuthState.Expired, auth.state.value)
+        assertTrue(accounts.all().isEmpty())
         // Signed out: nothing more is asked of the server.
         assertNull(auth.accessToken())
         assertEquals(1, server.requestCount)
@@ -243,18 +266,16 @@ class AuthTest {
 
     @Test
     fun anyOtherRefreshFailureKeepsTheSignIn() = runBlocking {
-        store.refreshToken = "r0"
-        auth = auth()
+        legacySignIn("r0")
         server.enqueue(error(500, "server_error", "Try again"))
         assertThrows(OAuthException::class.java) { runBlocking { auth.accessToken() } }
-        assertEquals("r0", store.refreshToken)
-        assertTrue(auth.signedIn.value)
+        assertEquals("r0", storedToken)
+        assertTrue(auth.signedIn)
     }
 
     @Test
     fun concurrentCallersShareOneRefresh() = runBlocking {
-        store.refreshToken = "r0"
-        auth = auth()
+        legacySignIn("r0")
         val refreshes = AtomicInteger()
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse {
@@ -268,7 +289,7 @@ class AuthTest {
         val got = (1..8).map { async(Dispatchers.IO) { auth.accessToken() } }.awaitAll()
         assertEquals(List(8) { "a1" }, got)
         assertEquals(1, refreshes.get())
-        assertEquals("r1", store.refreshToken)
+        assertEquals("r1", storedToken)
 
         // Two requests rejected with the same token: one refresh between them.
         val again = (1..4).map { async(Dispatchers.IO) { auth.refresh(stale = "a1") } }.awaitAll()
@@ -289,7 +310,7 @@ class AuthTest {
         }
         assertEquals("ok", result)
         assertEquals(2, calls)
-        assertEquals("r2", store.refreshToken)
+        assertEquals("r2", storedToken)
 
         // Rejected again after the refresh: thrown, not refreshed a second time.
         server.enqueue(tokens("a3", "r3"))
@@ -332,8 +353,8 @@ class AuthTest {
         val revoke = server.takeRequest()
         assertEquals("/oauth/revoke", revoke.url.encodedPath)
         assertEquals(mapOf("token" to "r1", "client_id" to "sovemu-native"), revoke.form())
-        assertNull(store.refreshToken)
-        assertFalse(auth.signedIn.value)
+        assertNull(storedToken)
+        assertFalse(auth.signedIn)
     }
 
     @Test
@@ -342,8 +363,8 @@ class AuthTest {
         auth.signIn("ada", "pw")
         server.close()
         auth.signOut()
-        assertNull(store.refreshToken)
-        assertFalse(auth.signedIn.value)
+        assertNull(storedToken)
+        assertFalse(auth.signedIn)
     }
 
     @Test
@@ -524,7 +545,7 @@ class AuthTest {
             exchange,
         )
         auth.signedInWith(got, clientId = "phone-app")
-        assertEquals("phone-app", store.tokenClientId)
+        assertEquals("phone-app", auth.active!!.clientId)
 
         // A refresh token is good only with its own client: the browser's is the mobile client's.
         server.enqueue(tokens("a2", "r2"))
@@ -534,17 +555,17 @@ class AuthTest {
         server.enqueue(MockResponse.Builder().code(200).build())
         auth.signOut()
         assertEquals("phone-app", server.takeRequest().form()["client_id"])
-        assertNull(store.tokenClientId)
+        assertNull(auth.active)
     }
 
     @Test
     fun anApprovedCodeSignsIn() = runBlocking<Unit> {
-        auth.signedInWith(Tokens("a1", 3600, "r1"))
-        assertTrue(auth.signedIn.value)
-        assertEquals("r1", store.refreshToken)
+        auth.signedInWith(Tokens("a1", 3600, "r1", idToken("7", "ada")), "sovemu-native")
+        assertTrue(auth.signedIn)
+        assertEquals("r1", storedToken)
         assertEquals("a1", auth.accessToken())
         assertThrows(OAuthException::class.java) {
-            runBlocking { auth.signedInWith(Tokens("a2", 3600, null)) }
+            runBlocking { auth.signedInWith(Tokens("a2", 3600, null), "sovemu-native") }
         }
     }
 

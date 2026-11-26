@@ -38,6 +38,20 @@ A module depends only on those below it; the graph is in `settings.gradle.kts`.
   sign-in's redirect scheme. Kotlin packages stay `media.sovereign.sovemu` and `.ui` across the
   modules (the baseline profile names classes by them); each module's namespace is its own.
 
+## Accounts, as Sovereign.Android keeps them
+
+- **Several accounts stay signed in** (`AccountStore`, in `:common:core`): up to 5 per server on
+  up to 3 servers, each keyed on the ID token's `sub` and server, each with its own refresh token
+  sealed in the Keystore. A sign-in that would not fit is refused and its token revoked; nobody
+  is signed out to make room. A sign-in of someone already stored replaces their session.
+- **`Session` is the only owner of tokens**: never call `TokenClient` around it. One account is
+  active and only it is refreshed; a launch with two or more accounts makes no token request
+  until someone is chosen (`LaunchAccounts`). A token goes only to the server that issued it.
+  A refused refresh removes only that account (`AuthState.Expired`); a network failure never
+  signs anyone out. Sign-out revokes without waiting and lands as a launch does.
+- **An update signs nobody out**: `AccountStore` moves a single-account install's sealed token,
+  client and device name into the first account on first read, without unsealing the token.
+
 ## Shared with the other clients
 
 - **The wire protocol** (`common/core/.../Protocol.kt`) mirrors
@@ -55,8 +69,8 @@ A module depends only on those below it; the graph is in `settings.gradle.kts`.
   own page in a Custom Tab (`BrowserSignIn.kt`: the code flow with PKCE as the **mobile client**,
   back to `media.sovereign.sovemu:/oauth2redirect`, which the phone app's `MainActivity`
   (`SovEmuActivity`) receives; the redirect's `state` is checked before anything in it is believed),
-  with a code and the password as the other ways in. A stored sign-in remembers its client
-  (`TokenStore.tokenClientId`): refresh and sign-out use it. *Sign in a TV* (account menu, not on a
+  with a code and the password as the other ways in. A stored account remembers its client
+  (`StoredAccount.clientId`): refresh and sign-out use it. *Sign in a TV* (account menu, not on a
   TV) approves a TV's code with the `approveDeviceCode` mutation; its field keeps the text as typed
   (rewriting it as it is typed drops keystrokes).
 - **Sign-in on a TV follows Sovereign's TVs**: *Sign in with your phone* (the device grant: a code
