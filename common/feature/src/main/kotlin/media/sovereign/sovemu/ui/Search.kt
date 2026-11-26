@@ -49,21 +49,19 @@ private const val SEARCH_LIMIT = 48
  */
 @Composable
 fun SearchScreen(
-    api: SovEmuApi,
+    results: SearchResults?,
+    onQuery: (String) -> Unit,
     systems: List<SystemSummary>,
     onOpen: (Game) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var typing by remember { mutableStateOf(false) }
-    // Asking (after a pause in typing, the latest query only) is the search's; this draws it.
-    val scope = rememberCoroutineScope()
-    val search = remember(api) { GameSearch(api::search, scope) }
-    val results by search.results.collectAsStateWithLifecycle()
+    // Asking (after a pause in typing, the latest query only) is the ViewModel's; this draws it.
     val byId = remember(systems) { systems.associateBy { it.id } }
     val memory = rememberFocusMemory()
 
-    LaunchedEffect(query) { search.query(query) }
+    LaunchedEffect(query) { onQuery(query) }
 
     val found = (results as? SearchResults.Found)?.games.orEmpty()
     Box(modifier.fillMaxSize()) {

@@ -147,7 +147,7 @@ private val FiltersSaver: Saver<GameFilters, Any> = listSaver(
  */
 @Composable
 fun SystemScreen(
-    api: SovEmuApi,
+    panel: GamePanelData,
     system: SystemSummary,
     index: Load<GameIndex>,
     openFirst: Int?,
@@ -155,7 +155,6 @@ fun SystemScreen(
     onSort: (GameSort) -> Unit,
     onPlay: (Game, Start) -> Unit,
     onFavourite: suspend (Game, Boolean) -> String?,
-    onCollectionsChanged: () -> Unit,
     onPatch: suspend (Game, GamePatch?) -> String?,
     modifier: Modifier = Modifier,
 ) {
@@ -188,8 +187,7 @@ fun SystemScreen(
             }
 
             is Load.Ready -> Games(
-                api, system, index.value, openFirst, sort, onSort, onPlay, onFavourite,
-                onCollectionsChanged, onPatch,
+                panel, system, index.value, openFirst, sort, onSort, onPlay, onFavourite, onPatch,
             )
         }
     }
@@ -198,7 +196,7 @@ fun SystemScreen(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun Games(
-    api: SovEmuApi,
+    panel: GamePanelData,
     system: SystemSummary,
     index: GameIndex,
     openFirst: Int?,
@@ -206,7 +204,6 @@ private fun Games(
     onSort: (GameSort) -> Unit,
     onPlay: (Game, Start) -> Unit,
     onFavourite: suspend (Game, Boolean) -> String?,
-    onCollectionsChanged: () -> Unit,
     onPatch: suspend (Game, GamePatch?) -> String?,
 ) {
     val form = LocalForm.current
@@ -220,8 +217,8 @@ private fun Games(
     var backToCollections by remember { mutableIntStateOf(0) }
     var openId by rememberSaveable { mutableStateOf(openFirst) }
     var jump by remember { mutableStateOf<Int?>(null) }
-    var slots by remember { mutableStateOf<List<SaveSlot>>(emptyList()) }
-    var patches by remember { mutableStateOf<List<GamePatch>>(emptyList()) }
+    val slots by panel.saves.collectAsStateWithLifecycle()
+    val patches by panel.patches.collectAsStateWithLifecycle()
     val memory = rememberFocusMemory()
     val grid = rememberLazyGridState()
     // Back from a game with the panel open: the panel takes the focus, not the card behind it.
@@ -247,21 +244,10 @@ private fun Games(
             }
         }
     }
-    // The panel's patches, and its saves after a pause (moving quickly through games does not
-    // ask for each). A patched game's saves are its own: they change with the patch.
-    LaunchedEffect(openId) {
-        patches = emptyList()
-        notice = null
-        val id = openId ?: return@LaunchedEffect
-        delay(150)
-        patches = attempt { api.patches(id) }.getOrDefault(emptyList())
-    }
-    LaunchedEffect(openId, open?.patch) {
-        slots = emptyList()
-        val id = openId ?: return@LaunchedEffect
-        delay(150)
-        slots = attempt { api.states(id) }.getOrDefault(emptyList())
-    }
+    // The panel's patches and saves, which the ViewModel asks for after a pause. A patched game's
+    // saves are its own: they change with the patch.
+    LaunchedEffect(openId) { notice = null }
+    LaunchedEffect(openId, open?.patch) { panel.show(openId, open?.patch) }
 
     fun play(g: Game, start: Start) = onPlay(g, start)
 
@@ -400,9 +386,7 @@ private fun Games(
 
         if (collectionsOpen && open != null) {
             // The drawer draws; its state and the calls behind it are the screen's.
-            val collections = remember(open.id) {
-                CollectionsModel(api, open.id, scope, onCollectionsChanged)
-            }
+            val collections = remember(open.id) { panel.collections(open.id) }
             LaunchedEffect(collections) { collections.load() }
             val choices by collections.choices.collectAsStateWithLifecycle()
             val collectionError by collections.error.collectAsStateWithLifecycle()

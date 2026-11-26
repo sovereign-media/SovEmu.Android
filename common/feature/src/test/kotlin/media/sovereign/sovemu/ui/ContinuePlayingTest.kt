@@ -111,12 +111,12 @@ class ContinuePlayingTest {
         rule.setContent {
             TestApp {
                 SystemScreen(
-                    LocalApi.current, system(),
+                    NoPanelData, system(),
                     Load.Ready(
                         GameIndex(listOf(game(id = 7, title = "Zelda"))),
                     ),
                     openFirst = 7, sort = media.sovereign.sovemu.core.GameSort.TITLE, onSort = {},
-                    onPlay = { _, _ -> }, onFavourite = { _, _ -> null }, onCollectionsChanged = {},
+                    onPlay = { _, _ -> }, onFavourite = { _, _ -> null },
                     onPatch = { _, _ -> null },
                 )
             }
