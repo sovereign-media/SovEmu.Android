@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -43,6 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -58,14 +60,24 @@ import media.sovereign.sovemu.core.TvSignIn
 import media.sovereign.sovemu.core.User
 import media.sovereign.sovemu.core.badge
 import media.sovereign.sovemu.core.groupByMaker
+import media.sovereign.sovemu.designsystem.R
 
+/**
+ * SovEmu's name with its mark: the pixel S in Sovereign's shield (`R.drawable.sovemu_mark`,
+ * written by SovEmu's brand/generate.mjs), in the accent, a little taller than the text.
+ */
 @Composable
 fun Brand(modifier: Modifier = Modifier, size: Int = 18) = Row(
     modifier,
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(8.dp),
 ) {
-    LucideIcon(Lucide.Gamepad2, tint = Sov.Accent, size = (size + 6).dp)
+    Icon(
+        painterResource(R.drawable.sovemu_mark),
+        contentDescription = null,
+        modifier = Modifier.height((size * 1.5f).dp),
+        tint = Sov.Accent,
+    )
     Text("Sov", color = Color.White, fontSize = size.sp, fontWeight = FontWeight.Black)
     Text("Emu", color = Sov.Accent, fontSize = size.sp, fontWeight = FontWeight.Black)
 }
