@@ -56,11 +56,12 @@ fun system(): SystemSummary = SystemSummary(
  * picture to load) and the TV form, so the D-pad paths are the ones under test.
  */
 @Composable
-fun TestApp(tv: Boolean = true, content: @Composable () -> Unit) {
+fun TestApp(content: @Composable () -> Unit) {
     val api = SovEmuApi(Settings(ApplicationProvider.getApplicationContext()))
     CompositionLocalProvider(
         LocalApi provides api,
-        LocalForm provides Form(tv = tv, wide = true),
+        LocalForm provides Form(wide = true),
+        LocalTextInput provides TvTextInput,
         content = content,
     )
 }

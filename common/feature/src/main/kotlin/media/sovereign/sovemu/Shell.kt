@@ -62,7 +62,6 @@ import media.sovereign.sovemu.ui.LaunchPage
 import media.sovereign.sovemu.ui.LaunchScreens
 import media.sovereign.sovemu.ui.LocalApi
 import media.sovereign.sovemu.ui.LocalBackground
-import media.sovereign.sovemu.ui.LocalForm
 import media.sovereign.sovemu.ui.Nav
 import media.sovereign.sovemu.ui.PlayerScreen
 import media.sovereign.sovemu.ui.PlayerViewModel
@@ -74,7 +73,6 @@ import media.sovereign.sovemu.ui.Section
 import media.sovereign.sovemu.ui.SignInTvViewModel
 import media.sovereign.sovemu.ui.SovTheme
 import media.sovereign.sovemu.ui.Start
-import media.sovereign.sovemu.ui.TvKeyboardHost
 import media.sovereign.sovemu.ui.rememberViewModelStoreOwner
 import media.sovereign.sovemu.ui.scanlines
 
@@ -159,6 +157,13 @@ class Shell(
  * own screens. The back stack, settings, screensaver and quit question are shared.
  */
 interface Surface {
+    /**
+     * Around the whole app: what the surface gives every screen, its [TextInput] above all (and
+     * on a TV, the app's own keyboard along the bottom of the screen: Fire TV's covers all of it).
+     */
+    @Composable
+    fun Host(content: @Composable () -> Unit)
+
     /** The screens while nobody is signed in: [start]'s pages (sign-in, *Who's watching?*). */
     @Composable
     fun SignedOut(shell: Shell, start: List<LaunchPage>)

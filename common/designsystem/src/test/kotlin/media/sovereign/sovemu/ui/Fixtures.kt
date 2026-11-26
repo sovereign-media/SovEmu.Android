@@ -8,6 +8,6 @@ import androidx.compose.runtime.CompositionLocalProvider
  * ones under test. (`:common:feature`'s `TestApp` adds the API.)
  */
 @Composable
-fun TestApp(tv: Boolean = true, content: @Composable () -> Unit) {
-    CompositionLocalProvider(LocalForm provides Form(tv = tv, wide = true), content = content)
+fun TestApp(content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalForm provides Form(wide = true), content = content)
 }

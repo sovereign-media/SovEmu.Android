@@ -25,7 +25,7 @@ class SystemScreenTest {
     @Test
     fun theFiltersSearchTypesWithATouchFieldThatWaitsForATap() {
         rule.setContent {
-            TestApp(tv = false) {
+            TestApp {
                 SystemScreen(
                     NoPanelData, system(),
                     Load.Ready(

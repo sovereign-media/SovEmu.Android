@@ -48,7 +48,6 @@ fun SignInTvScreen(
     modifier: Modifier = Modifier,
 ) {
     var code by remember { mutableStateOf("") }
-    var typing by remember { mutableStateOf(false) }
     var confirming by remember { mutableStateOf(false) }
     var sending by remember { mutableStateOf(false) }
     var approved by remember { mutableStateOf(false) }
@@ -122,18 +121,16 @@ fun SignInTvScreen(
                         // Kept exactly as typed: rewriting the text while it is typed (upper case,
                         // a dash) fights the keyboard and drops keystrokes, as Sovereign.Android
                         // found. It is normalised only to check it and to send it.
-                        TvTextField(
+                        PhoneTextField(
                             TvSignIn.FIELD_LABEL,
                             code,
                             {
                                 code = it.take(MAX_TYPED)
                                 error = null
                             },
-                            typing = typing,
-                            onTyping = { typing = it },
+                            Modifier.fillMaxWidth(),
+                            type = KeyboardType.Ascii,
                             mono = true,
-                            onAction = { typing = false },
-                            keyboardType = KeyboardType.Ascii,
                         )
                     }
                     error?.let { Text(it, color = Sov.Red300, fontSize = 14.sp) }

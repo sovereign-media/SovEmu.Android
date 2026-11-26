@@ -133,13 +133,13 @@ fun CheatsPage(
             }
         }
         // The keyboard's action key goes from the code to the name, then adds the cheat.
-        TvTextField(
+        TextInputField(
             "Code (Game Genie, Action Replay, raw)", code, { code = it }, mono = true,
             typing = typing == "code", onTyping = { typing = if (it) "code" else null },
             modifier = Modifier.focusRequester(codeField),
             action = ImeAction.Next, onAction = { typing = "name" },
         )
-        TvTextField(
+        TextInputField(
             "Name (optional)",
             name,
             { name = it },
