@@ -55,6 +55,7 @@ import kotlinx.coroutines.launch
 import media.sovereign.sovemu.Settings
 import media.sovereign.sovemu.SovEmuApi
 import media.sovereign.sovemu.core.DeviceCode
+import media.sovereign.sovemu.core.LaunchText
 import media.sovereign.sovemu.core.PairingText
 import media.sovereign.sovemu.core.PairingUi
 import media.sovereign.sovemu.core.QrCode
@@ -67,6 +68,10 @@ import media.sovereign.sovemu.core.SignInFlow
  * signs in either with a code approved on a phone or computer (*Sign in with your phone*, the
  * device grant), or with a username and password, the fallback. A server that has turned the
  * password off offers only the code. First-run setup (the admin account) happens in a browser.
+ *
+ * As the account screens open it: [title] heads the form (*Add a user*); [username] fills its
+ * field and [notice] says why (a sign-in that ended); [newServer] starts with an empty address
+ * (*Add a server*), without asking the stored one; [onChangeServer] opens *Choose a server*, when the device holds other servers.
  */
 @Composable
 fun LoginScreen(
@@ -74,9 +79,16 @@ fun LoginScreen(
     api: SovEmuApi,
     onSignedIn: () -> Unit,
     modifier: Modifier = Modifier,
+    title: String? = null,
+    username: String = "",
+    notice: String? = null,
+    newServer: Boolean = false,
+    onChangeServer: (() -> Unit)? = null,
 ) {
-    var server by remember { mutableStateOf(settings.serverUrl.ifEmpty { "http://" }) }
-    var username by remember { mutableStateOf("") }
+    var server by remember {
+        mutableStateOf(if (newServer) "http://" else settings.serverUrl.ifEmpty { "http://" })
+    }
+    var username by remember { mutableStateOf(username) }
     var password by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     // Signing in itself (checking the address, the password, the browser, a code) is the flow's;
@@ -85,7 +97,7 @@ fun LoginScreen(
         SignInFlow(
             api,
             scope,
-            settings.signInConfig,
+            if (newServer) null else settings.signInConfig,
             onSignedIn,
             now = SystemClock::elapsedRealtime,
         )
@@ -108,7 +120,9 @@ fun LoginScreen(
 
     // A stored address is asked again on every launch, so its sign-in details stay current.
     LaunchedEffect(flow) {
-        if (settings.serverUrl.isNotEmpty()) flow.check(settings.serverUrl, quiet = true)
+        if (!newServer && settings.serverUrl.isNotEmpty()) {
+            flow.check(settings.serverUrl, quiet = true)
+        }
     }
 
     // The browser comes back with a code (or why not): exchanged, and signed in.
@@ -200,7 +214,7 @@ fun LoginScreen(
                 Column {
                     Brand(size = 30)
                     Text(
-                        "Sign in to play.",
+                        title ?: "Sign in to play.",
                         color = Sov.Muted,
                         fontSize = 14.sp,
                         modifier = Modifier.padding(top = 4.dp),
@@ -250,6 +264,9 @@ fun LoginScreen(
                         secret = true,
                     )
                 }
+            }
+            if (shown(null) && notice != null && error == null) {
+                Text(notice, color = Sov.Slate300, fontSize = 14.sp)
             }
             if (shown(null)) {
                 error?.let {
@@ -319,6 +336,16 @@ fun LoginScreen(
                         },
                         Modifier.fillMaxWidth(),
                         variant = Variant.Ghost,
+                        enabled = !busy,
+                    )
+                }
+                if (onChangeServer != null) {
+                    SovButton(
+                        LaunchText.CHANGE_SERVER,
+                        onChangeServer,
+                        Modifier.fillMaxWidth(),
+                        variant = Variant.Ghost,
+                        icon = Lucide.Server,
                         enabled = !busy,
                     )
                 }

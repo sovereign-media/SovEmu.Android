@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import media.sovereign.sovemu.core.LaunchText
 import media.sovereign.sovemu.core.SystemSummary
 import media.sovereign.sovemu.core.TvSignIn
 import media.sovereign.sovemu.core.User
@@ -84,6 +85,8 @@ class Nav(
     val signOut: () -> Unit,
     /** *Sign in a TV*: approve a TV's code with this sign-in (phones and tablets). */
     val signInTv: () -> Unit = {},
+    /** *Change user or server*: *Who's watching?*, with *Choose a server* one step on. */
+    val accounts: () -> Unit = {},
 )
 
 /** A fixed [height] and the width [width] has now, read at layout time (not in composition). */
@@ -456,6 +459,14 @@ private fun AccountMenu(
                     leading = { LucideIcon(Lucide.Tv, tint = Sov.Slate300, size = 16.dp) },
                 )
             }
+            MenuRow(
+                LaunchText.CHANGE_USER_OR_SERVER,
+                onClick = {
+                    expanded = false
+                    nav.accounts()
+                },
+                leading = { LucideIcon(Lucide.Users, tint = Sov.Slate300, size = 16.dp) },
+            )
             MenuRow(
                 "Sign out",
                 onClick = {

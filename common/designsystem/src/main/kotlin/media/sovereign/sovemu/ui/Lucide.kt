@@ -178,6 +178,25 @@ object Lucide {
         )
     }
 
+    val UserPlus: ImageVector by lazy {
+        icon(
+            "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2",
+            "M5 7a4 4 0 1 0 8 0a4 4 0 1 0 -8 0",
+            "M19 8v6",
+            "M22 11h-6",
+        )
+    }
+
+    val Trash2: ImageVector by lazy {
+        icon(
+            "M3 6h18",
+            "M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6",
+            "M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2",
+            "M10 11v6",
+            "M14 11v6",
+        )
+    }
+
     val Users: ImageVector by lazy {
         icon(
             "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2",

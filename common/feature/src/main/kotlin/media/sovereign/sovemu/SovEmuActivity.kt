@@ -2,6 +2,7 @@ package media.sovereign.sovemu
 
 import android.content.Intent
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.WindowManager
@@ -20,6 +21,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -42,12 +44,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import media.sovereign.sovemu.core.AuthState
 import media.sovereign.sovemu.core.Game
+import media.sovereign.sovemu.core.IdlePicker
 import media.sovereign.sovemu.core.SystemSummary
 import media.sovereign.sovemu.ui.HomeScreen
+import media.sovereign.sovemu.ui.LaunchPage
+import media.sovereign.sovemu.ui.LaunchScreens
 import media.sovereign.sovemu.ui.LocalApi
 import media.sovereign.sovemu.ui.LocalBackground
 import media.sovereign.sovemu.ui.LocalForm
-import media.sovereign.sovemu.ui.LoginScreen
 import media.sovereign.sovemu.ui.Nav
 import media.sovereign.sovemu.ui.NavFrame
 import media.sovereign.sovemu.ui.PlayerScreen
@@ -87,6 +91,11 @@ sealed interface Route {
     data object SignInTv : Route {
         override val key = "sign-in-tv"
     }
+
+    /** *Change user or server*, from the account menu: *Who's watching?* over the app. */
+    data object Accounts : Route {
+        override val key = "accounts"
+    }
 }
 
 /**
@@ -109,6 +118,13 @@ abstract class SovEmuActivity : ComponentActivity() {
     /** The screens want music (not in a game, switched on), and the app is in the foreground. */
     private var menusWantMusic = false
     private var foreground = false
+
+    /** The TV's game mode, and the menus' music: switched from the account menu. */
+    private var gameMode by mutableStateOf(false)
+    private var musicOn by mutableStateOf(false)
+
+    /** When the app went to the background (monotonic), for the picker that returns after idle. */
+    private var backgroundedAt: Long? = null
 
     /** The screensaver: shown after a while without input, while the app is in the foreground. */
     private val idle = Idle()
@@ -149,6 +165,8 @@ abstract class SovEmuActivity : ComponentActivity() {
         // fill on every frame (fill rate is what a TV's GPU runs out of first).
         window.setBackgroundDrawable(null)
         settings = Settings(this)
+        gameMode = settings.gameMode
+        musicOn = settings.music
         api = SovEmuApi(settings, ClientEvents.deviceName(this))
         ClientEvents.recordCrashes(this)
         ClientEvents.attach(this, api, lifecycleScope)
@@ -194,20 +212,27 @@ abstract class SovEmuActivity : ComponentActivity() {
             store.clear()
             if (account != null) store.refresh()
         }
-        var gameMode by remember { mutableStateOf(settings.gameMode) }
         // The TV's game mode for the whole app, not per game: each switch blinks some TVs.
         TvGameMode(gameMode)
-        var musicOn by remember { mutableStateOf(settings.music) }
         if (account == null) {
             SideEffect {
                 playing = false
                 menusWantMusic = musicOn
                 updateMusic()
             }
-            LoginScreen(settings, api, onSignedIn = {})
+            // Who's watching, the sign-in form, or Choose a server: started again whenever the
+            // session moves (a server change, a sign-in ending).
+            key(auth) { LaunchScreens(settings, api, LaunchPage.start(auth, api)) }
             return
         }
 
+        // Each account its own app: its back stack, saved state and navigation, from Home.
+        key(account) { Main() }
+    }
+
+    /** The app, signed in: Home and everything over it. */
+    @Composable
+    private fun Main() {
         // The back stack is ours (a list of routes); Navigation 3 shows its top, keeps each
         // entry's saved state (scroll, filters, focus) while it is on the stack, drops it when
         // popped, and routes system Back to [pop].
@@ -235,9 +260,8 @@ abstract class SovEmuActivity : ComponentActivity() {
                 music = { musicOn },
                 screensaver = { idleMinutes },
                 nextScreensaver = {
-                    idleMinutes = SCREENSAVER_CHOICES[
-                        (SCREENSAVER_CHOICES.indexOf(idleMinutes) + 1) % SCREENSAVER_CHOICES.size,
-                    ]
+                    val next = SCREENSAVER_CHOICES.indexOf(idleMinutes) + 1
+                    idleMinutes = SCREENSAVER_CHOICES[next % SCREENSAVER_CHOICES.size]
                     settings.screensaverMinutes = idleMinutes
                 },
                 toggleMusic = {
@@ -258,6 +282,7 @@ abstract class SovEmuActivity : ComponentActivity() {
                     lifecycleScope.launch { api.signOut() }
                 },
                 signInTv = { push(Route.SignInTv) },
+                accounts = { push(Route.Accounts) },
             )
         }
 
@@ -316,7 +341,9 @@ abstract class SovEmuActivity : ComponentActivity() {
                         onBack = ::pop,
                         // No animation: a transition composes two screens at once, which a TV
                         // pays for.
-                        transitionSpec = { EnterTransition.None togetherWith ExitTransition.None },
+                        transitionSpec = {
+                            EnterTransition.None togetherWith ExitTransition.None
+                        },
                         popTransitionSpec = {
                             EnterTransition.None togetherWith ExitTransition.None
                         },
@@ -341,6 +368,15 @@ abstract class SovEmuActivity : ComponentActivity() {
                                         onSignOut = nav.signOut,
                                     )
                                 }
+                            }
+                            entry<Route.Accounts>({ it.key }) {
+                                LaunchScreens(
+                                    settings,
+                                    api,
+                                    listOf(LaunchPage.Picker),
+                                    fromAccount = true,
+                                    onReturn = ::pop,
+                                )
                             }
                             entry<Route.SignInTv>({ it.key }) {
                                 NavFrame(Section.Home, nav, user, systems) {
@@ -439,6 +475,12 @@ abstract class SovEmuActivity : ComponentActivity() {
         foreground = true
         idle.started()
         updateMusic()
+        // Back after a long while: whoever picks up the remote now chooses who they are.
+        val now = SystemClock.elapsedRealtime()
+        if (IdlePicker.shouldShow(backgroundedAt, now, api.session.accountsHere().size, playing)) {
+            lifecycleScope.launch { api.session.choose() }
+        }
+        backgroundedAt = null
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -448,6 +490,7 @@ abstract class SovEmuActivity : ComponentActivity() {
 
     override fun onStop() {
         foreground = false
+        backgroundedAt = SystemClock.elapsedRealtime()
         // Out of sight, the screensaver ends: nothing could dismiss it, and its videos have sound.
         idle.stopped()
         updateMusic()

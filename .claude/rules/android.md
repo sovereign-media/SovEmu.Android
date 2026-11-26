@@ -49,6 +49,12 @@ A module depends only on those below it; the graph is in `settings.gradle.kts`.
   until someone is chosen (`LaunchAccounts`). A token goes only to the server that issued it.
   A refused refresh removes only that account (`AuthState.Expired`); a network failure never
   signs anyone out. Sign-out revokes without waiting and lands as a launch does.
+- **The account screens** (`ui/Launch.kt`, `ui/Accounts.kt`) are Sovereign's: *Who's watching?*
+  (a tile per account here, `Add user`, *Change server*), *Choose a server* (remove asks first,
+  naming who it signs out) and the sign-in form, one stack shown whenever nobody is active, and
+  pushed over the app by the account menu's *Change user or server*. The picker returns after an
+  hour in the background with two or more accounts (`IdlePicker`), never over a game. Their
+  choices live in `:common:core` (`ServerChooser`, `pickerFocusMoves`), tested on the JVM.
 - **An update signs nobody out**: `AccountStore` moves a single-account install's sealed token,
   client and device name into the first account on first read, without unsealing the token.
 
