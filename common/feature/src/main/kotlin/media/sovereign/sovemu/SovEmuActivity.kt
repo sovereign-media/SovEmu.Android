@@ -33,7 +33,10 @@ import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
+import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.entryProvider
+import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import coil3.ImageLoader
 import coil3.compose.setSingletonImageLoaderFactory
@@ -66,6 +69,7 @@ import media.sovereign.sovemu.ui.SovTheme
 import media.sovereign.sovemu.ui.Start
 import media.sovereign.sovemu.ui.SystemScreen
 import media.sovereign.sovemu.ui.TvKeyboardHost
+import media.sovereign.sovemu.ui.rememberViewModelStoreOwner
 import media.sovereign.sovemu.ui.scanlines
 
 /** A place in the app. [key] names its saved state (scroll position, filters, focus). */
@@ -211,7 +215,14 @@ abstract class SovEmuActivity : ComponentActivity() {
         }
 
         // Each account its own app: its back stack, saved state and navigation, from Home.
-        key(account) { Main() }
+        // Its ViewModels too, in a store that goes when the account does.
+        key(account) {
+            CompositionLocalProvider(
+                LocalViewModelStoreOwner provides rememberViewModelStoreOwner(),
+            ) {
+                Main()
+            }
+        }
     }
 
     /** The app, signed in: Home and everything over it. */
@@ -328,6 +339,11 @@ abstract class SovEmuActivity : ComponentActivity() {
                     NavDisplay(
                         backStack = stack,
                         onBack = ::pop,
+                        // Each screen its own saved state and ViewModels, gone when it is popped.
+                        entryDecorators = listOf(
+                            rememberSaveableStateHolderNavEntryDecorator(),
+                            rememberViewModelStoreNavEntryDecorator(),
+                        ),
                         // No animation: a transition composes two screens at once, which a TV
                         // pays for.
                         transitionSpec = {

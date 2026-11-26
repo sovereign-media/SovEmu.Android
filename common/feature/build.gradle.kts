@@ -21,6 +21,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.navigation3.runtime)
     implementation(libs.navigation3.ui)
+    implementation(libs.lifecycle.viewmodel.navigation3)
+    implementation(libs.hilt.lifecycle.viewmodel.compose)
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.datasource.okhttp)
     implementation(libs.coil.compose)

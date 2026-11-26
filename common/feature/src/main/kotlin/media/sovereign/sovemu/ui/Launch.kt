@@ -1,25 +1,30 @@
 package media.sovereign.sovemu.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
+import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
+import androidx.navigation3.runtime.entryProvider
+import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
+import androidx.navigation3.ui.NavDisplay
 import kotlinx.coroutines.launch
 import media.sovereign.sovemu.BrowserSignIn
 import media.sovereign.sovemu.Settings
 import media.sovereign.sovemu.SovEmuApi
 import media.sovereign.sovemu.core.AuthState
-import media.sovereign.sovemu.core.KnownServers
 import media.sovereign.sovemu.core.LaunchAccounts
 import media.sovereign.sovemu.core.LaunchText
-import media.sovereign.sovemu.core.ServerChooser
 import media.sovereign.sovemu.core.ServerMove
 import media.sovereign.sovemu.core.attempt
 
@@ -87,10 +92,12 @@ sealed interface LaunchPage {
 
 /**
  * The account screens, as Sovereign.Android's: *Who's watching?*, *Choose a server* and the
- * sign-in form, each over the last; Back goes down the stack. Opened [fromAccount] (the account
- * menu's *Change user or server*), the picker marks the account signed in now, and choosing it,
- * or Back at the bottom, calls [onReturn]. Signing in, choosing someone else or another server
- * moves the app's session, and the activity follows it.
+ * sign-in form, each over the last; Back goes down the stack. Each page is a Navigation 3 entry
+ * with its own saved state and ViewModel ([AccountPickerViewModel], [ChooseServerViewModel],
+ * [CustomHeadersViewModel], [LoginViewModel]), kept in a store that goes with these screens.
+ * Opened [fromAccount] (the account menu's *Change user or server*), the picker marks the account
+ * signed in now, and choosing it, or Back at the bottom, calls [onReturn]. Signing in, choosing
+ * someone else or another server moves the app's session, and the activity follows it.
  */
 @Composable
 fun LaunchScreens(
@@ -101,18 +108,9 @@ fun LaunchScreens(
     fromAccount: Boolean = false,
     onReturn: () -> Unit = {},
 ) {
-    val stack = remember { mutableStateListOf(*start.toTypedArray()) }
+    val stack = remember { mutableStateListOf<LaunchPage>(*start.toTypedArray()) }
     val scope = rememberCoroutineScope()
-    val chooser = remember(api) { ServerChooser(api, api.session) }
-    val all by api.session.allAccounts.collectAsStateWithLifecycle()
-    val auth by api.session.state.collectAsStateWithLifecycle()
-    // The server is not a flow: read again whenever a move changes it.
-    var server by remember { mutableStateOf(settings.serverUrl) }
-    val here = all.filter { it.isOn(server) }
-    val servers = KnownServers.list(all, server)
-    var busy by remember { mutableStateOf(false) }
-    var serverError by remember { mutableStateOf<String?>(null) }
-    val current = (auth as? AuthState.Authenticated)?.accountId
+    val owner = rememberViewModelStoreOwner()
 
     fun pop() {
         val top = stack.lastOrNull()
@@ -121,29 +119,20 @@ fun LaunchScreens(
         ) {
             // A new address was tried and abandoned: the server it replaced comes back.
             api.setServer(top.returnTo)
-            server = top.returnTo
             scope.launch { attempt { api.bootstrap() } }
         }
         if (stack.size > 1) stack.removeAt(stack.lastIndex) else onReturn()
     }
 
-    fun landed(move: ServerMove) {
-        busy = false
-        server = settings.serverUrl
+    /** Where choosing or removing a server left the app. */
+    fun moved(move: ServerMove) {
         when (move) {
             ServerMove.Stayed -> if (stack.lastOrNull() == LaunchPage.Servers) pop()
 
             is ServerMove.Moved -> {
                 stack.clear()
-                stack.add(
-                    if (move.landing ==
-                        LaunchAccounts.Login
-                    ) {
-                        LaunchPage.SignIn()
-                    } else {
-                        LaunchPage.Picker
-                    },
-                )
+                val signIn = move.landing == LaunchAccounts.Login
+                stack.add(if (signIn) LaunchPage.SignIn() else LaunchPage.Picker)
             }
 
             ServerMove.NoServer -> {
@@ -151,87 +140,86 @@ fun LaunchScreens(
                 stack.add(LaunchPage.SignIn(newServer = true))
             }
 
-            is ServerMove.Failed -> serverError = move.message
+            is ServerMove.Failed -> Unit
         }
     }
 
-    if (stack.size > 1 || fromAccount) BackHandler(onBack = ::pop)
+    // The bottom page's Back, over the app: Navigation 3 handles Back only above it.
+    if (fromAccount && stack.size == 1) BackHandler(onBack = ::pop)
 
-    // Each page its own state: a sign-in form's fields never carry into the next one.
-    val page = stack.lastOrNull() ?: LaunchPage.SignIn()
-    key(stack.size, page) {
-        when (page) {
-            LaunchPage.Picker -> WhoIsWatchingScreen(
-                accounts = here,
-                server = server,
-                onChoose = { account ->
-                    if (account.id == current) {
-                        onReturn()
-                    } else {
-                        scope.launch { api.session.activate(account.id) }
-                    }
-                },
-                onAddUser = { stack.add(LaunchPage.SignIn(addUser = true)) },
-                onChangeServer = {
-                    serverError = null
-                    stack.add(LaunchPage.Servers)
-                },
-                modifier = modifier,
-                focusOn = current.takeIf { fromAccount } ?: here.maxByOrNull { it.lastUsedAt }?.id,
-                current = current.takeIf { fromAccount },
-            )
-
-            LaunchPage.Servers -> ChooseServerScreen(
-                servers = servers,
-                onChoose = { choice ->
-                    busy = true
-                    serverError = null
-                    scope.launch { landed(chooser.choose(choice)) }
-                },
-                onRemove = { gone ->
-                    busy = true
-                    serverError = null
-                    scope.launch { landed(chooser.remove(gone, servers)) }
-                },
-                onAddServer = { stack.add(LaunchPage.SignIn(newServer = true, returnTo = server)) },
-                modifier = modifier,
-                error = serverError,
-                busy = busy,
-            )
-
-            LaunchPage.Headers -> {
-                var headers by remember { mutableStateOf(settings.customHeaders) }
-                CustomHeadersScreen(
-                    headers,
-                    onSave = {
-                        settings.customHeaders = it
-                        headers = settings.customHeaders
-                    },
-                    onDone = ::pop,
-                    modifier = modifier,
-                )
-            }
-
-            is LaunchPage.SignIn -> LoginScreen(
-                settings,
-                api,
-                // Signing in again as the account signed in now moves nothing: back to where it was.
-                onSignedIn = { if (fromAccount) onReturn() },
-                modifier = modifier,
-                addUser = page.addUser,
-                username = page.username,
-                notice = LaunchText.EXPIRED.takeIf { page.expired },
-                newServer = page.newServer,
-                onCustomHeaders = { stack.add(LaunchPage.Headers) },
-                onChangeServer = if (!page.newServer && !page.addUser && servers.isNotEmpty()) {
-                    {
-                        serverError = null
-                        stack.add(LaunchPage.Servers)
-                    }
-                } else {
-                    null
-                },
-            )
-        }
+    CompositionLocalProvider(LocalViewModelStoreOwner provides owner) {
+        NavDisplay(
+            backStack = stack,
+            onBack = ::pop,
+            modifier = modifier,
+            entryDecorators = listOf(
+                rememberSaveableStateHolderNavEntryDecorator(),
+                rememberViewModelStoreNavEntryDecorator(),
+            ),
+            // No animation: a transition composes two screens at once, which a TV pays for.
+            transitionSpec = { EnterTransition.None togetherWith ExitTransition.None },
+            popTransitionSpec = { EnterTransition.None togetherWith ExitTransition.None },
+            predictivePopTransitionSpec = { EnterTransition.None togetherWith ExitTransition.None },
+            entryProvider = entryProvider {
+                entry<LaunchPage.Picker> {
+                    val model = hiltViewModel<AccountPickerViewModel>()
+                    val state by model.uiState.collectAsStateWithLifecycle()
+                    val current = state.currentId
+                    WhoIsWatchingScreen(
+                        accounts = state.accounts,
+                        server = state.server,
+                        onChoose = { account ->
+                            if (account.id == current) onReturn() else model.choose(account)
+                        },
+                        onAddUser = { stack.add(LaunchPage.SignIn(addUser = true)) },
+                        onChangeServer = { stack.add(LaunchPage.Servers) },
+                        focusOn = current.takeIf { fromAccount } ?: state.lastUsedId,
+                        current = current.takeIf { fromAccount },
+                    )
+                }
+                entry<LaunchPage.Servers> {
+                    val model = hiltViewModel<ChooseServerViewModel>()
+                    val state by model.uiState.collectAsStateWithLifecycle()
+                    ChooseServerScreen(
+                        servers = state.servers,
+                        onChoose = { model.choose(it, ::moved) },
+                        onRemove = { model.remove(it, ::moved) },
+                        onAddServer = {
+                            stack.add(
+                                LaunchPage.SignIn(newServer = true, returnTo = settings.serverUrl),
+                            )
+                        },
+                        error = state.error,
+                        busy = state.busy,
+                    )
+                }
+                entry<LaunchPage.Headers> {
+                    val model = hiltViewModel<CustomHeadersViewModel>()
+                    val headers by model.headers.collectAsStateWithLifecycle()
+                    CustomHeadersScreen(headers, onSave = model::save, onDone = ::pop)
+                }
+                entry<LaunchPage.SignIn> { page ->
+                    val model = hiltViewModel<LoginViewModel, LoginViewModel.Factory>(
+                        creationCallback = { it.create(page.newServer) },
+                    )
+                    val all by api.session.allAccounts.collectAsStateWithLifecycle()
+                    LoginScreen(
+                        model,
+                        // Signing in again as the account signed in now moves nothing: back to
+                        // where it was.
+                        onSignedIn = { if (fromAccount) onReturn() },
+                        addUser = page.addUser,
+                        username = page.username,
+                        notice = LaunchText.EXPIRED.takeIf { page.expired },
+                        onCustomHeaders = { stack.add(LaunchPage.Headers) },
+                        onChangeServer = if (!page.newServer && !page.addUser && all.isNotEmpty()) {
+                            { stack.add(LaunchPage.Servers) }
+                        } else {
+                            null
+                        },
+                    )
+                }
+            },
+        )
     }
 }
