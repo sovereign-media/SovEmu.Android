@@ -1,7 +1,6 @@
 package media.sovereign.sovemu.ui
 
 import androidx.activity.ComponentActivity
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -43,20 +42,6 @@ class SignOutOfflineTest {
             TestApp { NavFrame(Section.Home, nav, user = null, systems = emptyList()) {} }
         }
         rule.onNodeWithContentDescription("Account").performClick()
-        rule.onNodeWithText("Sign out").performClick()
-        assertEquals(1, signedOut)
-    }
-
-    @Test
-    fun theTabBarOffersSignOutBeforeTheUserIsKnown() {
-        rule.setContent {
-            TestApp {
-                CompositionLocalProvider(LocalForm provides Form(tv = false, wide = false)) {
-                    NavFrame(Section.Home, nav, user = null, systems = emptyList()) {}
-                }
-            }
-        }
-        rule.onNodeWithText("Account").performClick()
         rule.onNodeWithText("Sign out").performClick()
         assertEquals(1, signedOut)
     }

@@ -41,10 +41,14 @@ A module depends only on those below it; the graph is in `settings.gradle.kts`.
   `Route`, over the shared ViewModels. The account screens are split: `LaunchScreens` (the stack,
   the ViewModels, where each choice leads) is shared and each surface draws the pages
   (`TvLaunchPages`, `MobileLaunchPages`); *Sign in a TV* and the browser sign-in's activities are
-  the phone's alone, and `:common:ui-mobile` has its touch text field (`PhoneTextField`). A screen
-  being split still comes from `sharedRoutes`
-  until both surfaces have their own; a new screen is written for each surface, never as one
-  layout that reshapes itself for the other.
+  the phone's alone, and `:common:ui-mobile` has its touch text field (`PhoneTextField`). Home,
+  Search and the frame around them (`NavFrame`: the TV's dock; the phone's tab bar, or a dock on
+  a wide screen) are each surface's own. A screen being split (a system's games, the player)
+  still comes from `sharedRoutes`, inside the surface's frame, until both surfaces have their own.
+  An entry reads what changes (`AppRoutes.user`, `.systems`) through its `State` when it is
+  shown: Navigation 3 keeps an entry's content from its first showing, so a captured plain value
+  never changes. A new screen is written for each surface, never as one layout that reshapes
+  itself for the other.
 - **`apps/*` are thin shells**: a manifest, a `MainActivity` naming its `Surface`, and a
   `ClientInfoModule`. Only `:apps:mobile` registers the browser sign-in's redirect scheme. Kotlin
   packages stay `media.sovereign.sovemu` and `.ui` across the shared modules (the baseline

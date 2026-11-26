@@ -34,7 +34,7 @@ import media.sovereign.sovemu.core.formatAgo
  * own panel on its system's page (Start over, the other saves, the description). Back closes it.
  */
 @Composable
-internal fun ContinuePanel(
+fun ContinuePanel(
     game: Game?,
     system: SystemSummary?,
     onClose: () -> Unit,
