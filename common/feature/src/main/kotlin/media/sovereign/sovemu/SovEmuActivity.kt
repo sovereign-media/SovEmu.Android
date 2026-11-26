@@ -68,8 +68,6 @@ import media.sovereign.sovemu.ui.Section
 import media.sovereign.sovemu.ui.SignInTvViewModel
 import media.sovereign.sovemu.ui.SovTheme
 import media.sovereign.sovemu.ui.Start
-import media.sovereign.sovemu.ui.SystemScreen
-import media.sovereign.sovemu.ui.SystemViewModel
 import media.sovereign.sovemu.ui.TvKeyboardHost
 import media.sovereign.sovemu.ui.rememberViewModelStoreOwner
 import media.sovereign.sovemu.ui.scanlines

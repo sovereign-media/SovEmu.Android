@@ -42,9 +42,11 @@ A module depends only on those below it; the graph is in `settings.gradle.kts`.
   the ViewModels, where each choice leads) is shared and each surface draws the pages
   (`TvLaunchPages`, `MobileLaunchPages`); *Sign in a TV* and the browser sign-in's activities are
   the phone's alone, and `:common:ui-mobile` has its touch text field (`PhoneTextField`). Home,
-  Search and the frame around them (`NavFrame`: the TV's dock; the phone's tab bar, or a dock on
-  a wide screen) are each surface's own. A screen being split (a system's games, the player)
-  still comes from `sharedRoutes`, inside the surface's frame, until both surfaces have their own.
+  Search, a system's games and the frame around them (`NavFrame`: the TV's dock; the phone's tab
+  bar, or a dock on a wide screen) are each surface's own; the pieces both draw alike stay in
+  `:common:feature` (`SystemParts.kt`: the cover card, the game panel, the filter drawer with the
+  surface's search field as its slot, the jump strip). The player is still shared
+  (`sharedRoutes`) until it is split.
   An entry reads what changes (`AppRoutes.user`, `.systems`) through its `State` when it is
   shown: Navigation 3 keeps an entry's content from its first showing, so a captured plain value
   never changes. A new screen is written for each surface, never as one layout that reshapes

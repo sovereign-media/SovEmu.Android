@@ -68,49 +68,19 @@ import media.sovereign.sovemu.ui.QuitConfirm
 import media.sovereign.sovemu.ui.QuitOnRootBack
 import media.sovereign.sovemu.ui.Screensaver
 import media.sovereign.sovemu.ui.SearchViewModel
-import media.sovereign.sovemu.ui.Section
 import media.sovereign.sovemu.ui.SignInTvViewModel
 import media.sovereign.sovemu.ui.SovTheme
 import media.sovereign.sovemu.ui.Start
-import media.sovereign.sovemu.ui.SystemScreen
-import media.sovereign.sovemu.ui.SystemViewModel
 import media.sovereign.sovemu.ui.TvKeyboardHost
 import media.sovereign.sovemu.ui.rememberViewModelStoreOwner
 import media.sovereign.sovemu.ui.scanlines
 
 /**
  * The screens every surface draws alike, until each surface has its own (`TvSurface`,
- * `MobileSurface`).
+ * `MobileSurface`): the player.
  */
-fun EntryProviderScope<Route>.sharedRoutes(
-    app: AppRoutes,
-    /** The surface's frame around a screen: its navigation, for [Section]. */
-    frame: @Composable (
-        section: Section,
-        paintsBackground: Boolean,
-        content: @Composable () -> Unit,
-    ) -> Unit,
-) = with(app) {
+fun EntryProviderScope<Route>.sharedRoutes(app: AppRoutes) = with(app) {
     with(shell) {
-        entry<Route.System>({ it.key }) { r ->
-            frame(Section.Systems, true) {
-                val games = hiltViewModel<
-                    SystemViewModel,
-                    SystemViewModel.Factory,
-                    >(creationCallback = { it.create(r.system.id) })
-                val index by games.games.collectAsStateWithLifecycle()
-                val sort by games.sort.collectAsStateWithLifecycle()
-                SystemScreen(
-                    games, r.system, index, r.open, sort,
-                    onSort = games::setSort,
-                    onPlay = { game, start ->
-                        push(Route.Play(r.system, game, start))
-                    },
-                    onFavourite = games::setFavourite,
-                    onPatch = games::setPatch,
-                )
-            }
-        }
         entry<Route.Play>({ it.key }) { r ->
             val touchControls by presence.touchControls
                 .collectAsStateWithLifecycle(presence.touchControlsNow)
