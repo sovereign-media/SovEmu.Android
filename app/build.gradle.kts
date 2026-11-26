@@ -1,6 +1,8 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    // Folds the profile :baselineprofile generates into release builds.
+    alias(libs.plugins.baselineprofile)
 }
 
 android {
@@ -44,6 +46,9 @@ android {
 
 dependencies {
     implementation(project(":core"))
+    // Installs the shipped baseline profile on first run, so a sideloaded app starts compiled.
+    implementation(libs.androidx.profileinstaller)
+    baselineProfile(project(":baselineprofile"))
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.material3)

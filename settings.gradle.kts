@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "SovEmu.Android"
-include(":core", ":app")
+include(":core", ":app", ":baselineprofile")
