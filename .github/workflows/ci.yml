@@ -11,9 +11,11 @@ on:
 permissions:
   contents: read
 
+# Only a pull request's runs are cancelled by a newer push: a push to main seeds the caches the
+# pull requests read, and a cancelled one would leave them stale.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # The job runs on GitHub's runners (`ubuntu-latest`): the repository is public, so they are free.
 # The MEDIUM_RUNNER and LARGE_RUNNER variables name other runners when set; the organisation's own
@@ -37,6 +39,9 @@ jobs:
         with:
           packages: "platforms;android-37.0 build-tools;37.0.0"
 
+      # Caches the Gradle home, the build cache's outputs with it (org.gradle.caching). Only runs
+      # on main write it (setup-gradle is read-only on any other branch), so each push to main
+      # seeds it and pull requests and the merge queue build from what main compiled.
       - uses: gradle/actions/setup-gradle@v6
 
       - name: Test and build

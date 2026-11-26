@@ -19,6 +19,10 @@ paths:
 - **The pre-push hook** (`.githooks/pre-push`; once per clone, `git config core.hooksPath
   .githooks`) runs `spotlessCheck` on any pushed commit that changes Kotlin or Gradle, so the
   format never fails CI. Never skip it with `--no-verify` to get a misformatted change up.
+- **`gradle.properties` keeps the build fast**: the build cache, parallel modules and the
+  configuration cache are on; check a new property against AGP's deprecations before adding it.
+  Debug builds package native code only for `arm64-v8a` and `x86_64` (`-Pabi=` for others, or
+  `all`); release keeps every ABI. Iterate on debug, never on release.
 - **Performance is judged on the R8 release build** (`assembleRelease`), compiled with its profile
   (`adb shell cmd package compile -m speed-profile`), or with Macrobenchmark / `dumpsys gfxinfo`;
   never on a debug build.
