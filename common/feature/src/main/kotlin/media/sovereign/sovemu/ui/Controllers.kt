@@ -68,11 +68,19 @@ import media.sovereign.sovemu.core.highlight
  */
 @Composable
 fun ControllersScreen(
-    api: SovEmuApi,
     controller: Controller,
     book: MappingBook,
     controls: Controls,
     systemShort: String,
+    /** Saves a model's mapping for a scope on the server, and reads back what is in force. */
+    save: suspend (
+        model: String,
+        scope: MappingScope,
+        name: String,
+        bindings: List<Binding>,
+    ) -> Unit,
+    /** Removes the user's own mapping for a model in a scope, and reads back what is in force. */
+    reset: suspend (model: String, scope: MappingScope) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -112,12 +120,11 @@ fun ControllersScreen(
                 // Saving and resetting go to the server, then everything in force is read again
                 // (both scopes), so the game and this page use what now applies.
                 save = { model, scope, name, bindings ->
-                    api.saveControllerMapping(model, book.systemArg(scope), name, bindings)
-                    book.refresh(api::controllerMappings)
+                    save(model, scope, name, bindings)
                     controller.mixer.setMappings(book.forSystem)
                 },
                 reset = { model, scope ->
-                    book.reset(model, scope, api::resetControllerMapping, api::controllerMappings)
+                    reset(model, scope)
                     controller.mixer.setMappings(book.forSystem)
                 },
                 onBack = { selected = null },
