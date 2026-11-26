@@ -38,7 +38,7 @@ class SignOutOfflineTest {
     fun theTabBarOffersSignOutBeforeTheUserIsKnown() {
         rule.setContent {
             TestApp {
-                CompositionLocalProvider(LocalForm provides Form(tv = false, wide = false)) {
+                CompositionLocalProvider(LocalForm provides Form(wide = false)) {
                     NavFrame(Section.Home, nav, user = null, systems = emptyList()) {}
                 }
             }

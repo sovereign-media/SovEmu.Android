@@ -1,7 +1,14 @@
 package media.sovereign.sovemu.ui
 
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
 import androidx.test.core.app.ApplicationProvider
 import media.sovereign.sovemu.Settings
 import media.sovereign.sovemu.SovEmuApi
@@ -53,14 +60,15 @@ fun system(): SystemSummary = SystemSummary(
 
 /**
  * The app's composition locals for a test: an API with no server (nothing in these tests has a
- * picture to load) and the TV form, so the D-pad paths are the ones under test.
+ * picture to load), a wide screen and a bare text field.
  */
 @Composable
-fun TestApp(tv: Boolean = true, content: @Composable () -> Unit) {
+fun TestApp(content: @Composable () -> Unit) {
     val api = SovEmuApi(Settings(ApplicationProvider.getApplicationContext()))
     CompositionLocalProvider(
         LocalApi provides api,
-        LocalForm provides Form(tv = tv, wide = true),
+        LocalForm provides Form(wide = true),
+        LocalTextInput provides PlainTextInput,
         content = content,
     )
 }
@@ -79,5 +87,27 @@ object NoPanelData : GamePanelData {
         },
         gameId,
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined),
+    )
+}
+
+/** A [TextInput] for the shared screens' tests: a bare field, as neither surface draws one. */
+object PlainTextInput : TextInput {
+    @Composable
+    override fun Field(
+        label: String,
+        value: String,
+        onValue: (String) -> Unit,
+        typing: Boolean,
+        onTyping: (Boolean) -> Unit,
+        modifier: Modifier,
+        mono: Boolean,
+        action: ImeAction,
+        onAction: () -> Unit,
+    ) = BasicTextField(
+        value,
+        onValue,
+        modifier.semantics { contentDescription = label },
+        keyboardOptions = KeyboardOptions(imeAction = action),
+        keyboardActions = KeyboardActions(onAny = { onAction() }),
     )
 }

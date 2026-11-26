@@ -29,7 +29,7 @@ class SignInTvScreenTest {
     val rule = createComposeRule()
 
     private fun show(approve: suspend (String) -> Unit) = rule.setContent {
-        TestApp(tv = false) {
+        TestApp {
             SignInTvScreen("http://192.168.1.10:8080", "ada", approve, onDone = {})
         }
     }

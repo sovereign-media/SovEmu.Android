@@ -56,7 +56,6 @@ import media.sovereign.sovemu.ui.LaunchPage
 import media.sovereign.sovemu.ui.LaunchScreens
 import media.sovereign.sovemu.ui.LocalApi
 import media.sovereign.sovemu.ui.LocalBackground
-import media.sovereign.sovemu.ui.LocalForm
 import media.sovereign.sovemu.ui.Nav
 import media.sovereign.sovemu.ui.PlayerScreen
 import media.sovereign.sovemu.ui.PlayerViewModel
@@ -68,7 +67,6 @@ import media.sovereign.sovemu.ui.Section
 import media.sovereign.sovemu.ui.SignInTvViewModel
 import media.sovereign.sovemu.ui.SovTheme
 import media.sovereign.sovemu.ui.Start
-import media.sovereign.sovemu.ui.TvKeyboardHost
 import media.sovereign.sovemu.ui.rememberViewModelStoreOwner
 import media.sovereign.sovemu.ui.scanlines
 
@@ -156,10 +154,8 @@ abstract class SovEmuActivity : ComponentActivity() {
                     .build()
             }
             SovTheme(tv) {
-                // On a TV, text fields type with the app's own keyboard along the bottom of the
-                // screen: Fire TV's covers all of it.
                 CompositionLocalProvider(LocalApi provides api) {
-                    TvKeyboardHost(enabled = LocalForm.current.tv) { SovEmuApp(shell, surface) }
+                    surface.Host { SovEmuApp(shell, surface) }
                 }
             }
         }

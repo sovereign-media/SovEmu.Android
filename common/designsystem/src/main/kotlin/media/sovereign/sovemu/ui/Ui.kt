@@ -104,10 +104,13 @@ fun SystemSummary.colour(): Color = colours.getOrPut(color) { Color(parseColor(c
 fun tile(c: Color, mix: Float = 0.3f): Brush =
     Brush.linearGradient(listOf(c, lerp(Color.Black, c, mix)))
 
-/** How the app is being used: a TV (D-pad), a wide screen (side dock) or a phone (tab bar). */
-data class Form(val tv: Boolean, val wide: Boolean)
+/**
+ * How wide the screen is: a TV or a tablet (the side dock) or a phone (the tab bar). Whether it
+ * is a TV is the surface's to know (`:common:feature-tv`), never a branch in a shared screen.
+ */
+data class Form(val wide: Boolean)
 
-val LocalForm = staticCompositionLocalOf { Form(tv = false, wide = true) }
+val LocalForm = staticCompositionLocalOf { Form(wide = true) }
 
 /**
  * The server's background behind every screen (a `/media/backgrounds/…` path), or null for none.
@@ -118,7 +121,7 @@ val LocalBackground = compositionLocalOf<String?> { null }
 @Composable
 fun SovTheme(tv: Boolean, content: @Composable () -> Unit) {
     val config = LocalConfiguration.current
-    val form = Form(tv = tv, wide = tv || config.screenWidthDp >= 600)
+    val form = Form(wide = tv || config.screenWidthDp >= 600)
     // A TV says it is 960dp wide, which draws the web's layout at twice its size. Lay it out on
     // 1280dp instead: the web client at 150%, a comfortable size from the sofa.
     val density = LocalDensity.current

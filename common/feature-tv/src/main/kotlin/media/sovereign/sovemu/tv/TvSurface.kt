@@ -1,6 +1,7 @@
 package media.sovereign.sovemu.tv
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -14,15 +15,23 @@ import media.sovereign.sovemu.ui.HomeScreen
 import media.sovereign.sovemu.ui.HomeViewModel
 import media.sovereign.sovemu.ui.LaunchPage
 import media.sovereign.sovemu.ui.LaunchScreens
+import media.sovereign.sovemu.ui.LocalTextInput
 import media.sovereign.sovemu.ui.NavFrame
 import media.sovereign.sovemu.ui.SearchScreen
 import media.sovereign.sovemu.ui.SearchViewModel
 import media.sovereign.sovemu.ui.Section
 import media.sovereign.sovemu.ui.SystemScreen
 import media.sovereign.sovemu.ui.SystemViewModel
+import media.sovereign.sovemu.ui.TvKeyboardHost
+import media.sovereign.sovemu.ui.TvTextInput
 
 /** The TV apps' screens, over the shared app. */
 object TvSurface : Surface {
+    @Composable
+    override fun Host(content: @Composable () -> Unit) = TvKeyboardHost(enabled = true) {
+        CompositionLocalProvider(LocalTextInput provides TvTextInput, content = content)
+    }
+
     @Composable
     override fun SignedOut(shell: Shell, start: List<LaunchPage>) =
         LaunchScreens(shell.settings, shell.api, start, TvLaunchPages)

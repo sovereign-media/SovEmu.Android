@@ -170,7 +170,7 @@ fun CollectionsDrawer(
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Eyebrow("New collection")
-                    TvTextField(
+                    TextInputField(
                         "Name",
                         name,
                         { name = it.take(64) },

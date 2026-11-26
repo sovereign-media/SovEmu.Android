@@ -30,8 +30,9 @@ A module depends only on those below it; the graph is in `settings.gradle.kts`.
 - **`:common:designsystem`**: the theme and colours (`Ui.kt`), Lucide icons, focus, and widgets
   that know nothing of the server or of one surface. Anything that loads from the server (`Art`,
   `VideoSnap`, `Decorated`, `EsrbBadge`) is in `:common:feature`, with `LocalApi`.
-- **`:common:ui-tv`**: the TV's own widgets (its on-screen keyboard and the text field that types
-  with it), as Sovereign's `:common:ui-tv`.
+- **`:common:ui-tv`** and **`:common:ui-mobile`**: each surface's own widgets, as Sovereign's
+  `:common:ui-tv`: the TV's on-screen keyboard and the field that types with it (`TvTextField`),
+  and the phone's touch field (`PhoneTextField`). Only its surface's module depends on one.
 - **`:common:feature`**: the ViewModels, the shared app (`Shell.kt`: `SovEmuApp`, the back stack,
   settings, screensaver, quit question; `Route`), and `SovEmuActivity`, the activity every app's
   `MainActivity` extends.
@@ -41,16 +42,20 @@ A module depends only on those below it; the graph is in `settings.gradle.kts`.
   `Route`, over the shared ViewModels. The account screens are split: `LaunchScreens` (the stack,
   the ViewModels, where each choice leads) is shared and each surface draws the pages
   (`TvLaunchPages`, `MobileLaunchPages`); *Sign in a TV* and the browser sign-in's activities are
-  the phone's alone, and `:common:ui-mobile` has its touch text field (`PhoneTextField`). Home,
-  Search, a system's games and the frame around them (`NavFrame`: the TV's dock; the phone's tab
-  bar, or a dock on a wide screen) are each surface's own; the pieces both draw alike stay in
-  `:common:feature` (`SystemParts.kt`: the cover card, the game panel, the filter drawer with the
-  surface's search field as its slot, the jump strip). The player is still shared
-  (`sharedRoutes`) until it is split.
+  the phone's alone. Home, Search, a system's games and the frame around them (`NavFrame`: the
+  TV's dock; the phone's tab bar, or a dock on a wide screen) are each surface's own; the pieces
+  both draw alike stay in `:common:feature` (`SystemParts.kt`: the cover card, the game panel,
+  the filter drawer with the surface's search field as its slot, the jump strip). The player is
+  shared (`sharedRoutes`): it is the same on both, and its touch controller follows
+  `InputPresence`, not the surface.
   An entry reads what changes (`AppRoutes.user`, `.systems`) through its `State` when it is
   shown: Navigation 3 keeps an entry's content from its first showing, so a captured plain value
   never changes. A new screen is written for each surface, never as one layout that reshapes
   itself for the other.
+- **A shared screen never asks whether it is on a TV**: `LocalForm` says only whether the screen
+  is wide. What differs comes from the surface: its `Host` wraps the app, and gives a shared
+  screen's text fields (the cheats, the collections) the surface's own through `LocalTextInput`
+  (`TvTextInput` with the TV's keyboard host, or `PhoneTextInput`).
 - **`apps/*` are thin shells**: a manifest, a `MainActivity` naming its `Surface`, and a
   `ClientInfoModule`. Only `:apps:mobile` registers the browser sign-in's redirect scheme. Kotlin
   packages stay `media.sovereign.sovemu` and `.ui` across the shared modules (the baseline
