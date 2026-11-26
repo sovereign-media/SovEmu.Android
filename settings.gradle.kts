@@ -20,13 +20,18 @@ rootProject.name = "SovEmu.Android"
 // Layered; a module depends only on those above it:
 //
 //   core ◄── data ◄── stream
-//   core ◄── designsystem
-//   { data, stream, designsystem } ◄── feature ◄── apps:mobile / apps:androidtv / apps:firetv
+//   core ◄── designsystem ◄── ui-tv
+//   { data, stream, designsystem } ◄── feature
+//   { feature, ui-tv } ◄── feature-tv ◄── apps:androidtv / apps:firetv
+//   feature ◄── feature-mobile ◄── apps:mobile
 include(":common:core") //         plain Kotlin/JVM: protocol, models, sign-in, game lists
 include(":common:data") //         the API, settings, the library's state
 include(":common:stream") //       WebRTC and controllers
 include(":common:designsystem") // colours, icons, widgets
-include(":common:feature") //      the screens and the activity
+include(":common:ui-tv") //        the TV's own widgets: its keyboard and text field
+include(":common:feature") //      ViewModels, the shared app and the activity
+include(":common:feature-tv") //   the TV apps' screens
+include(":common:feature-mobile") // the phone and tablet app's screens
 
 // One app per surface, as Sovereign.Android has.
 include(":apps:mobile") //    phones and tablets
