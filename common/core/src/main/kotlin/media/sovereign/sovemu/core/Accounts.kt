@@ -142,6 +142,8 @@ object KnownServers {
     const val ADD_A_SERVER = "Add a server"
     const val IN_USE = "  ·  in use"
     const val REMOVE_PREFIX = "Everyone signed in to it on this device will be signed out: "
+    const val REMOVE = "Remove"
+    const val CANCEL = "Cancel"
 
     /** In `Add a server`'s place when the device holds [StoredAccount.MAX_SERVERS]. */
     const val CAP_LINE = "This device holds 3 servers. Remove one to add another."

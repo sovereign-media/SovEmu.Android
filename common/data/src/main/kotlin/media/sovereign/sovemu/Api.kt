@@ -31,6 +31,7 @@ import media.sovereign.sovemu.core.KeyValue
 import media.sovereign.sovemu.core.OAuthException
 import media.sovereign.sovemu.core.PadLayout
 import media.sovereign.sovemu.core.SaveSlot
+import media.sovereign.sovemu.core.ServerService
 import media.sovereign.sovemu.core.Session
 import media.sovereign.sovemu.core.SessionInfo
 import media.sovereign.sovemu.core.SignInConfig
@@ -165,7 +166,8 @@ class SovEmuApi(
     private val device: String = "SovEmu for Android",
 ) : CheatService,
     CollectionService,
-    SignInService {
+    SignInService,
+    ServerService {
     /** The sign-in's token client: plain HTTP, without the bearer interceptor. */
     private val plain: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
@@ -229,6 +231,10 @@ class SovEmuApi(
     override suspend fun bootstrapAt(address: String): SignInConfig {
         settings.serverUrl = address
         return bootstrap()
+    }
+
+    override fun setServer(address: String) {
+        settings.serverUrl = address
     }
 
     override suspend fun setupRequired(): Boolean = status().setupRequired
