@@ -61,6 +61,7 @@ import media.sovereign.sovemu.ui.LocalForm
 import media.sovereign.sovemu.ui.Nav
 import media.sovereign.sovemu.ui.NavFrame
 import media.sovereign.sovemu.ui.PlayerScreen
+import media.sovereign.sovemu.ui.PlayerViewModel
 import media.sovereign.sovemu.ui.QuitConfirm
 import media.sovereign.sovemu.ui.QuitOnRootBack
 import media.sovereign.sovemu.ui.Screensaver
@@ -113,7 +114,7 @@ sealed interface Route {
  * what lives as long as the process (the settings, the server and its session, the library's
  * state) and which app it is ([clientInfo]). The TV apps draw for a D-pad from the sofa and type
  * with the app's own keyboard; the phone and tablet app draws for touch and shows the touch
- * controller. What lives with the window (controllers, game sessions, music) is made here.
+ * controller. What lives with the window (controllers, music) is made here.
  */
 abstract class SovEmuActivity : ComponentActivity() {
     // Injected by the app's MainActivity (Hilt cannot construct an activity).
@@ -128,7 +129,6 @@ abstract class SovEmuActivity : ComponentActivity() {
     /** True in the Android TV and Fire TV apps, false in the phone and tablet app. */
     private val tv: Boolean get() = clientInfo.tv
 
-    private lateinit var sessions: Sessions
     private lateinit var presence: InputPresence
     private val controller = Controller()
     private lateinit var music: MenuMusic
@@ -168,7 +168,6 @@ abstract class SovEmuActivity : ComponentActivity() {
         gameMode = settings.gameMode
         musicOn = settings.music
         ClientEvents.attach(this, api, lifecycleScope)
-        sessions = Sessions(api, lifecycleScope)
         controller.start(this)
         presence = InputPresence(this, controller, tv)
         music = MenuMusic(this, lifecycleScope)
@@ -441,9 +440,12 @@ abstract class SovEmuActivity : ComponentActivity() {
                             entry<Route.Play>({ it.key }) { r ->
                                 val touchControls by presence.touchControls
                                     .collectAsStateWithLifecycle(presence.touchControlsNow)
+                                val player = hiltViewModel<
+                                    PlayerViewModel,
+                                    PlayerViewModel.Factory,
+                                    >(creationCallback = { it.create(r.game, r.system, r.start) })
                                 PlayerScreen(
-                                    api,
-                                    sessions,
+                                    player,
                                     r.system,
                                     r.game,
                                     r.start,
@@ -455,7 +457,6 @@ abstract class SovEmuActivity : ComponentActivity() {
                                         statsOn = it
                                         settings.stats = it
                                     },
-                                    onEnded = { store.played(r.system.id) },
                                     onExit = {
                                         gamePaused = false
                                         controller.clear()

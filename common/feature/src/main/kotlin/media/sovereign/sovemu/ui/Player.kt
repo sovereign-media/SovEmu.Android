@@ -155,8 +155,7 @@ sealed interface Start {
  */
 @Composable
 fun PlayerScreen(
-    api: SovEmuApi,
-    sessions: Sessions,
+    model: PlayerViewModel,
     system: SystemSummary,
     game: Game,
     start: Start,
@@ -167,7 +166,6 @@ fun PlayerScreen(
     onStatsChange: (Boolean) -> Unit,
     /** The TV game mode setting (asked for app-wide, TvGameMode), for the stats. */
     gameMode: Boolean,
-    onEnded: () -> Unit,
     onExit: () -> Unit,
     modifier: Modifier = Modifier,
     /** Paused (the in-game menu or the controllers screen is open): the screensaver may start. */
@@ -176,14 +174,17 @@ fun PlayerScreen(
     val paused by rememberUpdatedState(onPaused)
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var info by remember { mutableStateOf<SessionInfo?>(null) }
+    // The session and its start are the ViewModel's; the stream and the window are this screen's.
+    val info by model.session.collectAsStateWithLifecycle()
+    val startError by model.error.collectAsStateWithLifecycle()
 
-    /** A failure to start, or a lost connection, shown in place of the game. */
-    var error by remember { mutableStateOf<String?>(null) }
+    /** A lost connection, shown in place of the game (a failure to start is the ViewModel's). */
+    var lost by remember { mutableStateOf<String?>(null) }
+    val error = startError ?: lost
 
     /** The server's word on how far the start has got (null until it has said), and the bar. */
-    var progress by remember { mutableStateOf<StartStatus?>(null) }
-    var bar by remember { mutableDoubleStateOf(0.0) }
+    val progress by model.progress.collectAsStateWithLifecycle()
+    val bar by model.bar.collectAsStateWithLifecycle()
 
     /** How long the ready session has waited for its first picture. */
     var waitedMs by remember { mutableLongStateOf(0L) }
@@ -206,86 +207,51 @@ fun PlayerScreen(
     var everConnected by remember { mutableStateOf(false) }
 
     /** The disc in the tray (1-based), for a multi-disc game. */
-    var disc by remember { mutableStateOf(1) }
-    val book = remember(system.id) { MappingBook(system.id) }
-    var controls by remember { mutableStateOf(Controls()) }
+    val disc by model.disc.collectAsStateWithLifecycle()
+    val book = model.book
+    val controls by model.controls.collectAsStateWithLifecycle()
 
     /**
      * Waiting for Continue or Start over (there is an auto save and the player was not asked yet).
      */
-    var choice by remember { mutableStateOf<CompletableDeferred<Start>?>(null) }
-    // Started at once, and owned by the app: leaving now still stops it once it exists.
-    val startId = remember(game.id) { newStartId() }
-    val starting = remember(game.id) { sessions.start(game.id, startId) }
+    val choice by model.choice.collectAsStateWithLifecycle()
 
     // The whole frame, scaled into the box below: never cropped (StreamView).
     val renderer = remember { StreamView(context, WebRtc.egl.eglBaseContext) }
     // The artwork framing the picture (its system's decoration), fetched alongside the start.
-    var decoration by remember(game.id) { mutableStateOf<GameDecoration?>(null) }
+    val decoration by model.decoration.collectAsStateWithLifecycle()
+    // The mappings in force go to the controllers' mixer as they arrive; anything the ViewModel
+    // has to say shows for a moment.
+    val mappings by model.mappings.collectAsStateWithLifecycle()
+    LaunchedEffect(mappings) { mappings?.let(controller.mixer::setMappings) }
+    val notice by model.notice.collectAsStateWithLifecycle()
+    LaunchedEffect(notice) {
+        notice?.let {
+            toast = it
+            model.noticeShown()
+        }
+    }
 
-    LaunchedEffect(game.id) {
-        // The mappings, labels and the question (if any) come while the session starts, rather
-        // than each adding a round trip before the game.
-        launch { decoration = attempt { api.decoration(game.id) }.getOrNull() }
-        launch {
-            attempt { book.refresh(api::controllerMappings) }
-                .onSuccess { controller.mixer.setMappings(book.forSystem) }
-                .onFailure { e -> toast = "Default controls: ${e.message}" }
-        }
-        // The system's labels and the diagrams, for the controllers screen.
-        launch {
-            attempt { api.controls(system.id) }
-                .onSuccess { (sys, layouts) -> controls = Controls(sys, layouts) }
-        }
-        val ice = async { attempt { api.iceServers() }.getOrDefault(emptyList()) }
+    // The game's stream, once its session has started: built by the ViewModel (it holds the API
+    // and the ICE servers) into this screen's video view, and closed by this screen as it goes.
+    LaunchedEffect(info) {
+        val session = info ?: return@LaunchedEffect
         try {
-            val how = if (start == Start.Ask) {
-                val saves = attempt { api.states(game.id) }.getOrDefault(emptyList())
-                if (saves.any { it.slot == 0 }) {
-                    CompletableDeferred<Start>().also { choice = it }.await().also { choice = null }
-                } else {
-                    Start.New
+            val s = model.stream(context, session, controller, renderer) { state ->
+                if (state == PeerConnection.PeerConnectionState.FAILED) {
+                    lost = "Connection failed"
                 }
-            } else {
-                start
-            }
-            val session = starting.await()
-            if (how is Start.FromSlot) {
-                attempt { api.loadState(session.id, how.slot) }
-                    .onFailure { e -> toast = "Could not load: ${e.message}" }
-            }
-            info = session
-            // WebRTC's factory and peer connection are slow to build: not on the main thread.
-            // Built whatever happens, so it is closed whatever happens.
-            val s = withContext(NonCancellable + Dispatchers.Default) {
-                Stream(
-                    context,
-                    api,
-                    session.id,
-                    ClientEvents.clientName(context),
-                    ice.await(),
-                    controller,
-                    renderer,
-                ) { state ->
-                    if (state == PeerConnection.PeerConnectionState.FAILED) {
-                        error = "Connection failed"
-                    }
-                    when (state) {
-                        PeerConnection.PeerConnectionState.CONNECTED -> everConnected = true
+                when (state) {
+                    PeerConnection.PeerConnectionState.CONNECTED -> everConnected = true
 
-                        PeerConnection.PeerConnectionState.FAILED,
-                        PeerConnection.PeerConnectionState.DISCONNECTED,
-                        -> {
-                            val kind = if (everConnected) "CONNECTION_LOST" else "CONNECTION_FAILED"
-                            ClientEvents.report(
-                                kind,
-                                "WebRTC ${state.name.lowercase()}",
-                                session.id,
-                            )
-                        }
-
-                        else -> {}
+                    PeerConnection.PeerConnectionState.FAILED,
+                    PeerConnection.PeerConnectionState.DISCONNECTED,
+                    -> {
+                        val kind = if (everConnected) "CONNECTION_LOST" else "CONNECTION_FAILED"
+                        ClientEvents.report(kind, "WebRTC ${state.name.lowercase()}", session.id)
                     }
+
+                    else -> {}
                 }
             }
             if (!isActive) {
@@ -297,7 +263,7 @@ fun PlayerScreen(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            error = "Could not start: ${e.message}"
+            lost = "Could not start: ${e.message}"
         }
     }
 
@@ -391,18 +357,6 @@ fun PlayerScreen(
             delay(1000)
         }
     }
-    // The start's progress, polled while the session starts (as the web does). A failed poll
-    // keeps the last word; the bar only moves forward.
-    LaunchedEffect(starting) {
-        val forward = ForwardOnly()
-        while (!starting.isCompleted) {
-            attempt { api.startProgress(startId) }.onSuccess {
-                progress = it
-                bar = forward.next(describeStart(it).fraction)
-            }
-            delay(250)
-        }
-    }
     // A picture that stops while playing (not paused in the menu) is reported once it has been
     // still for STALL_SECONDS. Before the first picture, the game is still starting.
     LaunchedEffect(stream) {
@@ -435,12 +389,11 @@ fun PlayerScreen(
     // whole app's: TvGameMode).
     LowLatencyWhilePlaying()
 
-    val ended by rememberUpdatedState(onEnded)
+    // The window's part goes with the screen; the session stops when the ViewModel is cleared.
     DisposableEffect(Unit) {
         onDispose {
             stream?.close()
             renderer.release()
-            sessions.stop(starting) { ended() }
         }
     }
 
@@ -508,29 +461,37 @@ fun PlayerScreen(
                     .safeDrawingPadding(),
                 contentAlignment = Alignment.Center,
             ) {
-                ControllersScreen(api, controller, book, controls, system.short, onClose = {
-                    controllersOpen = false
-                    menuOpen = true
-                })
+                ControllersScreen(
+                    controller,
+                    book,
+                    controls,
+                    system.short,
+                    save = model::saveMapping,
+                    reset = model::resetMapping,
+                    onClose = {
+                        controllersOpen = false
+                        menuOpen = true
+                    },
+                )
             }
         } else if (menuOpen) {
             InGameMenu(
                 game, system,
                 onResume = { menuOpen = false },
-                saves = { attempt { api.states(game.id) }.getOrDefault(emptyList()) },
+                saves = model::saves,
                 cheats = { first ->
                     // The page draws; its state and the calls behind it are this screen's, loaded
                     // as the page opens.
-                    val model = remember(game.id) { CheatsModel(api, game.id, scope) }
-                    LaunchedEffect(model) { model.load() }
-                    val cheats by model.cheats.collectAsStateWithLifecycle()
-                    val message by model.message.collectAsStateWithLifecycle()
+                    val cheatsModel = remember(game.id) { model.cheats() }
+                    LaunchedEffect(cheatsModel) { cheatsModel.load() }
+                    val cheats by cheatsModel.cheats.collectAsStateWithLifecycle()
+                    val message by cheatsModel.message.collectAsStateWithLifecycle()
                     CheatsPage(
                         cheats,
                         message,
-                        model::toggle,
-                        model::delete,
-                        model::add,
+                        cheatsModel::toggle,
+                        cheatsModel::delete,
+                        cheatsModel::add,
                         first = first,
                     )
                 },
@@ -538,38 +499,20 @@ fun PlayerScreen(
                 disc = disc,
                 onDisc = { n ->
                     scope.launch {
-                        toast = info?.let { s ->
-                            attempt { api.setDisc(s.id, n) }.fold(
-                                {
-                                    disc = n
-                                    "Disc $n is in"
-                                },
-                                { e -> "Could not change disc: ${e.message}" },
-                            )
-                        }
+                        toast = model.setDisc(n)
                         menuOpen = false
                     }
                 },
                 onSaveTo = { slot ->
                     scope.launch {
-                        toast = info?.let { s ->
-                            attempt { api.saveState(s.id, slot) }.fold(
-                                { "Saved to slot $slot" },
-                                { e -> "Save failed: ${e.message}" },
-                            )
-                        }
+                        toast = model.saveTo(slot)
                         menuOpen = false
                     }
                 },
                 onLoadFrom = { slot ->
                     scope.launch {
                         val name = if (slot == AUTO_SLOT) "the auto save" else "slot $slot"
-                        toast = info?.let { s ->
-                            attempt { api.loadState(s.id, slot) }.fold(
-                                { "Loaded $name" },
-                                { e -> "Load failed: ${e.message}" },
-                            )
-                        }
+                        toast = model.loadFrom(slot, name)
                         menuOpen = false
                     }
                 },

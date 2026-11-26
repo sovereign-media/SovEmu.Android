@@ -12,6 +12,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import media.sovereign.sovemu.ClientEvents
+import media.sovereign.sovemu.Sessions
 import media.sovereign.sovemu.Settings
 import media.sovereign.sovemu.SovEmuApi
 import media.sovereign.sovemu.Store
@@ -39,6 +40,12 @@ object DataModule {
     @Singleton
     fun provideApi(settings: Settings, @ApplicationContext context: Context): SovEmuApi =
         SovEmuApi(settings, ClientEvents.deviceName(context))
+
+    /** Game sessions, owned by the app: a stop asked for as the player leaves always finishes. */
+    @Provides
+    @Singleton
+    fun provideSessions(api: SovEmuApi, @ApplicationScope scope: CoroutineScope): Sessions =
+        Sessions(api, scope)
 
     @Provides
     @Singleton

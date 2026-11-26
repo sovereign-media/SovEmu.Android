@@ -13,8 +13,9 @@ Sovereign's do: one per Navigation 3 entry (`hiltViewModel()`, the entry decorat
 `rememberSaveableStateHolderNavEntryDecorator` and `rememberViewModelStoreNavEntryDecorator`),
 cleared when it is popped. A page stack made afresh (the account screens, each account's app)
 keeps its ViewModels in its own store (`rememberViewModelStoreOwner`), cleared when it goes. The
-account screens have theirs (`LaunchViewModels.kt`), and so do Home, a system's games, Search and
-*Sign in a TV* (`LibraryViewModels.kt`); the player still holds its state, until it moves.
+account screens have theirs (`LaunchViewModels.kt`), and so do Home, a system's games, Search,
+*Sign in a TV* (`LibraryViewModels.kt`) and the player (`PlayerViewModel`: the session, the
+menu's calls; the screen keeps only what needs its window, the stream and the video view).
 
 ## Naming and shape
 
