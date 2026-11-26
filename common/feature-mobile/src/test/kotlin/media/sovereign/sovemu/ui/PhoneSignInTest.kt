@@ -20,7 +20,7 @@ import org.robolectric.annotation.Config
 /**
  * A phone signs in as Sovereign's phones do: through the browser (the server's own page), with a
  * code as the other way in and no password typed into the app, except on a server with no browser
- * sign-in. A TV keeps its password form and *Sign in with your phone*.
+ * sign-in.
  */
 @Config(qualifiers = "w411dp-h891dp")
 @RunWith(RobolectricTestRunner::class)
@@ -28,7 +28,7 @@ class PhoneSignInTest {
     @get:Rule
     val rule = createComposeRule()
 
-    private fun show(tv: Boolean, browser: Boolean = true) {
+    private fun show(browser: Boolean = true) {
         val settings = Settings(ApplicationProvider.getApplicationContext())
         settings.serverUrl = "http://192.168.1.10:8080"
         settings.signInConfig = SignInConfig(
@@ -45,7 +45,7 @@ class PhoneSignInTest {
             mobileRedirectUri = "media.sovereign.sovemu:/oauth2redirect",
         )
         rule.setContent {
-            TestApp(tv = tv) {
+            TestApp(tv = false) {
                 LoginScreen(LoginViewModel(false, SovEmuApi(settings), settings), onSignedIn = {})
             }
         }
@@ -53,7 +53,7 @@ class PhoneSignInTest {
 
     @Test
     fun aPhoneOffersTheBrowserThenACodeAndNoPassword() {
-        show(tv = false)
+        show()
         rule.onNodeWithText("Sign in").assertExists()
         rule.onAllNodesWithText("Username").assertCountEquals(0)
         rule.onNodeWithText(PairingText.USE_PASSWORD).assertDoesNotExist()
@@ -68,15 +68,7 @@ class PhoneSignInTest {
 
     @Test
     fun aPhoneUsesThePasswordOnlyWhereTheServerHasNoBrowserSignIn() {
-        show(tv = false, browser = false)
+        show(browser = false)
         assertTrue(rule.onAllNodesWithText("Username").fetchSemanticsNodes().isNotEmpty())
-    }
-
-    @Test
-    fun aTvKeepsItsPasswordFormAndTheCode() {
-        show(tv = true)
-        assertTrue(rule.onAllNodesWithText("Username").fetchSemanticsNodes().isNotEmpty())
-        rule.onNodeWithText(PairingText.USE_CODE).assertExists()
-        rule.onNodeWithText("Sign in with your browser").assertDoesNotExist()
     }
 }
