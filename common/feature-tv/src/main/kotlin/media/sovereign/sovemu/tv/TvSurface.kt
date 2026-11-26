@@ -14,7 +14,19 @@ import media.sovereign.sovemu.ui.LaunchScreens
 object TvSurface : Surface {
     @Composable
     override fun SignedOut(shell: Shell, start: List<LaunchPage>) =
-        LaunchScreens(shell.settings, shell.api, start)
+        LaunchScreens(shell.settings, shell.api, start, TvLaunchPages)
 
-    override fun EntryProviderScope<Route>.routes(app: AppRoutes) = sharedRoutes(app)
+    override fun EntryProviderScope<Route>.routes(app: AppRoutes) {
+        entry<Route.Accounts>({ it.key }) {
+            LaunchScreens(
+                app.shell.settings,
+                app.shell.api,
+                LaunchPage.overApp(),
+                TvLaunchPages,
+                fromAccount = true,
+                onReturn = app.pop,
+            )
+        }
+        sharedRoutes(app)
+    }
 }

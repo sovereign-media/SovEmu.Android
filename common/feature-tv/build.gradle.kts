@@ -13,4 +13,10 @@ dependencies {
     api(project(":common:feature"))
     implementation(project(":common:ui-tv"))
     implementation(libs.navigation3.runtime)
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    testImplementation(libs.junit)
+    testImplementation(libs.compose.ui.test.junit4)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    debugImplementation(libs.compose.ui.test.manifest)
 }

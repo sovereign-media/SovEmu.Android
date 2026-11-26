@@ -72,7 +72,6 @@ import media.sovereign.sovemu.ui.Screensaver
 import media.sovereign.sovemu.ui.SearchScreen
 import media.sovereign.sovemu.ui.SearchViewModel
 import media.sovereign.sovemu.ui.Section
-import media.sovereign.sovemu.ui.SignInTvScreen
 import media.sovereign.sovemu.ui.SignInTvViewModel
 import media.sovereign.sovemu.ui.SovTheme
 import media.sovereign.sovemu.ui.Start
@@ -105,28 +104,6 @@ fun EntryProviderScope<Route>.sharedRoutes(app: AppRoutes) = with(app) {
                     server = server,
                     onRetry = home::retry,
                     onSignOut = nav.signOut,
-                )
-            }
-        }
-        entry<Route.Accounts>({ it.key }) {
-            LaunchScreens(
-                settings,
-                api,
-                LaunchPage.overApp(),
-                fromAccount = true,
-                onReturn = pop,
-            )
-        }
-        entry<Route.SignInTv>({ it.key }) {
-            NavFrame(Section.Home, nav, user, systems) {
-                val signInTv = hiltViewModel<SignInTvViewModel>()
-                val server by signInTv.server.collectAsStateWithLifecycle()
-                val name by signInTv.userName.collectAsStateWithLifecycle()
-                SignInTvScreen(
-                    server = server,
-                    name = name,
-                    approve = signInTv::approve,
-                    onDone = pop,
                 )
             }
         }

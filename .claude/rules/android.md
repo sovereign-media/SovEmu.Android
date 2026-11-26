@@ -38,7 +38,11 @@ A module depends only on those below it; the graph is in `settings.gradle.kts`.
 - **Each surface draws its own screens, as Sovereign's two UI stacks do**: `:common:feature-tv`
   (`TvSurface`, the Android TV and Fire TV apps) and `:common:feature-mobile` (`MobileSurface`, the
   phone and tablet app) each give a `Surface`: the signed-out screens and one Navigation 3 entry per
-  `Route`, over the shared ViewModels. A screen being split still comes from `sharedRoutes`
+  `Route`, over the shared ViewModels. The account screens are split: `LaunchScreens` (the stack,
+  the ViewModels, where each choice leads) is shared and each surface draws the pages
+  (`TvLaunchPages`, `MobileLaunchPages`); *Sign in a TV* and the browser sign-in's activities are
+  the phone's alone, and `:common:ui-mobile` has its touch text field (`PhoneTextField`). A screen
+  being split still comes from `sharedRoutes`
   until both surfaces have their own; a new screen is written for each surface, never as one
   layout that reshapes itself for the other.
 - **`apps/*` are thin shells**: a manifest, a `MainActivity` naming its `Surface`, and a

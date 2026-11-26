@@ -12,41 +12,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/**
- * Where a phone's browser sign-in stands, between [BrowserSignInActivity] and the sign-in screen
- * (which may be a new one: Android can end the app while the person is in the browser).
- */
-object BrowserSignIn {
-    private val _redirect = MutableStateFlow<String?>(null)
-    private val _noBrowser = MutableStateFlow(0)
-
-    /** The redirect the browser came back with, until the sign-in screen takes it ([take]). */
-    val redirect: StateFlow<String?> = _redirect.asStateFlow()
-
-    /**
-     * Counts sign-ins that found no browser on the device to open. (A tab the person closed
-     * is a cancel, and says nothing.)
-     */
-    val noBrowser: StateFlow<Int> = _noBrowser.asStateFlow()
-
-    /** Takes the waiting redirect, if any: it is handled once. */
-    fun take(): String? = _redirect.value.also { _redirect.value = null }
-
-    internal fun arrived(uri: String) {
-        _redirect.value = uri
-    }
-
-    internal fun noBrowserFound() {
-        _noBrowser.value++
-    }
-
-    /** Opens the server's sign-in page at [authorizeUrl], through [BrowserSignInActivity]. */
-    fun open(context: Context, authorizeUrl: String) {
-        context.startActivity(
-            Intent(context, BrowserSignInActivity::class.java)
-                .putExtra(BrowserSignInActivity.EXTRA_AUTHORIZE_URL, authorizeUrl),
-        )
-    }
+/** Opens the server's sign-in page at [authorizeUrl], through [BrowserSignInActivity]. */
+fun openBrowserSignIn(context: Context, authorizeUrl: String) {
+    context.startActivity(
+        Intent(context, BrowserSignInActivity::class.java)
+            .putExtra(BrowserSignInActivity.EXTRA_AUTHORIZE_URL, authorizeUrl),
+    )
 }
 
 /**

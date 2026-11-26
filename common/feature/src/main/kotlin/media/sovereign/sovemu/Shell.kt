@@ -72,7 +72,6 @@ import media.sovereign.sovemu.ui.Screensaver
 import media.sovereign.sovemu.ui.SearchScreen
 import media.sovereign.sovemu.ui.SearchViewModel
 import media.sovereign.sovemu.ui.Section
-import media.sovereign.sovemu.ui.SignInTvScreen
 import media.sovereign.sovemu.ui.SignInTvViewModel
 import media.sovereign.sovemu.ui.SovTheme
 import media.sovereign.sovemu.ui.Start

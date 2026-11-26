@@ -23,9 +23,12 @@ import media.sovereign.sovemu.BrowserSignIn
 import media.sovereign.sovemu.Settings
 import media.sovereign.sovemu.SovEmuApi
 import media.sovereign.sovemu.core.AuthState
+import media.sovereign.sovemu.core.CustomHeader
+import media.sovereign.sovemu.core.KnownServer
 import media.sovereign.sovemu.core.LaunchAccounts
 import media.sovereign.sovemu.core.LaunchText
 import media.sovereign.sovemu.core.ServerMove
+import media.sovereign.sovemu.core.StoredAccount
 import media.sovereign.sovemu.core.attempt
 
 /** A page of the account screens. */
@@ -95,7 +98,8 @@ sealed interface LaunchPage {
  * sign-in form, each over the last; Back goes down the stack. Each page is a Navigation 3 entry
  * with its own saved state and ViewModel ([AccountPickerViewModel], [ChooseServerViewModel],
  * [CustomHeadersViewModel], [LoginViewModel]), kept in a store that goes with these screens.
- * Opened [fromAccount] (the account menu's *Change user or server*), the picker marks the account
+ * Each surface draws the pages ([pages]: the TV's, or the phone's); the stack, the ViewModels and
+ * where each choice leads are shared. Opened [fromAccount] (the account menu's *Change user or server*), the picker marks the account
  * signed in now, and choosing it, or Back at the bottom, calls [onReturn]. Signing in, choosing
  * someone else or another server moves the app's session, and the activity follows it.
  */
@@ -104,6 +108,7 @@ fun LaunchScreens(
     settings: Settings,
     api: SovEmuApi,
     start: List<LaunchPage>,
+    pages: LaunchPages,
     modifier: Modifier = Modifier,
     fromAccount: Boolean = false,
     onReturn: () -> Unit = {},
@@ -165,7 +170,7 @@ fun LaunchScreens(
                     val model = hiltViewModel<AccountPickerViewModel>()
                     val state by model.uiState.collectAsStateWithLifecycle()
                     val current = state.currentId
-                    WhoIsWatchingScreen(
+                    pages.Picker(
                         accounts = state.accounts,
                         server = state.server,
                         onChoose = { account ->
@@ -180,7 +185,7 @@ fun LaunchScreens(
                 entry<LaunchPage.Servers> {
                     val model = hiltViewModel<ChooseServerViewModel>()
                     val state by model.uiState.collectAsStateWithLifecycle()
-                    ChooseServerScreen(
+                    pages.Servers(
                         servers = state.servers,
                         onChoose = { model.choose(it, ::moved) },
                         onRemove = { model.remove(it, ::moved) },
@@ -196,14 +201,14 @@ fun LaunchScreens(
                 entry<LaunchPage.Headers> {
                     val model = hiltViewModel<CustomHeadersViewModel>()
                     val headers by model.headers.collectAsStateWithLifecycle()
-                    CustomHeadersScreen(headers, onSave = model::save, onDone = ::pop)
+                    pages.Headers(headers, onSave = model::save, onDone = ::pop)
                 }
                 entry<LaunchPage.SignIn> { page ->
                     val model = hiltViewModel<LoginViewModel, LoginViewModel.Factory>(
                         creationCallback = { it.create(page.newServer) },
                     )
                     val all by api.session.allAccounts.collectAsStateWithLifecycle()
-                    LoginScreen(
+                    pages.SignIn(
                         model,
                         // Signing in again as the account signed in now moves nothing: back to
                         // where it was.
@@ -222,4 +227,57 @@ fun LaunchScreens(
             },
         )
     }
+}
+
+/**
+ * How one surface draws the account screens' pages, over [LaunchScreens]' shared stack and
+ * ViewModels: the TV apps' (`:common:feature-tv`) and the phone app's (`:common:feature-mobile`).
+ */
+interface LaunchPages {
+    /** *Who's watching?* */
+    @Composable
+    fun Picker(
+        accounts: List<StoredAccount>,
+        server: String,
+        onChoose: (StoredAccount) -> Unit,
+        onAddUser: () -> Unit,
+        onChangeServer: () -> Unit,
+        focusOn: String?,
+        current: String?,
+    )
+
+    /** *Choose a server*. */
+    @Composable
+    fun Servers(
+        servers: List<KnownServer>,
+        onChoose: (KnownServer) -> Unit,
+        onRemove: (KnownServer) -> Unit,
+        onAddServer: () -> Unit,
+        error: String?,
+        busy: Boolean,
+    )
+
+    /** The proxy headers. */
+    @Composable
+    fun Headers(
+        headers: List<CustomHeader>,
+        onSave: (List<CustomHeader>) -> Unit,
+        onDone: () -> Unit,
+    )
+
+    /**
+     * The sign-in form: [model] signs in; [addUser] heads it *Add a user*; [username] and
+     * [notice] fill it after a sign-in ended; [onChangeServer] opens *Choose a server* (null: no
+     * other servers); [onCustomHeaders] the proxy headers.
+     */
+    @Composable
+    fun SignIn(
+        model: LoginViewModel,
+        onSignedIn: () -> Unit,
+        addUser: Boolean,
+        username: String,
+        notice: String?,
+        onCustomHeaders: () -> Unit,
+        onChangeServer: (() -> Unit)?,
+    )
 }

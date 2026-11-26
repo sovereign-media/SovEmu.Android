@@ -11,6 +11,7 @@ import androidx.compose.ui.test.performImeAction
 import androidx.test.core.app.ApplicationProvider
 import media.sovereign.sovemu.Settings
 import media.sovereign.sovemu.SovEmuApi
+import media.sovereign.sovemu.core.PairingText
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -63,5 +64,37 @@ class LoginScreenTest {
         assertTrue("Done closes the field rather than moving on", noField())
         rule.onNodeWithText("Continue").assertExists()
         address().assertIsFocused()
+    }
+
+    /** A server that offers the browser sign-in too: the TV still signs in by code or password. */
+    private fun showWithBrowser() {
+        val settings = Settings(ApplicationProvider.getApplicationContext())
+        settings.serverUrl = "http://192.168.1.10:8080"
+        settings.signInConfig = media.sovereign.sovemu.core.SignInConfig(
+            address = "192.168.1.10:8080",
+            signInAvailable = true,
+            clientId = "device-id",
+            tokenEndpoint = "/oauth/token",
+            revocationEndpoint = "/oauth/revoke",
+            passwordEndpoint = "/oauth/password",
+            deviceAuthorizationEndpoint = "/oauth/device_authorization",
+            verificationUri = "http://192.168.1.10:8080/device",
+            authorizationEndpoint = "/oauth/authorize",
+            mobileClientId = "mobile-id",
+            mobileRedirectUri = "media.sovereign.sovemu:/oauth2redirect",
+        )
+        rule.setContent {
+            TestApp {
+                LoginScreen(LoginViewModel(false, SovEmuApi(settings), settings), onSignedIn = {})
+            }
+        }
+    }
+
+    @Test
+    fun aTvKeepsItsPasswordFormAndTheCode() {
+        showWithBrowser()
+        assertTrue(rule.onAllNodesWithText("Username").fetchSemanticsNodes().isNotEmpty())
+        rule.onNodeWithText(PairingText.USE_CODE).assertExists()
+        rule.onNodeWithText("Sign in with your browser").assertDoesNotExist()
     }
 }

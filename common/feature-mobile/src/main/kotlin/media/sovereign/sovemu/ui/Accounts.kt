@@ -84,20 +84,19 @@ fun WhoIsWatchingScreen(
     LaunchedEffect(requesters) {
         runCatching { requesters.getOrNull(start)?.requestFocus() }
     }
-    val tv = LocalForm.current.tv
-    val tile = if (tv) 128.dp else 96.dp
+    val tile = 96.dp
 
     LaunchBackdrop(modifier) {
         Text(
             LaunchText.WHO_IS_WATCHING,
             color = Color.White,
-            fontSize = if (tv) 32.sp else 26.sp,
+            fontSize = 26.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(bottom = 24.dp),
         )
         tiles.chunked(columns).forEachIndexed { row, members ->
             Row(
-                horizontalArrangement = Arrangement.spacedBy(if (tv) 24.dp else 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.padding(bottom = 16.dp),
             ) {
                 members.forEachIndexed { column, account ->
@@ -362,45 +361,5 @@ private fun RemoveServerConfirm(server: KnownServer, onCancel: () -> Unit, onRem
                 SovButton(KnownServers.REMOVE, onRemove, icon = Lucide.Trash2)
             }
         }
-    }
-}
-
-/** The signed-out screens' backdrop, as the sign-in form's: the content centred over it. */
-@Composable
-internal fun LaunchBackdrop(
-    modifier: Modifier = Modifier,
-    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
-) {
-    Box(
-        modifier.fillMaxSize()
-            .background(
-                Brush.verticalGradient(listOf(Color(0xFF1E2A4A), Sov.Surface), endY = 1100f),
-            )
-            .safeDrawingPadding()
-            .verticalScroll(rememberScrollState()),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            Modifier.padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            content = content,
-        )
-    }
-}
-
-/** A failure, in the sign-in form's red. */
-@Composable
-internal fun ErrorLine(message: String, modifier: Modifier = Modifier) {
-    Row(
-        modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
-            .background(Color(0x26EF4444))
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        LucideIcon(Lucide.CircleAlert, tint = Sov.Red300, size = 16.dp)
-        Text(message, color = Sov.Red300, fontSize = 14.sp)
     }
 }
