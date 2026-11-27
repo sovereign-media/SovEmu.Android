@@ -22,9 +22,13 @@ object Protocol {
     private const val TYPE_STATS: Byte = 0x04
     private const val TYPE_ACK: Byte = 0x81.toByte()
     private const val TYPE_PIPELINE: Byte = 0x82.toByte()
+    private const val TYPE_LINK: Byte = 0x83.toByte()
 
     /** The longest pipeline message the worker sends (and the longest decoded). */
     const val MAX_PIPELINE_BYTES = 4096
+
+    /** The longest link message the worker sends (and the longest decoded). */
+    const val MAX_LINK_BYTES = 1024
 
     /**
      * This client's view of the stream for the worker (`client stats`): `0x04`, the version,
@@ -154,6 +158,11 @@ object Protocol {
         val kbps: Int = 0,
         /** What held it down when it last fell: `connection`, `client`, or empty. */
         val limitedBy: String = "",
+        /**
+         * The send-bandwidth estimate now, kbit/s, video and audio (0: unknown, an older
+         * server).
+         */
+        val estimateKbps: Int = 0,
     )
 
     data class PipelineAudio(val codec: String = "", val sourceHz: Double = 0.0, val kbps: Int = 0)
@@ -171,24 +180,73 @@ object Protocol {
         val video: PipelineVideo = PipelineVideo(),
         val audio: PipelineAudio = PipelineAudio(),
         val runAhead: Int = 0,
+        /** The check of the connection before the stream started, once done; null without one. */
+        val link: Link? = null,
     )
+
+    /**
+     * The check of the player's connection before a game starts (`0x83`, the version, then
+     * JSON; `Link` in SovEmu.Protocol, #243): while [state] is `probing` no video is sent and
+     * the loading bar shows "Checking your connection"; once `done` the stream starts at
+     * [startKbps]. Every key may be missing.
+     */
+    data class Link(
+        /** `probing`, `done`, or empty for anything else. */
+        val state: String = "",
+        val elapsedMs: Int = 0,
+        val budgetMs: Int = 0,
+        /** `lan`, `direct`, `relay`, `relay-udp`, `relay-tcp` or `relay-tls`; empty while unknown. */
+        val path: String = "",
+        val estimateKbps: Int = 0,
+        val startKbps: Int = 0,
+        val rttMs: Double? = null,
+        /** `ceiling`, `steady`, `trouble`, `budget`, `unavailable` or `off`; empty while probing. */
+        val stoppedBy: String = "",
+    ) {
+        val probing: Boolean get() = state == PROBING
+        val done: Boolean get() = state == DONE
+
+        companion object {
+            const val PROBING = "probing"
+            const val DONE = "done"
+        }
+    }
+
+    /** Decodes a link message, or returns null for anything else. */
+    fun decodeLink(bytes: ByteArray): Link? {
+        if (bytes.size < 3 || bytes.size > MAX_LINK_BYTES) return null
+        if (bytes[0] != TYPE_LINK || bytes[1] != INPUT_VERSION) return null
+        return json(bytes)?.let(::toLink)
+    }
+
+    private fun toLink(json: Any?): Link? {
+        val l = json as? Map<*, *> ?: return null
+        val state = l["state"].str()
+        return Link(
+            state = if (state == Link.PROBING || state == Link.DONE) state else "",
+            elapsedMs = l["elapsed_ms"].num().toInt(),
+            budgetMs = l["budget_ms"].num().toInt(),
+            path = l["path"].str(),
+            estimateKbps = l["estimate_kbps"].num().toInt(),
+            startKbps = l["start_kbps"].num().toInt(),
+            rttMs = (l["rtt_ms"] as? Double)?.takeIf { it.isFinite() },
+            stoppedBy = l["stopped_by"].str(),
+        )
+    }
+
+    /** The JSON after a message's two-byte header, all of it, or null when it is not JSON. */
+    private fun json(bytes: ByteArray): Any? = try {
+        val reader = Buffer().write(bytes, 2, bytes.size - 2).jsonReader()
+        readJson(reader).takeIf { reader.peek() == JsonReader.Token.END_DOCUMENT }
+    } catch (_: Exception) {
+        null
+    }
 
     /** Decodes a pipeline message, or returns null for anything else. */
     fun decodePipeline(bytes: ByteArray): Pipeline? {
         if (bytes.size < 3 || bytes.size > MAX_PIPELINE_BYTES) return null
         if (bytes[0] != TYPE_PIPELINE || bytes[1] != INPUT_VERSION) return null
-        val p = try {
-            val reader = Buffer().write(bytes, 2, bytes.size - 2).jsonReader()
-            readJson(reader).also {
-                if (reader.peek() !=
-                    JsonReader.Token.END_DOCUMENT
-                ) {
-                    return null
-                }
-            }
-        } catch (_: Exception) {
-            return null
-        } as? Map<*, *> ?: return null
+        val p = json(bytes) as? Map<*, *> ?: return null
         val video = p["video"].obj()
         val audio = p["audio"].obj()
         return Pipeline(
@@ -206,6 +264,7 @@ object Protocol {
                 fps = video["fps"].num(),
                 kbps = video["kbps"].num().toInt(),
                 limitedBy = video["limited_by"].str(),
+                estimateKbps = video["estimate_kbps"].num().toInt(),
             ),
             audio = PipelineAudio(
                 codec = audio["codec"].str(),
@@ -213,6 +272,7 @@ object Protocol {
                 kbps = audio["kbps"].num().toInt(),
             ),
             runAhead = p["run_ahead"].num().toInt(),
+            link = toLink(p["link"]),
         )
     }
 

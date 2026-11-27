@@ -24,6 +24,7 @@ import media.sovereign.sovemu.Sessions
 import media.sovereign.sovemu.SovEmuApi
 import media.sovereign.sovemu.Store
 import media.sovereign.sovemu.Stream
+import media.sovereign.sovemu.core.AUTO_SLOT
 import media.sovereign.sovemu.core.Binding
 import media.sovereign.sovemu.core.CheatsModel
 import media.sovereign.sovemu.core.ControllerMapping
@@ -111,6 +112,14 @@ class PlayerViewModel @AssistedInject constructor(
     /** Something to say for a moment (the default controls, a save that failed). */
     val notice: StateFlow<String?> = _notice.asStateFlow()
 
+    private val _saveShot = MutableStateFlow<String?>(null)
+
+    /**
+     * The screenshot of the save being continued, behind the loading screen; null when the game
+     * starts afresh or the save has none.
+     */
+    val saveShot: StateFlow<String?> = _saveShot.asStateFlow()
+
     private val _disc = MutableStateFlow(1)
 
     /** The disc in the tray (1-based), for a multi-disc game. */
@@ -153,8 +162,9 @@ class PlayerViewModel @AssistedInject constructor(
     /** How the game starts, then the session: a save loaded into it, if one was chosen. */
     private suspend fun prepare() {
         try {
+            var saves: List<SaveSlot>? = null
             val how = if (start == Start.Ask) {
-                val saves = attempt { api.states(game.id) }.getOrDefault(emptyList())
+                saves = attempt { api.states(game.id) }.getOrDefault(emptyList())
                 if (saves.any { it.slot == 0 }) {
                     CompletableDeferred<Start>().also { _choice.value = it }.await()
                         .also { _choice.value = null }
@@ -163,6 +173,23 @@ class PlayerViewModel @AssistedInject constructor(
                 }
             } else {
                 start
+            }
+            if (how is Start.FromSlot) {
+                // The save's own screenshot, so the player sees where they will be: the auto
+                // save's comes with the game, another slot's with the saves (asked for only
+                // when they were not, and not waited for).
+                val known = saves
+                if (how.slot == AUTO_SLOT && game.autoSave != null) {
+                    _saveShot.value = game.autoSave?.screenshotUrl
+                } else if (known != null) {
+                    _saveShot.value = known.firstOrNull { it.slot == how.slot }?.screenshotUrl
+                } else {
+                    viewModelScope.launch {
+                        attempt { api.states(game.id) }.onSuccess { all ->
+                            _saveShot.value = all.firstOrNull { it.slot == how.slot }?.screenshotUrl
+                        }
+                    }
+                }
             }
             val session = starting.await()
             if (how is Start.FromSlot) {

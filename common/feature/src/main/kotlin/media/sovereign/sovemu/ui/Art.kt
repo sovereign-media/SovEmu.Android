@@ -4,6 +4,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import coil3.compose.AsyncImage
@@ -26,6 +28,8 @@ fun Art(
     scale: ContentScale = ContentScale.Crop,
     alpha: Float = 1f,
     sizePx: Int? = null,
+    /** [FilterQuality.None] for console pixels (a save's screenshot), scaled without smoothing. */
+    filterQuality: FilterQuality = DrawScope.DefaultFilterQuality,
     onLoaded: ((Boolean) -> Unit)? = null,
     onShape: ((Float) -> Unit)? = null,
 ) {
@@ -45,6 +49,7 @@ fun Art(
         contentScale = scale,
         alpha = alpha,
         modifier = modifier,
+        filterQuality = filterQuality,
         onState = if (
             onLoaded == null && onShape == null
         ) {

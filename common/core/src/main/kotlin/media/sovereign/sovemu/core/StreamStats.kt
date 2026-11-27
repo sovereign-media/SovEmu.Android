@@ -40,6 +40,9 @@ data class StatsReading(
      */
     val audioPlayoutDelay: Double = 0.0,
     val audioPlayoutSamples: Double = 0.0,
+    /** The selected candidate pair's two ends; null before ICE has chosen one. */
+    val local: Candidate? = null,
+    val remote: Candidate? = null,
 )
 
 /**
@@ -85,6 +88,8 @@ data class StreamStats(
     val audioTargetMs: Double? = null,
     /** How long sound then takes to leave the audio output, where the platform says. */
     val audioPlayoutMs: Double? = null,
+    /** How this client reaches the worker ([clientPath]); null before ICE has chosen a pair. */
+    val path: String? = null,
 ) {
     /**
      * The audio's delays as one logfmt line (`adb logcat -s SovEmu.Stats`), null when none is
@@ -156,7 +161,9 @@ data class StreamStats(
      * the bitrate for a client that is not keeping up, and logs it): these values, the client
      * ([client], `android 0.1.0 (Pixel 7, Android 14)`), whether TV game mode was asked for, and
      * once the hardware decoder is configured, its name and whether it decodes in low-latency
-     * mode ([decoder]).
+     * mode ([decoder]), and the path ([clientPath]). Sent from the moment the channel opens,
+     * before any video: the worker checks the connection first (#243), and needs the round trip
+     * and the relay's transport, which only this client can tell, to judge it.
      */
     fun encode(client: String, gameMode: Boolean?, decoder: DecoderSetup? = null): ByteArray =
         Protocol.encodeStats(
@@ -178,6 +185,7 @@ data class StreamStats(
                 "game_mode" to gameMode,
                 "decoder" to decoder?.codec,
                 "low_latency_decode" to decoder?.lowLatency,
+                "path" to path,
             ),
         )
 
@@ -241,6 +249,7 @@ class StatsSampler {
                 StatsReading::audioPlayoutDelay,
                 StatsReading::audioPlayoutSamples,
             ),
+            path = clientPath(now.local),
         )
     }
 }
