@@ -109,11 +109,12 @@ class Store(
     }
 
     /**
-     * A random game with a video snap, for the screensaver: a system picked in proportion to its
-     * games (so a big library shows more), then one of its games. Loads (and keeps) that system's
-     * list the first time; null while there is nothing to show.
+     * A random game for the screensaver, one with a video snap or, failing that, a screenshot: a
+     * system picked in proportion to its games (so a big library shows more), then one of its
+     * games. Loads (and keeps) that system's list the first time; null while there is nothing to
+     * show.
      */
-    suspend fun randomVideoGame(): Game? {
+    suspend fun randomScreensaverGame(): Game? {
         val withGames = (_systems.value as? Load.Ready)?.value?.filter {
             it.gameCount > 0
         }.orEmpty()
@@ -124,7 +125,7 @@ class Store(
             pick < 0
         }
         val index = games(system.id).first { it !is Load.Loading } as? Load.Ready ?: return null
-        return index.value.games.filter { it.video != null }.randomOrNull()
+        return index.value.games.filter { it.video != null || it.image != null }.randomOrNull()
     }
 
     /** After a game: its play count and the home rows changed. */

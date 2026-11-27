@@ -374,7 +374,7 @@ private fun SignedIn(shell: Shell, surface: Surface): Unit = with(shell) {
                 Screensaver(
                     api,
                     remember(systems) { systems.associateBy { it.id } },
-                    store::randomVideoGame,
+                    store::randomScreensaverGame,
                 )
             }
         }

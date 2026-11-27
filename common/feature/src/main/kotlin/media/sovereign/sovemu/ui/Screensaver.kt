@@ -3,6 +3,8 @@ package media.sovereign.sovemu.ui
 import android.view.SurfaceView
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -62,12 +64,19 @@ import media.sovereign.sovemu.core.formatReleaseDate
 /** The longest a game's video plays before the next one (snaps are usually shorter). */
 private const val CLIP_MS = 30_000L
 
+/** How long a game with no video shows its screenshot. */
+private const val SHOT_MS = 12_000L
+
+/** How far a screenshot creeps in while it is shown: still pictures move, as the videos do. */
+private const val SHOT_ZOOM = 1.06f
+
 /** The videos' own sound, under a TV's usual volume: background, not foreground. */
 private const val VIDEO_VOLUME = 0.35f
 
 /**
- * The screensaver: random games' video snaps, one after another, with a panel along the bottom
- * naming the game, its system, release date and players. Shown after a while without input
+ * The screensaver: random games' video snaps, one after another (a game with no video shows its
+ * screenshot instead), with a panel along the bottom naming the game, its system, release date
+ * and players. Shown after a while without input
  * (outside a game); any button or touch ends it (the activity handles that, so the press does
  * nothing else). Videos come from the server's signed `/media/…` URLs through the app's HTTP
  * client.
@@ -91,8 +100,11 @@ fun Screensaver(
             }
     }
     var game by remember { mutableStateOf<Game?>(null) }
+    // The screenshot on screen in place of a video, or null while a video plays.
+    var still by remember { mutableStateOf<String?>(null) }
+    val zoom = remember { Animatable(1f) }
     var aspect by remember { mutableFloatStateOf(4f / 3f) }
-    // Black until the new video draws its first frame, so switching never shows the old one's last.
+    // Black until the new video (or screenshot) draws its first frame, so switching never shows the old one's last.
     var drawing by remember { mutableStateOf(false) }
     val veil by animateFloatAsState(if (drawing) 0f else 1f, tween(400), label = "veil")
 
@@ -115,18 +127,28 @@ fun Screensaver(
         }
     }
 
-    // One game after another: until its video ends (or fails), at most CLIP_MS.
+    // One game after another: until its video ends (or fails), at most CLIP_MS; a game with no
+    // video shows its screenshot for SHOT_MS.
     LaunchedEffect(player) {
         while (true) {
             val next = nextGame()
             val url = next?.let { api.media(it.video) }
-            if (next == null || url == null) {
+            if (next == null || (url == null && next.image == null)) {
                 delay(2_000)
                 continue
             }
             drawing = false
             delay(400) // the veil closes over the old video first
             game = next
+            if (url == null) {
+                player.stop()
+                player.clearMediaItems()
+                still = next.image
+                zoom.snapTo(1f)
+                zoom.animateTo(SHOT_ZOOM, tween(SHOT_MS.toInt(), easing = LinearEasing))
+                continue
+            }
+            still = null
             val done = CompletableDeferred<Unit>()
             val watch = object : Player.Listener {
                 override fun onPlaybackStateChanged(state: Int) {
@@ -151,16 +173,32 @@ fun Screensaver(
     // The video fills the space above the bar, at its own shape: the bar covers none of it.
     Column(modifier.fillMaxSize().background(Color.Black)) {
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-            AndroidView(
-                // In front of any other video surface (a paused game's stream), or it would play
-                // unseen behind it.
-                factory = {
-                    SurfaceView(it).apply {
-                        setZOrderMediaOverlay(true)
-                    }.also(player::setVideoSurfaceView)
-                },
-                modifier = Modifier.aspectRatio(aspect),
-            )
+            val shot = still
+            if (shot == null) {
+                AndroidView(
+                    // In front of any other video surface (a paused game's stream), or it would
+                    // play unseen behind it.
+                    factory = {
+                        SurfaceView(it).apply {
+                            setZOrderMediaOverlay(true)
+                        }.also(player::setVideoSurfaceView)
+                    },
+                    modifier = Modifier.aspectRatio(aspect),
+                    onRelease = player::clearVideoSurfaceView,
+                )
+            } else {
+                // The surface is gone while a screenshot shows: it is drawn above the window, and
+                // would hide the picture behind the last video's frame.
+                Art(
+                    shot,
+                    Modifier.fillMaxSize().graphicsLayer {
+                        scaleX = zoom.value
+                        scaleY = zoom.value
+                    },
+                    scale = ContentScale.Fit,
+                    onLoaded = { if (it) drawing = true },
+                )
+            }
             Box(Modifier.fillMaxSize().graphicsLayer { alpha = veil }.background(Color.Black))
         }
         AnimatedContent(
