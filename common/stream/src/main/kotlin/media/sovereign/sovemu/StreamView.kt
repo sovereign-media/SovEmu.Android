@@ -3,7 +3,6 @@ package media.sovereign.sovemu
 import android.content.Context
 import android.view.SurfaceView
 import org.webrtc.EglBase
-import org.webrtc.GlRectDrawer
 import org.webrtc.RendererCommon
 import org.webrtc.SurfaceEglRenderer
 import org.webrtc.VideoFrame
@@ -17,7 +16,8 @@ import org.webrtc.VideoSink
  * WebRTC's SurfaceViewRenderer crops each frame to the view's shape (its "layout aspect ratio"
  * is the view's), so a SNES frame (256×224, nearly square) drawn into a 4:3 view lost its top
  * and bottom. Here the layout aspect ratio is always the frame's own, so the renderer crops
- * nothing and stretches the whole frame onto the surface.
+ * nothing and stretches the whole frame onto the surface, drawn by [SharpDrawer] so each console
+ * pixel stays a sharp block rather than a blur.
  */
 class StreamView(context: Context, egl: EglBase.Context) :
     SurfaceView(context),
@@ -35,7 +35,7 @@ class StreamView(context: Context, egl: EglBase.Context) :
                 }
             },
             EglBase.CONFIG_PLAIN,
-            GlRectDrawer(),
+            SharpDrawer(),
         )
         holder.addCallback(renderer)
     }
