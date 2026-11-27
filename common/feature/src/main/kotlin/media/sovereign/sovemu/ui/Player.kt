@@ -579,7 +579,7 @@ private enum class MenuPage { Main, Save, Load, Cheats, Disc }
 /**
  * The in-game menu, as the web client's: a panel over the paused game, in the loading screen's
  * [GameOverlay] with the game's own frame behind (its [status] and [network] as the loading
- * screen shows them), the panel bottom right where the loading screen's spinner is. The focus starts on
+ * screen shows them), the panel centred where the loading screen's bar is. The focus starts on
  * Resume and cannot leave the panel; Back (B on a controller) resumes. Save and Load open a
  * picker of the game's slots in the same panel, each with its screenshot and age; Back there
  * returns to the menu.
@@ -622,11 +622,10 @@ private fun InGameMenu(
             if (first.requestFocus()) return@LaunchedEffect
         }
     }
-    // The panel is the overlay's corner, bottom right, so the game's details bottom left stay
-    // in view beside it.
-    GameOverlay(game, system, status, network, modifier, corner = {
+    GameOverlay(game, system, status, network, modifier) {
         Column(
             Modifier
+                .align(Alignment.Center)
                 .width(if (page == MenuPage.Main) 360.dp else 480.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(Sov.Panel)
@@ -727,7 +726,7 @@ private fun InGameMenu(
                 }
             }
         }
-    })
+    }
 }
 
 /**
@@ -869,10 +868,10 @@ private fun Splash(
 
 /**
  * The loading screen's overlay, shared with the in-game menu: a scrim over whatever is behind
- * (the loading picture, or the paused game's own frame), where the player is ([network]) in a
- * chip top right, the game bottom left (its title and stars, its system and year, and
- * [status]) with [corner] beside it bottom right (the spinner, or the menu's panel), and
- * [content] in the TV-safe area between.
+ * (the loading picture, or the paused game's own frame), the game top left (its title and
+ * stars, its system and year) with where the player is ([network]) in a chip top right, the
+ * stream's [status] bottom left with [corner] bottom right (the spinner), and [content] (the
+ * start's bar, or the menu's panel) in the TV-safe area between.
  */
 @Composable
 private fun GameOverlay(
@@ -884,16 +883,25 @@ private fun GameOverlay(
     corner: @Composable () -> Unit = {},
     content: @Composable BoxScope.() -> Unit = {},
 ) {
-    // An even scrim, deeper along the bottom where the text and the spinner sit: 55%, and
-    // about 80% at the bottom edge. One layer, drawn once.
+    // An even scrim, deeper along the top and the bottom where the text sits: 55%, and about
+    // 80% at either edge. One layer, drawn once.
     Box(
         modifier.fillMaxSize().drawBehind {
             drawRect(SCRIM)
-            val top = size.height * 0.6f
+            val band = size.height * 0.4f
             drawRect(
-                Brush.verticalGradient(listOf(Color.Transparent, SCRIM), top, size.height),
-                Offset(0f, top),
-                Size(size.width, size.height - top),
+                Brush.verticalGradient(listOf(SCRIM, Color.Transparent), 0f, band),
+                Offset.Zero,
+                Size(size.width, band),
+            )
+            drawRect(
+                Brush.verticalGradient(
+                    listOf(Color.Transparent, SCRIM),
+                    size.height - band,
+                    size.height,
+                ),
+                Offset(0f, size.height - band),
+                Size(size.width, band),
             )
         },
     ) {
@@ -902,41 +910,43 @@ private fun GameOverlay(
             val across = max(24.dp, maxWidth * 0.05f)
             val down = max(24.dp, maxHeight * 0.05f)
             Box(Modifier.fillMaxSize().padding(horizontal = across, vertical = down)) {
-                network?.let { NetworkChip(it, Modifier.align(Alignment.TopEnd)) }
+                Row(Modifier.align(Alignment.TopCenter).fillMaxWidth()) {
+                    Column(Modifier.weight(1f)) {
+                        // The title, then its rating: a long title gives way, not the stars.
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        ) {
+                            Text(
+                                game.title,
+                                color = Color.White,
+                                fontSize = 32.sp,
+                                fontWeight = FontWeight.Black,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false),
+                            )
+                            game.rating?.let { Rating(it) }
+                        }
+                        // The system by its name, as the screensaver gives it, and the year.
+                        Text(
+                            listOfNotNull(system.name, game.year).joinToString(" · "),
+                            color = Sov.Slate400,
+                            fontSize = 16.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    network?.let {
+                        Spacer(Modifier.width(24.dp))
+                        NetworkChip(it)
+                    }
+                }
                 Row(
                     Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
                     verticalAlignment = Alignment.Bottom,
                 ) {
-                    Column(
-                        Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Column {
-                            // The title, then its rating: a long title gives way, not the stars.
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            ) {
-                                Text(
-                                    game.title,
-                                    color = Color.White,
-                                    fontSize = 32.sp,
-                                    fontWeight = FontWeight.Black,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f, fill = false),
-                                )
-                                game.rating?.let { Rating(it) }
-                            }
-                            // The system by its name, as the screensaver gives it, and the year.
-                            Text(
-                                listOfNotNull(system.name, game.year).joinToString(" · "),
-                                color = Sov.Slate400,
-                                fontSize = 16.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
+                    Box(Modifier.weight(1f)) {
                         status?.let { Text(it, color = Sov.Slate500, fontSize = 13.sp) }
                     }
                     Spacer(Modifier.width(24.dp))
