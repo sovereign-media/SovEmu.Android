@@ -9,8 +9,8 @@ import media.sovereign.sovemu.core.graphql.type.StartPhase
 
 // The loading screen while a game starts, as the web client's (SovEmu.Web/src/lib/launch.ts):
 // the server's phases (saving the last session, starting the emulator, opening the core, reading
-// the game) turned into one bar that only moves forward, then the wait for the first picture,
-// which the server cannot see.
+// the game) turned into one bar that only moves forward, then connecting, the worker's check of
+// the connection (#243), and the wait for the first picture, which the server cannot see.
 //
 // Reading the game is most of a slow start. When the server knows how much it will read the bar
 // is exact; when the core reads a disc itself it is not, and the bar eases towards the end of
@@ -42,8 +42,8 @@ private val PHASES = mapOf(
     StartPhase.STOPPING to Phase(0.0, 0.08, "Saving your last game", 3000.0),
     StartPhase.LAUNCHING to Phase(0.08, 0.12, "Starting the emulator", 1000.0),
     StartPhase.CORE to Phase(0.12, 0.18, "Loading the emulator", 1500.0),
-    StartPhase.CONTENT to Phase(0.18, 0.97, "Loading the game", 15000.0),
-    StartPhase.READY to Phase(1.0, 1.0, "Ready", 1.0),
+    StartPhase.CONTENT to Phase(0.18, 0.85, "Loading the game", 15000.0),
+    StartPhase.READY to Phase(0.85, 0.85, "Ready", 1.0),
     StartPhase.FAILED to Phase(0.0, 0.0, "Could not start", 1.0),
 )
 
@@ -87,18 +87,75 @@ fun describeStart(s: StartStatus): LaunchView {
 /** After this long without a picture the wait says how to get out of it. */
 const val NO_PICTURE_HINT_MS = 20_000L
 
+/** Where the check of the connection takes the bar: from the session being ready to almost full. */
+private const val NETWORK_FROM = 0.85
+private const val NETWORK_TO = 0.97
+
 /**
- * The last stretch of a start, which the server cannot see: the session is ready, and the game
- * has yet to draw its first picture (a console's BIOS boots for seconds; a save is loaded once
- * the game is up). The bar is full; the detail counts the wait. (Back, where the web says Escape.)
+ * The session is ready and this app is reaching it (ICE, then DTLS): nothing to show of the
+ * game yet, and the worker's check of the connection comes once connected.
+ */
+fun describeConnecting(waitedMs: Long): LaunchView {
+    val seconds = waitedMs / 1000
+    return LaunchView("Connecting", if (seconds >= 3) "$seconds s" else "", NETWORK_FROM)
+}
+
+/**
+ * The check of the player's connection before the stream starts (`0x83`, #243): the worker
+ * sends no video meanwhile, so it runs between the session being ready and the first picture.
+ * The bar follows its time against its budget. Where the player is shows in a chip of its own
+ * ([networkLabel]).
+ */
+fun describeLink(link: Protocol.Link): LaunchView {
+    val within = if (link.budgetMs > 0) {
+        minOf(1.0, link.elapsedMs.toDouble() / link.budgetMs)
+    } else {
+        1.0
+    }
+    return LaunchView(
+        "Checking your connection",
+        "",
+        NETWORK_FROM + (NETWORK_TO - NETWORK_FROM) * within,
+    )
+}
+
+/**
+ * The last stretch of a start, which the server cannot see: the session is ready (and the
+ * connection checked), and the game has yet to draw its first picture (a console's BIOS boots
+ * for seconds; a save is loaded once the game is up). The detail counts the wait. (Back, where
+ * the web says Escape.)
  */
 fun describeFirstPicture(waitedMs: Long): LaunchView {
     val seconds = waitedMs / 1000
     val parts = mutableListOf<String>()
     if (seconds >= 3) parts += "$seconds s"
     if (waitedMs >= NO_PICTURE_HINT_MS) parts += "still no picture: Back opens the menu"
-    return LaunchView("Starting the game", parts.joinToString(" · "), 1.0)
+    return LaunchView("Starting the game", parts.joinToString(" · "), NETWORK_TO)
 }
+
+/**
+ * The loading screen's background: a picture ([url], a server path), and how it is drawn:
+ * [pixelated], a save's screenshot at the console's own resolution, drawn with sharp pixels;
+ * [blurred], box art, which is not a picture of the game being played, blurred into a backdrop.
+ */
+data class LoadingBackground(val url: String, val pixelated: Boolean, val blurred: Boolean)
+
+/**
+ * What the loading screen shows behind the start (#243), first found of: the screenshot of the
+ * save being continued ([saveShot]), the game's own screenshot ([image]), its box art ([boxArt],
+ * blurred). Null leaves the system's colour.
+ */
+fun loadingBackground(saveShot: String?, image: String?, boxArt: String?): LoadingBackground? =
+    when {
+        !saveShot.isNullOrEmpty() -> LoadingBackground(saveShot, pixelated = true, blurred = false)
+        !image.isNullOrEmpty() -> LoadingBackground(image, pixelated = false, blurred = false)
+        !boxArt.isNullOrEmpty() -> LoadingBackground(boxArt, pixelated = false, blurred = true)
+        else -> null
+    }
+
+/** The loading screen's status line once the emulator is up: `FCEUmm · 256×224 @ 60.10 fps`. */
+fun streamInfo(core: String, width: Int, height: Int, fps: Double): String =
+    String.format(Locale.ROOT, "%s · %d×%d @ %.2f fps", core, width, height, fps)
 
 /** Keeps a bar from ever moving backwards (a phase can report less than the one before). */
 class ForwardOnly {
@@ -127,16 +184,19 @@ data class StartScreen(val label: String, val detail: String = "", val fraction:
 object GameStart {
     /**
      * Under the loading screen, how to get out: the in-game menu (which has Quit) opens over it.
-     * A controller's B goes to the game while it starts (some wait for a button), so on a
-     * controller it is the guide/home button or Select+Start; on a remote, Back.
+     * A controller's B goes to the game while it starts (some wait for a button), so the menu is
+     * Back on a remote, or Select+Start on a controller (its guide button works too). As terse
+     * as the web's "Menu: Esc / Select+Start".
      */
-    const val MENU_HINT =
-        "To quit, open the menu: Back on the remote, or Home (or Select + Start) on a controller."
+    const val MENU_HINT = "Menu: Back / Select+Start"
 
     /**
      * [error] (a failure to start, or a lost connection) wins; then the session starting
      * ([ready] not yet), with the server's [progress] once it has said (a FAILED start shows its
-     * error); then, until [pictureShown], the wait for it, [waitedMs] so far.
+     * error); then, until [pictureShown], connecting until the worker's [link] check is heard
+     * from, the check while it is probing, and the wait for the picture, [waitedMs] since the
+     * session was ready. An older worker never sends a check: it reads "Connecting" until its
+     * picture, which comes at once.
      */
     fun screen(
         title: String,
@@ -146,6 +206,7 @@ object GameStart {
         ready: Boolean,
         pictureShown: Boolean,
         waitedMs: Long,
+        link: Protocol.Link? = null,
     ): StartScreen? {
         if (error != null) return StartScreen(error)
         if (!ready) {
@@ -158,7 +219,11 @@ object GameStart {
             }
         }
         if (pictureShown) return null
-        val view = describeFirstPicture(waitedMs)
+        val view = when {
+            link == null -> describeConnecting(waitedMs)
+            link.probing -> describeLink(link)
+            else -> describeFirstPicture(waitedMs)
+        }
         return StartScreen(view.label, view.detail, view.fraction)
     }
 }

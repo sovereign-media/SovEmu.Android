@@ -310,4 +310,107 @@ class StreamStatsTest {
             decoderRow(DecoderSetup("c2.amlogic.avc.decoder", "video/avc", emptyList())),
         )
     }
+
+    private val host = Candidate("host", "udp")
+    private fun relay(protocol: String?) = Candidate("relay", "udp", protocol)
+    private val measured = Protocol.Link(
+        state = Protocol.Link.DONE,
+        elapsedMs = 640,
+        budgetMs = 2000,
+        path = "relay-udp",
+        estimateKbps = 18200,
+        startKbps = 12000,
+        rttMs = 24.5,
+        stoppedBy = "ceiling",
+    )
+
+    @Test
+    fun `the path this client reports says which of the relay's transports it uses`() {
+        // The relay forwards UDP to the worker whatever the client used: without this the
+        // worker could not start a TCP-relayed player lower, as it must. (link.test.ts)
+        assertEquals("relay-tcp", clientPath(relay("tcp")))
+        assertEquals("relay-tls", clientPath(relay("tls")))
+        assertEquals("relay-udp", clientPath(relay("udp")))
+        assertEquals("relay-udp", clientPath(relay(null)))
+        assertEquals("direct", clientPath(host))
+        assertEquals("direct", clientPath(Candidate("srflx")))
+        assertNull(clientPath(null))
+    }
+
+    @Test
+    fun `before any video the stats still carry the round trip and the path`() {
+        // #243: the worker sends no video while it checks the connection, and judges the link
+        // by the round trip and the relay's transport, which only this client can tell.
+        val probing = StatsReading(
+            atMs = 0,
+            bytesReceived = 0.0,
+            jitterBufferDelay = 0.0,
+            jitterBufferEmittedCount = 0.0,
+            totalDecodeTime = 0.0,
+            framesDecoded = 0.0,
+            framesPerSecond = null,
+            width = null,
+            height = null,
+            packetsLost = 0,
+            networkRttMs = 24.0,
+            local = relay("tcp"),
+            remote = host,
+        )
+        val sample = StatsSampler().sample(probing, emptyList())
+        val json = String(sample.encode("app", null).let { it.copyOfRange(2, it.size) })
+        assertEquals(
+            """{"client":"app","net_rtt_ms":24,"packets_lost":0,"path":"relay-tcp"}""",
+            json,
+        )
+    }
+
+    @Test
+    fun `the Network rows name the pair, the transport and the network`() {
+        assertEquals("STUN → host", pairLabel(Candidate("srflx"), host))
+        assertEquals("relay → host", pairLabel(relay("udp"), host))
+        assertNull(pairLabel(host, null))
+        assertEquals("TCP to the relay", transportLabel(relay("tcp")))
+        assertEquals("UDP", transportLabel(host))
+        // The loading screen says only where the player is; the details are in the overlay.
+        assertEquals("Home network", networkLabel("lan"))
+        assertEquals("Remote", networkLabel("relay-tcp"))
+        assertNull(networkLabel(""))
+        assertEquals("18.2 Mbit/s", rateLabel(18200))
+        assertEquals("850 kbit/s", rateLabel(850))
+    }
+
+    @Test
+    fun `measured at start says what was measured, and when nothing was`() {
+        assertEquals("18.2 Mbit/s in 0.6 s (reached the ceiling)", measuredLabel(measured))
+        assertEquals(
+            "not measured (turned off)",
+            measuredLabel(measured.copy(stoppedBy = "off", estimateKbps = 0)),
+        )
+        assertEquals("not measured", measuredLabel(null))
+        assertEquals(
+            "not measured",
+            measuredLabel(measured.copy(state = Protocol.Link.PROBING)),
+        )
+    }
+
+    @Test
+    fun `this app's own Network rows show even with an older worker`() {
+        // TURN server, transport and path come from getStats: an older worker, or the check
+        // turned off, must not hide them.
+        assertEquals(
+            listOf(
+                "TURN server" to "Yes",
+                "Transport" to "TCP to the relay",
+                "Path" to "relay → host",
+                "Measured at start" to "not measured",
+            ),
+            networkRows(relay("tcp"), host, null, 0),
+        )
+        val full = networkRows(relay("udp"), host, measured, 15400)
+        assertEquals("Network" to "Remote", full.first())
+        assertEquals(
+            listOf("Started at" to "12.0 Mbit/s", "Estimate now" to "15.4 Mbit/s"),
+            full.takeLast(2),
+        )
+    }
 }

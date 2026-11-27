@@ -118,7 +118,8 @@ class ProtocolTest {
         val json = """{"renderer":"llvmpipe","renderer_software":true,"video":{"codec":"h264",""" +
             """"encoder":"x264","hardware":false,""" +
             """"fallbacks":[{"encoder":"vaapi","reason":"no device"}],""" +
-            """"width":256,"height":224,"fps":60.0,"kbps":3500,"limited_by":"client"},""" +
+            """"width":256,"height":224,"fps":60.0,"kbps":3500,"limited_by":"client",""" +
+            """"estimate_kbps":4200},""" +
             """"audio":{"codec":"opus","source_hz":32040.0,"kbps":128},""" +
             """"run_ahead":1}"""
         assertEquals(
@@ -135,6 +136,7 @@ class ProtocolTest {
                     fps = 60.0,
                     kbps = 3500,
                     limitedBy = "client",
+                    estimateKbps = 4200,
                 ),
                 audio = Protocol.PipelineAudio(codec = "opus", sourceHz = 32040.0, kbps = 128),
                 runAhead = 1,
@@ -170,5 +172,58 @@ class ProtocolTest {
         )
         // An ack's decoder leaves a pipeline alone, so the app can try each in turn.
         assertNull(Protocol.decodeAck(pipeline("{\"renderer\":\"llvmpipe\",\"run_ahead\":0}")))
+    }
+
+    private fun link(json: String, type: Int = 0x83) =
+        byteArrayOf(type.toByte(), 1) + json.toByteArray(Charsets.UTF_8)
+
+    /** `LINK_VECTOR` in SovEmu.Protocol and protocol.test.ts. */
+    @Test
+    fun decodesTheRustReferenceLink() {
+        val json = """{"state":"done","elapsed_ms":640,"budget_ms":2000,"path":"relay-udp",""" +
+            """"estimate_kbps":18200,"start_kbps":12000,"rtt_ms":24.5,"stopped_by":"ceiling"}"""
+        assertEquals(
+            Protocol.Link(
+                state = "done",
+                elapsedMs = 640,
+                budgetMs = 2000,
+                path = "relay-udp",
+                estimateKbps = 18200,
+                startKbps = 12000,
+                rttMs = 24.5,
+                stoppedBy = "ceiling",
+            ),
+            Protocol.decodeLink(link(json)),
+        )
+    }
+
+    @Test
+    fun readsACheckStillRunningAndRefusesAnythingElse() {
+        // While probing the worker has no result yet: the app must still read the progress.
+        val probing = Protocol.decodeLink(
+            link("""{"state":"probing","elapsed_ms":100,"newer":1}"""),
+        )
+        assertEquals(Protocol.Link(state = "probing", elapsedMs = 100), probing)
+        assertEquals("", Protocol.decodeLink(link("""{"state":"later"}"""))?.state)
+        assertNull(Protocol.decodeLink(link("[1]")))
+        assertNull(Protocol.decodeLink(link("{}", type = 0x82)))
+        assertNull(Protocol.decodeLink(bytes(0x83, 1)))
+        assertNull(
+            Protocol.decodeLink(link("{\"a\":\"" + "x".repeat(Protocol.MAX_LINK_BYTES) + "\"}")),
+        )
+        // Each decoder leaves the other's messages alone, so the app can try each in turn.
+        assertNull(Protocol.decodePipeline(link("{}")))
+    }
+
+    @Test
+    fun thePipelineCarriesTheCheckOnceDone() {
+        val decoded = Protocol.decodePipeline(
+            pipeline("""{"link":{"state":"done","path":"lan","start_kbps":9000}}"""),
+        )
+        assertEquals(
+            Protocol.Link(state = "done", path = "lan", startKbps = 9000),
+            decoded?.link,
+        )
+        assertNull(Protocol.decodePipeline(pipeline("{}"))?.link)
     }
 }

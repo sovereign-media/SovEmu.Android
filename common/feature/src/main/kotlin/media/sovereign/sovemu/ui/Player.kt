@@ -16,9 +16,11 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -31,6 +33,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,6 +41,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -49,11 +53,15 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -71,6 +79,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.max
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -104,6 +113,7 @@ import media.sovereign.sovemu.core.GameDecoration
 import media.sovereign.sovemu.core.GameModeState
 import media.sovereign.sovemu.core.GameStart
 import media.sovereign.sovemu.core.LatencyHistory
+import media.sovereign.sovemu.core.LoadingBackground
 import media.sovereign.sovemu.core.MappingBook
 import media.sovereign.sovemu.core.Protocol
 import media.sovereign.sovemu.core.QualityNotice
@@ -117,10 +127,14 @@ import media.sovereign.sovemu.core.StatsSampler
 import media.sovereign.sovemu.core.SystemSummary
 import media.sovereign.sovemu.core.describeStart
 import media.sovereign.sovemu.core.formatAgo
+import media.sovereign.sovemu.core.loadingBackground
+import media.sovereign.sovemu.core.networkLabel
+import media.sovereign.sovemu.core.networkRows
 import media.sovereign.sovemu.core.newStartId
 import media.sovereign.sovemu.core.pipelineRows
 import media.sovereign.sovemu.core.qualityNotice
 import media.sovereign.sovemu.core.slotRows
+import media.sovereign.sovemu.core.streamInfo
 import media.sovereign.sovemu.minimalPostProcessingSupported
 import org.webrtc.PeerConnection
 
@@ -216,6 +230,9 @@ fun PlayerScreen(
      */
     val choice by model.choice.collectAsStateWithLifecycle()
 
+    /** The screenshot of the save being continued, behind the loading screen. */
+    val saveShot by model.saveShot.collectAsStateWithLifecycle()
+
     // The whole frame, scaled into the box below: never cropped (StreamView).
     val renderer = remember { StreamView(context, WebRtc.egl.eglBaseContext) }
     // The artwork framing the picture (its system's decoration), fetched alongside the start.
@@ -284,9 +301,11 @@ fun PlayerScreen(
         controller.toGame = !isPaused
         paused(isPaused)
     }
-    // The stream's stats: sampled once a second while playing, as on the web, and each sample
-    // sent to the worker, which adapts the video bitrate to how this device keeps up and logs
-    // it beside its own health lines (`client stats` in the server's log). With the overlay on
+    // The stream's stats: sampled once a second from the moment the stream exists, as on the
+    // web, and each sample sent to the worker once the channel is open. Before the first picture
+    // the worker checks the connection with them (the round trip and the path, #243); then it
+    // adapts the video bitrate to how this device keeps up and logs them beside its own health
+    // lines (`client stats` in the server's log). With the overlay on
     // they are also shown, and echoed to logcat (`adb logcat -s SovEmu.Stats`).
     val currentGameMode by rememberUpdatedState(gameMode)
     LaunchedEffect(stats, stream) {
@@ -313,7 +332,13 @@ fun PlayerScreen(
             if (++audioTick % 10 == 0) sample.audioLogfmt()?.let { Log.i(STATS_TAG, it) }
             if (!stats) continue
             readout = sample.rows() + ("TV game mode" to gameModeState.label) +
-                pipelineRows(s.pipeline.value, sample.decoder, setup)
+                pipelineRows(s.pipeline.value, sample.decoder, setup) +
+                networkRows(
+                    reading.local,
+                    reading.remote,
+                    s.link.value,
+                    s.pipeline.value?.video?.estimateKbps ?: 0,
+                )
             latencyHistory.add(
                 sample.inputToFrameMs?.toDouble(),
                 sample.estimateMs,
@@ -349,6 +374,10 @@ fun PlayerScreen(
     // seconds after the session is ready. A long wait adds a hint.
     val pictureShown by remember(stream) { stream?.firstFrame ?: flowOf(false) }
         .collectAsStateWithLifecycle(false)
+
+    // The worker's check of the connection, which comes between connecting and the picture.
+    val link by remember(stream) { stream?.link ?: flowOf(null) }
+        .collectAsStateWithLifecycle(null)
     LaunchedEffect(info, pictureShown) {
         if (info == null || pictureShown) return@LaunchedEffect
         val since = SystemClock.uptimeMillis()
@@ -420,7 +449,18 @@ fun PlayerScreen(
             ready = info != null,
             pictureShown,
             waitedMs,
-        )?.let { Splash(game, system, it, choice) }
+            link,
+        )?.let {
+            Splash(
+                game,
+                system,
+                it,
+                choice,
+                background = loadingBackground(saveShot, game.image, game.cover ?: game.thumb),
+                status = info?.let { s -> streamInfo(s.core, s.width, s.height, s.fps) },
+                network = networkLabel(link?.path ?: ""),
+            )
+        }
         if (touchControls && !menuOpen && !controllersOpen && info != null && error == null) {
             TouchController(controller, Modifier.fillMaxSize().safeDrawingPadding())
         }
@@ -731,8 +771,12 @@ private fun SlotItem(row: SlotRow, modifier: Modifier = Modifier, onClick: () ->
 }
 
 /**
- * While the game loads: its artwork, title and what is happening, and Continue / Start over when
- * asked.
+ * While the game loads (#243, as the web's `LoadingScreen`): a darkened picture behind
+ * ([background]: the save being continued, the game, its box blurred, or the system's colour),
+ * the bar dead centre with what the start is doing, where the player is ([network]) in a chip
+ * top right, the game bottom left (its badge, title and [status]) and a spinner bottom right,
+ * which a failure replaces with the alert. Continue / Start over, when asked, is centred in
+ * the bar's place.
  */
 @Composable
 private fun Splash(
@@ -740,82 +784,179 @@ private fun Splash(
     system: SystemSummary,
     screen: StartScreen,
     choice: CompletableDeferred<Start>?,
+    background: LoadingBackground?,
+    status: String?,
+    network: String?,
 ) {
     val colour = system.colour()
-    val brush = remember(colour) { tile(colour, 0.25f) }
-    Box(Modifier.fillMaxSize().background(Sov.Surface)) {
-        Box(Modifier.fillMaxSize().background(brush).graphicsLayer { alpha = 0.35f })
-        Art(
-            game.image ?: game.thumb,
-            Modifier.fillMaxSize(),
-            alpha = 0.25f,
-            sizePx = if (game.image == null) 32 else null,
-        )
-        Column(
-            Modifier.align(Alignment.Center).padding(32.dp).widthIn(max = 560.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            SystemBadge(system.short, colour)
-            Text(
-                game.title,
-                color = Color.White,
-                fontSize = 32.sp,
-                fontWeight = FontWeight.Black,
-                textAlign = TextAlign.Center,
+    val failed = screen.fraction == null
+    Box(Modifier.fillMaxSize()) {
+        when {
+            background == null -> {
+                val brush = remember(colour) { tile(colour, 0.25f) }
+                Box(Modifier.fillMaxSize().background(brush))
+            }
+
+            // Box art is not a picture of the game: a 32 px copy, scaled up, blurs it into a
+            // backdrop (no blur effect: TVs are fill-rate bound).
+            background.blurred -> Art(background.url, Modifier.fillMaxSize(), sizePx = 32)
+
+            else -> Art(
+                background.url,
+                Modifier.fillMaxSize(),
+                filterQuality = if (background.pixelated) {
+                    FilterQuality.None
+                } else {
+                    FilterQuality.Low
+                },
             )
-            if (choice != null) {
-                val first = remember { FocusRequester() }
-                LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SovButton(
-                        "Continue",
-                        { choice.complete(Start.Continue) },
-                        Modifier.focusRequester(first),
-                        icon = Lucide.Play,
-                        filledIcon = true,
-                    )
-                    SovButton(
-                        "Start over",
-                        { choice.complete(Start.New) },
-                        variant = Variant.Outline,
-                        icon = Lucide.RotateCcw,
-                    )
-                }
-            } else {
-                screen.fraction?.let { StartBar(it, Modifier.width(400.dp)) }
-                Text(
-                    screen.label,
-                    color = Sov.Slate100,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.Center,
+        }
+        // An even scrim, deeper along the bottom where the text and the spinner sit: 55%, and
+        // about 80% at the bottom edge. One layer, drawn once.
+        Box(
+            Modifier.fillMaxSize().drawBehind {
+                drawRect(SCRIM)
+                val top = size.height * 0.6f
+                drawRect(
+                    Brush.verticalGradient(listOf(Color.Transparent, SCRIM), top, size.height),
+                    Offset(0f, top),
+                    Size(size.width, size.height - top),
                 )
-                if (screen.detail.isNotEmpty()) {
-                    Text(
-                        screen.detail,
-                        color = Sov.Slate400,
-                        fontSize = 16.sp,
-                        textAlign = TextAlign.Center,
-                    )
+            },
+        )
+        // TV-safe insets on a TV (about 5% of the screen), and a margin on a phone.
+        BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding()) {
+            val across = max(24.dp, maxWidth * 0.05f)
+            val down = max(24.dp, maxHeight * 0.05f)
+            Box(Modifier.fillMaxSize().padding(horizontal = across, vertical = down)) {
+                network?.let { NetworkChip(it, Modifier.align(Alignment.TopEnd)) }
+                if (choice == null) {
+                    StartProgress(screen, failed, Modifier.align(Alignment.Center))
                 }
-                // How to leave a start that is slow, stuck or failed: B goes to the game.
-                Text(
-                    GameStart.MENU_HINT,
-                    color = Sov.Slate400,
-                    fontSize = 13.sp,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(top = 8.dp),
+                Row(
+                    Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+                    verticalAlignment = Alignment.Bottom,
+                ) {
+                    Column(
+                        Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        SystemBadge(system.short, colour, large = true)
+                        Text(
+                            game.title,
+                            color = Color.White,
+                            fontSize = 32.sp,
+                            fontWeight = FontWeight.Black,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        status?.let { Text(it, color = Sov.Slate300, fontSize = 14.sp) }
+                    }
+                    Spacer(Modifier.width(24.dp))
+                    if (failed) {
+                        LucideIcon(Lucide.CircleAlert, tint = Sov.Red300, size = 40.dp)
+                    } else {
+                        CircularProgressIndicator(
+                            Modifier.size(40.dp),
+                            color = Color.White.copy(alpha = 0.8f),
+                            strokeWidth = 3.dp,
+                        )
+                    }
+                }
+            }
+        }
+        if (choice != null) {
+            val first = remember { FocusRequester() }
+            // Once, as the question shows: Continue is where the player starts.
+            LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+            Row(
+                Modifier.align(Alignment.Center),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                SovButton(
+                    "Continue",
+                    { choice.complete(Start.Continue) },
+                    Modifier.focusRequester(first),
+                    icon = Lucide.Play,
+                    filledIcon = true,
+                )
+                SovButton(
+                    "Start over",
+                    { choice.complete(Start.New) },
+                    variant = Variant.Outline,
+                    icon = Lucide.RotateCcw,
                 )
             }
         }
     }
 }
 
-/** The start's bar, gliding to each new [fraction] (polled four times a second). */
+/**
+ * Where the player is, `Home network` or `Remote`, once the worker has checked the connection:
+ * a chip of its own, so the detail line keeps to what the start is doing.
+ */
+@Composable
+private fun NetworkChip(label: String, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(50)
+    Text(
+        label,
+        color = Sov.Slate100,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = modifier
+            .clip(shape)
+            .background(Color.Black.copy(alpha = 0.6f))
+            .border(1.dp, Color.White.copy(alpha = 0.2f), shape)
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+    )
+}
+
+/** The bar, what the start is doing and its detail, then how to leave it: centred. */
+@Composable
+private fun StartProgress(screen: StartScreen, failed: Boolean, modifier: Modifier = Modifier) {
+    Column(
+        modifier.widthIn(max = 560.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        screen.fraction?.let { StartBar(it, Modifier.widthIn(max = 400.dp).fillMaxWidth()) }
+        Text(
+            screen.label,
+            color = if (failed) Sov.Red300 else Sov.Slate100,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+        )
+        if (screen.detail.isNotEmpty()) {
+            Text(
+                screen.detail,
+                color = Sov.Slate300,
+                fontSize = 16.sp,
+                textAlign = TextAlign.Center,
+            )
+        }
+        // How to leave a start that is slow, stuck or failed: B goes to the game.
+        Text(
+            GameStart.MENU_HINT,
+            color = Sov.Slate400,
+            fontSize = 13.sp,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+/** The loading screen's scrim: black at 55%, twice along the bottom. */
+private val SCRIM = Color.Black.copy(alpha = 0.55f)
+
+/**
+ * The start's bar, gliding to each new [fraction] (polled four times a second), and never back:
+ * a check of the connection that starts again (the pair changed) reports less than before.
+ */
 @Composable
 private fun StartBar(fraction: Double, modifier: Modifier = Modifier) {
-    val shown by animateFloatAsState(fraction.toFloat(), tween(250), label = "start")
+    var furthest by remember { mutableFloatStateOf(fraction.toFloat()) }
+    LaunchedEffect(fraction) { furthest = maxOf(furthest, fraction.toFloat()) }
+    val shown by animateFloatAsState(furthest, tween(250), label = "start")
     LinearProgressIndicator(
         progress = { shown },
         modifier = modifier.height(6.dp).clip(RoundedCornerShape(3.dp)),

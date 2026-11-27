@@ -27,6 +27,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import media.sovereign.sovemu.core.Candidate
 import media.sovereign.sovemu.core.Capabilities
 import media.sovereign.sovemu.core.DecoderSetup
 import media.sovereign.sovemu.core.FrameLatency
@@ -224,6 +225,14 @@ class Stream(
      */
     val pipeline: StateFlow<Protocol.Pipeline?> = _pipeline.asStateFlow()
 
+    private val _link = MutableStateFlow<Protocol.Link?>(null)
+
+    /**
+     * The worker's check of the connection before the stream starts (`0x83`, #243), as it last
+     * said; null until it has (an older worker never does). While it is probing no video comes.
+     */
+    val link: StateFlow<Protocol.Link?> = _link.asStateFlow()
+
     private val observer = object : PeerConnection.Observer {
         override fun onIceGatheringChange(state: PeerConnection.IceGatheringState) {
             if (state == PeerConnection.IceGatheringState.COMPLETE) iceGathered.complete(Unit)
@@ -293,8 +302,18 @@ class Stream(
                     while (inputRtts.size > 60) inputRtts.pollFirst()
                     return
                 }
+                val pipeline = Protocol.decodePipeline(bytes)
+                if (pipeline != null) {
+                    _pipeline.value = pipeline
+                    // The check's result comes again with the pipeline: a lost `0x83` is not
+                    // missed.
+                    if (pipeline.link != null && _link.value?.done != true) {
+                        _link.value = pipeline.link
+                    }
+                    return
+                }
                 // Anything else this app does not know is ignored, for newer workers' sake.
-                Protocol.decodePipeline(bytes)?.let { _pipeline.value = it }
+                Protocol.decodeLink(bytes)?.let { _link.value = it }
             }
         })
     }
@@ -424,10 +443,22 @@ class Stream(
             it.type == "inbound-rtp" && it.members["kind"] == "audio"
         }?.members.orEmpty()
         val playout = all.firstOrNull { it.type == "media-playout" }?.members.orEmpty()
-        val pair = all.firstOrNull {
-            it.type == "candidate-pair" && it.members["nominated"] == true &&
-                it.members["state"] == "succeeded"
-        }?.members.orEmpty()
+        // The pair the transport has selected, else the nominated one that succeeded (as the
+        // web's `selectedPair`).
+        val selected = all.firstOrNull {
+            it.type == "transport" && it.members["selectedCandidatePairId"] is String
+        }?.members?.get("selectedCandidatePairId") as? String
+        val pair = (
+            selected?.let { report.statsMap[it] } ?: all.firstOrNull {
+                it.type == "candidate-pair" && it.members["nominated"] == true &&
+                    it.members["state"] == "succeeded"
+            }
+            )?.members.orEmpty()
+        fun candidate(id: Any?): Candidate? {
+            val c = (id as? String)?.let { report.statsMap[it] }?.members ?: return null
+            val type = c["candidateType"] as? String ?: return null
+            return Candidate(type, c["protocol"] as? String, c["relayProtocol"] as? String)
+        }
         return StatsReading(
             atMs = (report.timestampUs / 1000).toLong(),
             bytesReceived = video.num("bytesReceived") ?: 0.0,
@@ -455,6 +486,8 @@ class Stream(
             audioJitterBufferEmittedCount = audio.num("jitterBufferEmittedCount") ?: 0.0,
             audioPlayoutDelay = playout.num("totalPlayoutDelay") ?: 0.0,
             audioPlayoutSamples = playout.num("totalSamplesCount") ?: 0.0,
+            local = candidate(pair["localCandidateId"]),
+            remote = candidate(pair["remoteCandidateId"]),
         )
     }
 
