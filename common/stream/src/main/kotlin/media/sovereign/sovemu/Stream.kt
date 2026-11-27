@@ -206,9 +206,13 @@ class Stream(
         frameLatency.frameEntered(renderTimeMs, captureTimeNs, now32())
     }
 
+    /** Debug builds only, when asked for: the decoded frames written to files ([FrameDump]). */
+    private val frameDump = FrameDump.ifRequested(appContext)
+
     private val measuringSink = VideoSink { frame ->
         if (!_firstFrame.value) _firstFrame.value = true
         frameLatency.frameDelivered(frame.timestampNs, now32())
+        frameDump?.onFrame(frame)
         videoSink.onFrame(frame)
     }
 
@@ -473,6 +477,7 @@ class Stream(
         if (!closed.compareAndSet(false, true)) return
         if (WebRtc.onDecoder === decoderListener) WebRtc.onDecoder = null
         if (WebRtc.onFrameEntered === frameEntered) WebRtc.onFrameEntered = null
+        frameDump?.close()
         // The pump sends on the channel from another thread: it must have stopped before the
         // channel goes (sending on a disposed one crashes in native code). One loop is ~4 ms.
         runBlocking { pump?.cancelAndJoin() }
