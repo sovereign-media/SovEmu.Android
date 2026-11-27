@@ -16,6 +16,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -459,6 +460,7 @@ fun PlayerScreen(
                 background = loadingBackground(saveShot, game.image, game.cover ?: game.thumb),
                 status = info?.let { s -> streamInfo(s.core, s.width, s.height, s.fps) },
                 network = networkLabel(link?.path ?: ""),
+                covered = menuOpen || controllersOpen,
             )
         }
         if (touchControls && !menuOpen && !controllersOpen && info != null && error == null) {
@@ -563,6 +565,8 @@ fun PlayerScreen(
                 stats = stats,
                 onStatsChange = onStatsChange,
                 onQuit = onExit,
+                status = info?.let { s -> streamInfo(s.core, s.width, s.height, s.fps) },
+                network = networkLabel(link?.path ?: ""),
             )
         }
     }
@@ -571,7 +575,9 @@ fun PlayerScreen(
 private enum class MenuPage { Main, Save, Load, Cheats, Disc }
 
 /**
- * The in-game menu, as the web client's: a panel over the paused game. The focus starts on
+ * The in-game menu, as the web client's: a panel over the paused game, in the loading screen's
+ * [GameOverlay] with the game's own frame behind (its [status] and [network] as the loading
+ * screen shows them). The focus starts on
  * Resume and cannot leave the panel; Back (B on a controller) resumes. Save and Load open a
  * picker of the game's slots in the same panel, each with its screenshot and age; Back there
  * returns to the menu.
@@ -593,6 +599,8 @@ private fun InGameMenu(
     stats: Boolean,
     onStatsChange: (Boolean) -> Unit,
     onQuit: () -> Unit,
+    status: String?,
+    network: String?,
     modifier: Modifier = Modifier,
 ) {
     var page by remember { mutableStateOf(MenuPage.Main) }
@@ -612,12 +620,10 @@ private fun InGameMenu(
             if (first.requestFocus()) return@LaunchedEffect
         }
     }
-    Box(
-        modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.7f)),
-        contentAlignment = Alignment.Center,
-    ) {
+    GameOverlay(game, system, status, network, modifier) {
         Column(
-            Modifier.width(if (page == MenuPage.Main) 360.dp else 480.dp)
+            Modifier.align(Alignment.Center)
+                .width(if (page == MenuPage.Main) 360.dp else 480.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(Sov.Panel)
                 .border(1.dp, Sov.Edge, RoundedCornerShape(16.dp))
@@ -626,25 +632,23 @@ private fun InGameMenu(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            Row(
-                Modifier.padding(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                SystemBadge(system.short, system.colour())
+            // The game's badge and title are the overlay's, bottom left: a page names itself.
+            val heading = when (page) {
+                MenuPage.Main -> null
+                MenuPage.Save -> "Save to a slot"
+                MenuPage.Load -> "Load a save"
+                MenuPage.Cheats -> "Cheats"
+                MenuPage.Disc -> "Change disc"
+            }
+            heading?.let {
                 Text(
-                    when (page) {
-                        MenuPage.Main -> game.title
-                        MenuPage.Save -> "Save to a slot"
-                        MenuPage.Load -> "Load a save"
-                        MenuPage.Cheats -> "Cheats"
-                        MenuPage.Disc -> "Change disc"
-                    },
+                    it,
                     color = Color.White,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(8.dp),
                 )
             }
             when (page) {
@@ -772,11 +776,11 @@ private fun SlotItem(row: SlotRow, modifier: Modifier = Modifier, onClick: () ->
 
 /**
  * While the game loads (#243, as the web's `LoadingScreen`): a darkened picture behind
- * ([background]: the save being continued, the game, its box blurred, or the system's colour),
- * the bar dead centre with what the start is doing, where the player is ([network]) in a chip
- * top right, the game bottom left (its badge, title and [status]) and a spinner bottom right,
- * which a failure replaces with the alert. Continue / Start over, when asked, is centred in
- * the bar's place.
+ * ([background]: the save being continued, the game, its box blurred, or the system's colour)
+ * under the [GameOverlay], with the bar dead centre saying what the start is doing and a spinner
+ * bottom right, which a failure replaces with the alert. Continue / Start over, when asked, is
+ * centred in the bar's place. While the menu is [covered] over it, only the picture is drawn:
+ * the menu brings the overlay.
  */
 @Composable
 private fun Splash(
@@ -787,6 +791,7 @@ private fun Splash(
     background: LoadingBackground?,
     status: String?,
     network: String?,
+    covered: Boolean,
 ) {
     val colour = system.colour()
     val failed = screen.fraction == null
@@ -811,28 +816,88 @@ private fun Splash(
                 },
             )
         }
-        // An even scrim, deeper along the bottom where the text and the spinner sit: 55%, and
-        // about 80% at the bottom edge. One layer, drawn once.
-        Box(
-            Modifier.fillMaxSize().drawBehind {
-                drawRect(SCRIM)
-                val top = size.height * 0.6f
-                drawRect(
-                    Brush.verticalGradient(listOf(Color.Transparent, SCRIM), top, size.height),
-                    Offset(0f, top),
-                    Size(size.width, size.height - top),
-                )
+        if (covered) return@Box
+        GameOverlay(
+            game,
+            system,
+            status,
+            network,
+            corner = {
+                if (failed) {
+                    LucideIcon(Lucide.CircleAlert, tint = Sov.Red300, size = 40.dp)
+                } else {
+                    CircularProgressIndicator(
+                        Modifier.size(40.dp),
+                        color = Color.White.copy(alpha = 0.8f),
+                        strokeWidth = 3.dp,
+                    )
+                }
             },
-        )
+        ) {
+            if (choice == null) {
+                StartProgress(screen, failed, Modifier.align(Alignment.Center))
+            } else {
+                val first = remember { FocusRequester() }
+                // Once, as the question shows: Continue is where the player starts.
+                LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+                Row(
+                    Modifier.align(Alignment.Center),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    SovButton(
+                        "Continue",
+                        { choice.complete(Start.Continue) },
+                        Modifier.focusRequester(first),
+                        icon = Lucide.Play,
+                        filledIcon = true,
+                    )
+                    SovButton(
+                        "Start over",
+                        { choice.complete(Start.New) },
+                        variant = Variant.Outline,
+                        icon = Lucide.RotateCcw,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The loading screen's overlay, shared with the in-game menu: a scrim over whatever is behind
+ * (the loading picture, or the paused game's own frame), where the player is ([network]) in a
+ * chip top right, the game bottom left (its badge, title and [status]) with [corner] beside it
+ * bottom right, and [content] in the TV-safe area between.
+ */
+@Composable
+private fun GameOverlay(
+    game: Game,
+    system: SystemSummary,
+    status: String?,
+    network: String?,
+    modifier: Modifier = Modifier,
+    corner: @Composable () -> Unit = {},
+    content: @Composable BoxScope.() -> Unit,
+) {
+    // An even scrim, deeper along the bottom where the text and the spinner sit: 55%, and
+    // about 80% at the bottom edge. One layer, drawn once.
+    Box(
+        modifier.fillMaxSize().drawBehind {
+            drawRect(SCRIM)
+            val top = size.height * 0.6f
+            drawRect(
+                Brush.verticalGradient(listOf(Color.Transparent, SCRIM), top, size.height),
+                Offset(0f, top),
+                Size(size.width, size.height - top),
+            )
+        },
+    ) {
         // TV-safe insets on a TV (about 5% of the screen), and a margin on a phone.
         BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding()) {
             val across = max(24.dp, maxWidth * 0.05f)
             val down = max(24.dp, maxHeight * 0.05f)
             Box(Modifier.fillMaxSize().padding(horizontal = across, vertical = down)) {
                 network?.let { NetworkChip(it, Modifier.align(Alignment.TopEnd)) }
-                if (choice == null) {
-                    StartProgress(screen, failed, Modifier.align(Alignment.Center))
-                }
                 Row(
                     Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
                     verticalAlignment = Alignment.Bottom,
@@ -841,7 +906,7 @@ private fun Splash(
                         Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        SystemBadge(system.short, colour, large = true)
+                        SystemBadge(system.short, system.colour(), large = true)
                         Text(
                             game.title,
                             color = Color.White,
@@ -853,39 +918,9 @@ private fun Splash(
                         status?.let { Text(it, color = Sov.Slate300, fontSize = 14.sp) }
                     }
                     Spacer(Modifier.width(24.dp))
-                    if (failed) {
-                        LucideIcon(Lucide.CircleAlert, tint = Sov.Red300, size = 40.dp)
-                    } else {
-                        CircularProgressIndicator(
-                            Modifier.size(40.dp),
-                            color = Color.White.copy(alpha = 0.8f),
-                            strokeWidth = 3.dp,
-                        )
-                    }
+                    corner()
                 }
-            }
-        }
-        if (choice != null) {
-            val first = remember { FocusRequester() }
-            // Once, as the question shows: Continue is where the player starts.
-            LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
-            Row(
-                Modifier.align(Alignment.Center),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                SovButton(
-                    "Continue",
-                    { choice.complete(Start.Continue) },
-                    Modifier.focusRequester(first),
-                    icon = Lucide.Play,
-                    filledIcon = true,
-                )
-                SovButton(
-                    "Start over",
-                    { choice.complete(Start.New) },
-                    variant = Variant.Outline,
-                    icon = Lucide.RotateCcw,
-                )
+                content()
             }
         }
     }
