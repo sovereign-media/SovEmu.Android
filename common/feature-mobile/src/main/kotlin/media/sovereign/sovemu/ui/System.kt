@@ -268,7 +268,14 @@ private fun Games(
         LazyVerticalGrid(
             columns = GridCells.Adaptive(152.dp),
             state = grid,
-            modifier = Modifier.fillMaxSize(),
+            // L1 and R1 move a page of games (none while the game panel is open over the grid).
+            modifier = Modifier.fillMaxSize().shoulderPaging(
+                grid,
+                current = { focusedGame(memory, shown) },
+                count = { shown.size },
+                focus = ::focusGame,
+                enabled = { openId == null },
+            ),
             contentPadding = PaddingValues(
                 start = if (form.wide) 32.dp else 16.dp,
                 end = if (form.wide) 32.dp else 16.dp,
