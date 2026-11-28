@@ -14,29 +14,12 @@ object Identify {
     const val BLINK_MS = 250L
 
     /**
-     * What *Identify* says when [controller] can neither rumble nor light up on the device
-     * [device] (its own name: `DEV-FIRESTICK`), with [details] after it in brackets (`Fire TV,
-     * AFTMA08C15`; none when they would only repeat the name). It is the pair that fails, not
-     * either alone: the device's kernel has no rumble driver for this controller, so Android sees
-     * no vibrator and no app can reach one (an Xbox pad over Bluetooth on a Fire TV Stick, which
-     * rumbles on a TV with a newer kernel). Both are named outright, never "it", so a player
-     * with two pads and two TVs knows which.
+     * What *Identify* says when [controller] can neither rumble nor light up on this device: the
+     * device's kernel has no rumble support for it, so no app can make it vibrate (an Xbox pad
+     * over Bluetooth on a Fire TV Stick, which rumbles on a TV with a newer kernel).
      */
-    fun unsupported(controller: String, device: String, details: String? = null): String {
-        val named = if (details.isNullOrBlank()) device else "$device ($details)"
-        return "$controller can't rumble on $named. $device's kernel has no rumble support " +
-            "for $controller, so no app can make the controller vibrate on this device, and " +
-            "the controller has no lights apps can use. It may rumble on other devices."
-    }
-
-    /**
-     * The brackets after a device's name: [fireTv]'s `Fire TV`, then the [model], each left out
-     * where it adds nothing (a model the name already is).
-     */
-    fun deviceDetails(name: String, model: String, fireTv: Boolean): String? = listOfNotNull(
-        "Fire TV".takeIf { fireTv },
-        model.takeIf { it.isNotBlank() && !it.equals(name, ignoreCase = true) },
-    ).joinToString(", ").ifEmpty { null }
+    fun unsupported(controller: String): String =
+        "This streaming device doesn't support rumble features on $controller"
 
     /** The pulses for [port] (0-3): its player number. A pad on no player pulses once. */
     fun pulses(port: Int?): Int = (port ?: 0).coerceIn(0, Protocol.MAX_PORTS - 1) + 1
