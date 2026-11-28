@@ -87,6 +87,8 @@ class Nav(
     val signInTv: () -> Unit = {},
     /** *Change user or server*: *Who's watching?*, with *Choose a server* one step on. */
     val accounts: () -> Unit = {},
+    /** *Controllers*: every controller's player and buttons, for any system. */
+    val controllers: () -> Unit = {},
 )
 
 /** Up to two initials for an account's avatar: "Bruce Lee" → "BL", "mum" → "M". */

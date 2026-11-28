@@ -25,6 +25,7 @@ import media.sovereign.sovemu.core.CheatService
 import media.sovereign.sovemu.core.CollectionChoice
 import media.sovereign.sovemu.core.CollectionService
 import media.sovereign.sovemu.core.ControllerMapping
+import media.sovereign.sovemu.core.ControllerMappingService
 import media.sovereign.sovemu.core.CustomHeader
 import media.sovereign.sovemu.core.CustomHeaderInterceptor
 import media.sovereign.sovemu.core.CustomHeaderRules
@@ -232,6 +233,7 @@ class SovEmuApi(
     private val device: String = "SovEmu for Android",
 ) : CheatService,
     CollectionService,
+    ControllerMappingService,
     StartService,
     SignInService,
     ServerService {
@@ -561,7 +563,7 @@ class SovEmuApi(
      * The mappings in force for this user on [system] (null: the every-system ones), one per
      * controller model; a model missing from the list uses the built-in defaults.
      */
-    suspend fun controllerMappings(system: String?): List<ControllerMapping> =
+    override suspend fun controllerMappings(system: String?): List<ControllerMapping> =
         query(ControllerMappingsQuery(Optional.present(system)))
             .controllerMappings
             .map { it.mappingFields.toMapping() }
@@ -570,7 +572,7 @@ class SovEmuApi(
      * Saves this user's mapping for a model on [system], or on every system when it is null. The
      * server allows names up to 128 characters.
      */
-    suspend fun saveControllerMapping(
+    override suspend fun saveControllerMapping(
         controller: String,
         system: String?,
         name: String,
@@ -589,7 +591,7 @@ class SovEmuApi(
      * Removes this user's mapping for a model on [system] (or every system); returns whether there
      * was one.
      */
-    suspend fun resetControllerMapping(controller: String, system: String?): Boolean =
+    override suspend fun resetControllerMapping(controller: String, system: String?): Boolean =
         mutate(ResetControllerMappingMutation(controller, Optional.present(system)))
             .resetControllerMapping
 
@@ -611,6 +613,6 @@ class SovEmuApi(
     }
 
     /** A system's button labels and pad (null for an unknown system), and the controllers' pads. */
-    suspend fun controls(system: String): Pair<SystemControls?, List<PadLayout>> =
+    override suspend fun controls(system: String): Pair<SystemControls?, List<PadLayout>> =
         query(ControlsQuery(system)).toControls()
 }

@@ -38,3 +38,8 @@ var Settings.sort: GameSort
     get() = runCatching { GameSort.valueOf(prefs.getString("sort", null)!!) }
         .getOrDefault(GameSort.TITLE)
     set(value) = prefs.edit().putString("sort", value.name).apply()
+
+/** The system the account menu's controller settings last showed; null before the first. */
+var Settings.controllersSystem: String?
+    get() = prefs.getString("controllers_system", null)
+    set(value) = prefs.edit().putString("controllers_system", value).apply()
