@@ -281,6 +281,12 @@ mutation StartSession($gameId: Int!, $startId: String, $slot: Int) {
   }
 }
 
+query CurrentSession {
+  currentSession {
+    ...SessionFields
+  }
+}
+
 query StartProgress($startId: String!) {
   startProgress(startId: $startId) {
     phase
