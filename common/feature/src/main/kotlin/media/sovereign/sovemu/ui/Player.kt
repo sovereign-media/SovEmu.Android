@@ -186,8 +186,6 @@ fun PlayerScreen(
     /** The stats overlay is on (a setting, kept across games). */
     stats: Boolean,
     onStatsChange: (Boolean) -> Unit,
-    /** The TV game mode setting (asked for app-wide, TvGameMode), for the stats. */
-    gameMode: Boolean,
     onExit: () -> Unit,
     modifier: Modifier = Modifier,
     /** Paused (the in-game menu or the controllers screen is open): the screensaver may start. */
@@ -315,7 +313,6 @@ fun PlayerScreen(
     // adapts the video bitrate to how this device keeps up and logs them beside its own health
     // lines (`client stats` in the server's log). With the overlay on
     // they are also shown, and echoed to logcat (`adb logcat -s SovEmu.Stats`).
-    val currentGameMode by rememberUpdatedState(gameMode)
     // Wi-Fi without power saving, for as long as the player is open (the TV's game mode is the
     // whole app's: TvGameMode); whether it is held goes to the worker with the stats.
     val wifiLock = rememberLowLatencyWifi()
@@ -371,7 +368,7 @@ fun PlayerScreen(
             // Whether the TV's game mode took effect, not only whether it was asked for: read
             // each second, since the display can change (another HDMI input, another TV).
             val gameModeState =
-                GameModeState.of(currentGameMode, minimalPostProcessingSupported(context))
+                GameModeState.of(minimalPostProcessingSupported(context))
             s.sendStats(sample.encode(client, gameModeState.applied, wifiLock.value, setup))
             // The audio's delays, every ten seconds, overlay or not.
             if (++audioTick % 10 == 0) sample.audioLogfmt()?.let { Log.i(STATS_TAG, it) }

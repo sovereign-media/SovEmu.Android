@@ -67,9 +67,6 @@ class Nav(
     val home: () -> Unit,
     val search: () -> Unit,
     val system: (SystemSummary) -> Unit,
-    /** Whether the CRT scan lines are on, and the switch. */
-    val scanlines: () -> Boolean,
-    val toggleScanlines: () -> Unit,
     /** Whether the menus' background music is on, and the switch. */
     val music: () -> Boolean,
     val toggleMusic: () -> Unit,
@@ -79,9 +76,6 @@ class Nav(
      */
     val screensaver: () -> Int,
     val nextScreensaver: () -> Unit,
-    /** Whether games ask the TV for its game picture mode, and the switch. */
-    val gameMode: () -> Boolean,
-    val toggleGameMode: () -> Unit,
     val signOut: () -> Unit,
     /** *Sign in a TV*: approve a TV's code with this sign-in (phones and tablets). */
     val signInTv: () -> Unit = {},

@@ -28,11 +28,15 @@ class SignOutOfflineTest {
     private var retried = 0
 
     private val nav = Nav(
-        home = {}, search = {}, system = {},
-        scanlines = { false }, toggleScanlines = {},
-        music = { false }, toggleMusic = {},
-        screensaver = { 0 }, nextScreensaver = {},
-        gameMode = { false }, toggleGameMode = {},
+        home = {},
+        search = {},
+        system = {},
+
+        music = { false },
+        toggleMusic = {},
+        screensaver = { 0 },
+        nextScreensaver = {},
+
         signOut = { signedOut++ },
     )
 

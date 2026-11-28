@@ -386,17 +386,6 @@ private fun AccountMenu(
                 leading = { LucideIcon(Lucide.Play, tint = Sov.Slate300, size = 16.dp) },
             )
             MenuRow(
-                if (nav.scanlines()) "Scan lines: on" else "Scan lines: off",
-                onClick = nav.toggleScanlines,
-                leading = { LucideIcon(Lucide.Menu, tint = Sov.Slate300, size = 16.dp) },
-            )
-            MenuRow(
-                if (nav.gameMode()) "TV game mode: on" else "TV game mode: off",
-                onClick = nav.toggleGameMode,
-                leading = { LucideIcon(Lucide.Gamepad2, tint = Sov.Slate300, size = 16.dp) },
-                detail = GAME_MODE_DETAIL,
-            )
-            MenuRow(
                 "Controllers",
                 onClick = {
                     expanded = false
@@ -466,40 +455,18 @@ private fun Menu(
     }
 }
 
-/** What the TV game mode setting trades, shown under it. */
-internal const val GAME_MODE_DETAIL =
-    "Less input lag, for the whole app. Some TVs blink once as it switches."
-
-/** A menu row; a [detail] goes on a second, smaller line (a setting's trade-off). */
+/** A menu row. */
 @Composable
 private fun MenuRow(
     label: String,
     onClick: () -> Unit,
     leading: @Composable () -> Unit,
     trailing: String? = null,
-    detail: String? = null,
 ) = DropdownMenuItem(
-    text = {
-        Column {
-            Text(label, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (detail != null) {
-                Text(
-                    detail,
-                    color = Sov.Slate500,
-                    fontSize = 11.sp,
-                    lineHeight = 14.sp,
-                    maxLines = 2,
-                )
-            }
-        }
-    },
+    text = { Text(label, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
     onClick = onClick,
     leadingIcon = leading,
     trailingIcon = trailing?.let { { Text(it, color = Sov.Slate500, fontSize = 12.sp) } },
     colors = MenuDefaults.itemColors(textColor = Sov.Slate300),
-    modifier = if (detail == null) {
-        Modifier.height(40.dp)
-    } else {
-        Modifier.heightIn(min = 56.dp).widthIn(max = 320.dp)
-    },
+    modifier = Modifier.height(40.dp),
 )

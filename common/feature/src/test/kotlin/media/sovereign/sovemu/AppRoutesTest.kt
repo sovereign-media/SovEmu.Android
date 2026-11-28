@@ -44,11 +44,15 @@ class AppRoutesTest {
             onMusic = {}, keepScreenOn = {}, quit = {},
         )
         val nav = Nav(
-            home = {}, search = {}, system = {},
-            scanlines = { false }, toggleScanlines = {},
-            music = { false }, toggleMusic = {},
-            screensaver = { 0 }, nextScreensaver = {},
-            gameMode = { false }, toggleGameMode = {},
+            home = {},
+            search = {},
+            system = {},
+
+            music = { false },
+            toggleMusic = {},
+            screensaver = { 0 },
+            nextScreensaver = {},
+
             signOut = {},
         )
         val user = mutableStateOf<User?>(null)

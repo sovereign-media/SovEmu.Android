@@ -15,19 +15,6 @@ var Settings.music: Boolean
     get() = prefs.getBoolean("music", true)
     set(value) = prefs.edit().putBoolean("music", value).apply()
 
-/** CRT scan lines over the menus (on by default). */
-var Settings.scanlines: Boolean
-    get() = prefs.getBoolean("scanlines", true)
-    set(value) = prefs.edit().putBoolean("scanlines", value).apply()
-
-/**
- * Ask the TV for its game picture mode (ALLM) while the app is on screen (on by default): less
- * input lag, though some TVs blank the screen for a moment as they switch.
- */
-var Settings.gameMode: Boolean
-    get() = prefs.getBoolean("game_mode", true)
-    set(value) = prefs.edit().putBoolean("game_mode", value).apply()
-
 /** The stats overlay over a game (off by default). */
 var Settings.stats: Boolean
     get() = prefs.getBoolean("stats", false)
