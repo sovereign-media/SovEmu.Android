@@ -28,7 +28,6 @@ import media.sovereign.sovemu.core.AUTO_SLOT
 import media.sovereign.sovemu.core.Binding
 import media.sovereign.sovemu.core.CheatsModel
 import media.sovereign.sovemu.core.ControllerMapping
-import media.sovereign.sovemu.core.ForwardOnly
 import media.sovereign.sovemu.core.Game
 import media.sovereign.sovemu.core.GameDecoration
 import media.sovereign.sovemu.core.InputSequence
@@ -93,7 +92,7 @@ class PlayerViewModel @AssistedInject constructor(
 
     private val _bar = MutableStateFlow(0.0)
 
-    /** The loading bar, which only moves forward. */
+    /** Where the loading bar is, as the server's progress says (drawn only forward). */
     val bar: StateFlow<Double> = _bar.asStateFlow()
 
     private val _choice = MutableStateFlow<CompletableDeferred<Start>?>(null)
@@ -154,13 +153,12 @@ class PlayerViewModel @AssistedInject constructor(
                 .onSuccess { (sys, layouts) -> _controls.value = Controls(sys, layouts) }
         }
         // The start's progress, polled while the session starts (as the web does). A failed poll
-        // keeps the last word; the bar only moves forward.
+        // keeps the last word. The bar is drawn only forward (StartBar).
         viewModelScope.launch {
-            val forward = ForwardOnly()
             while (!starting.isCompleted) {
                 attempt { api.startProgress(startId) }.onSuccess {
                     _progress.value = it
-                    _bar.value = forward.next(describeStart(it).fraction)
+                    _bar.value = describeStart(it).fraction
                 }
                 delay(250)
             }

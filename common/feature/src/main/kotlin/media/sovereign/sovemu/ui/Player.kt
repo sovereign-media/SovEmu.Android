@@ -322,17 +322,40 @@ fun PlayerScreen(
             latencySamples = 0
         }
     }
+    // One tick a second for each connection, for all that counts time (each was a timer of its
+    // own): the wait for the first picture, a picture that stops, and the stats.
     LaunchedEffect(stream) {
         readout = null
         latencyHistory.clear()
         latencySamples = 0
+        waitedMs = 0
         val s = stream ?: return@LaunchedEffect
         val sampler = StatsSampler()
         var loggedMatch: FrameLatency.Match? = null
         var audioTick = 0
         val client = ClientEvents.clientName(context)
+        // Counted again from each new connection, as the web does; a long wait adds a hint.
+        val since = SystemClock.uptimeMillis()
+        var lastFrames = renderer.frames
+        var still = 0
         while (true) {
             delay(1000)
+            if (info != null && !pictured && !s.firstFrame.value) {
+                waitedMs = SystemClock.uptimeMillis() - since
+            }
+            // A picture that stops while playing (not paused in the menu) is reported once it has
+            // been still for STALL_SECONDS. Before the first picture, the game is still starting.
+            val frames = renderer.frames
+            val playing = everConnected && s.firstFrame.value && !menuOpen && !controllersOpen
+            still = if (playing && frames == lastFrames) still + 1 else 0
+            lastFrames = frames
+            if (still == STALL_SECONDS) {
+                ClientEvents.report(
+                    "STREAM_STALLED",
+                    "no new picture for $STALL_SECONDS s",
+                    info?.id,
+                )
+            }
             val reading = s.readStats() ?: break
             val sample = sampler.sample(reading, s.inputRtts.toList(), s.frameLatency.medianMs())
             // How the worker makes the stream follows, once it has said (old servers never do).
@@ -385,7 +408,7 @@ fun PlayerScreen(
         }
     }
     // The loading screen stays until the game's first picture: a console's BIOS can boot for
-    // seconds after the session is ready. A long wait adds a hint.
+    // seconds after the session is ready.
     val streamPicture by remember(stream) { stream?.firstFrame ?: flowOf(false) }
         .collectAsStateWithLifecycle(false)
     LaunchedEffect(streamPicture) { if (streamPicture) pictured = true }
@@ -394,36 +417,6 @@ fun PlayerScreen(
     // The worker's check of the connection, which comes between connecting and the picture.
     val link by remember(stream) { stream?.link ?: flowOf(null) }
         .collectAsStateWithLifecycle(null)
-    // Counted again from each new connection, as the web does.
-    LaunchedEffect(info, stream, pictureShown) {
-        if (info == null || pictureShown) return@LaunchedEffect
-        val since = SystemClock.uptimeMillis()
-        while (true) {
-            waitedMs = SystemClock.uptimeMillis() - since
-            delay(1000)
-        }
-    }
-    // A picture that stops while playing (not paused in the menu) is reported once it has been
-    // still for STALL_SECONDS. Before the first picture, the game is still starting.
-    LaunchedEffect(stream) {
-        val s = stream ?: return@LaunchedEffect
-        var last = renderer.frames
-        var still = 0
-        while (true) {
-            delay(1000)
-            val frames = renderer.frames
-            val playing = everConnected && s.firstFrame.value && !menuOpen && !controllersOpen
-            still = if (playing && frames == last) still + 1 else 0
-            last = frames
-            if (still == STALL_SECONDS) {
-                ClientEvents.report(
-                    "STREAM_STALLED",
-                    "no new picture for $STALL_SECONDS s",
-                    info?.id,
-                )
-            }
-        }
-    }
     LaunchedEffect(toast) {
         if (toast != null) {
             delay(2000)
@@ -1043,13 +1036,15 @@ private fun StartProgress(screen: StartScreen, failed: Boolean, modifier: Modifi
 private val SCRIM = Color.Black.copy(alpha = 0.55f)
 
 /**
- * The start's bar, gliding to each new [fraction] (polled four times a second), and never back:
- * a check of the connection that starts again (the pair changed) reports less than before.
+ * The start's bar, gliding to each new [fraction] (polled four times a second), and never back
+ * ([ForwardOnly], its one owner, over the whole start): a phase that reports less than the last
+ * (a check of the connection that starts again, the pair changed) holds it where it is.
  */
 @Composable
 private fun StartBar(fraction: Double, modifier: Modifier = Modifier) {
+    val forward = remember { ForwardOnly() }
     var furthest by remember { mutableFloatStateOf(fraction.toFloat()) }
-    LaunchedEffect(fraction) { furthest = maxOf(furthest, fraction.toFloat()) }
+    LaunchedEffect(fraction) { furthest = forward.next(fraction).toFloat() }
     val shown by animateFloatAsState(furthest, tween(250), label = "start")
     LinearProgressIndicator(
         progress = { shown },

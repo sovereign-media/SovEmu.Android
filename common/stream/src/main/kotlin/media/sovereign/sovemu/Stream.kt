@@ -8,7 +8,7 @@ import android.os.SystemClock
 import android.util.Log
 import android.view.Display
 import java.nio.ByteBuffer
-import java.util.concurrent.ConcurrentLinkedDeque
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -41,6 +41,7 @@ import media.sovereign.sovemu.core.InputPump
 import media.sovereign.sovemu.core.InputPumpDefaults
 import media.sovereign.sovemu.core.InputSequence
 import media.sovereign.sovemu.core.Protocol
+import media.sovereign.sovemu.core.RecentRtts
 import media.sovereign.sovemu.core.ScreenMode
 import media.sovereign.sovemu.core.StatsReading
 import media.sovereign.sovemu.core.VideoDecoder
@@ -200,7 +201,7 @@ class Stream(
         }
 
     /** Recent input round trips in ms (input → applied on a frame → ack). */
-    val inputRtts = ConcurrentLinkedDeque<Long>()
+    val inputRtts = RecentRtts()
 
     private val _decoder = MutableStateFlow<DecoderSetup?>(null)
 
@@ -321,27 +322,51 @@ class Stream(
                 // Open: the game's input goes now, not at the pump's next look.
                 controller.wake()
             }
-            override fun onMessage(buffer: DataChannel.Buffer) {
-                val bytes = ByteArray(buffer.data.remaining()).also { buffer.data.get(it) }
-                val ack = Protocol.decodeAck(bytes)
-                if (ack != null) {
-                    frameLatency.ackArrived(ack.clientTimeMs, now32())
-                    inputRtts.addLast((now32() - ack.clientTimeMs) and 0xffff_ffffL)
-                    while (inputRtts.size > 60) inputRtts.pollFirst()
-                    return
-                }
-                val pipeline = Protocol.decodePipeline(bytes)
-                if (pipeline != null) {
-                    _pipeline.value = pipeline
-                    // The check's result comes again with the pipeline: a lost `0x83` is not
-                    // missed.
-                    pipeline.link?.let(::setLink)
-                    return
-                }
-                // Anything else this app does not know is ignored, for newer workers' sake.
-                Protocol.decodeLink(bytes)?.let(::setLink)
-            }
+            override fun onMessage(buffer: DataChannel.Buffer) = received(buffer.data)
         })
+    }
+
+    /**
+     * A message from the worker, by its first byte. Acks come with every frame that took input:
+     * read in place. Anything this app does not know is ignored, for newer workers' sake, and
+     * logged once a kind.
+     */
+    private fun received(data: ByteBuffer) {
+        if (data.remaining() < 2) return
+        val type = data.get(data.position())
+        val version = data.get(data.position() + 1)
+        if (version != Protocol.INPUT_VERSION) return unknown(type, version)
+        when (type) {
+            Protocol.TYPE_ACK -> {
+                val sent = Protocol.ackClientTimeMs(data)
+                if (sent < 0) return
+                val now = now32()
+                frameLatency.ackArrived(sent, now)
+                inputRtts.add((now - sent) and 0xffff_ffffL)
+            }
+
+            Protocol.TYPE_PIPELINE -> Protocol.decodePipeline(bytes(data))?.let { pipeline ->
+                _pipeline.value = pipeline
+                // The check's result comes again with the pipeline: a lost `0x83` is not missed.
+                pipeline.link?.let(::setLink)
+            }
+
+            Protocol.TYPE_LINK -> Protocol.decodeLink(bytes(data))?.let(::setLink)
+
+            else -> unknown(type, version)
+        }
+    }
+
+    private fun bytes(data: ByteBuffer) = ByteArray(data.remaining()).also { data.get(it) }
+
+    /** Kinds of message already logged as unknown (type and version). */
+    private val unknownKinds = ConcurrentHashMap.newKeySet<Int>()
+
+    private fun unknown(type: Byte, version: Byte) {
+        val kind = (type.toInt() and 0xff shl 8) or (version.toInt() and 0xff)
+        if (unknownKinds.add(kind)) {
+            Log.w(TAG, "ignoring a message this app does not know: type $type version $version")
+        }
     }
 
     /** A late probing report, after a later one or the result, is dropped ([Protocol.Link]). */

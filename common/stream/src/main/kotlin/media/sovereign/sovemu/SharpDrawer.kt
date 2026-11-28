@@ -32,6 +32,15 @@ class SharpDrawer : RendererCommon.GlDrawer {
     private var shader: GlShader? = null
     private var uniforms = IntArray(0)
 
+    /**
+     * The grids last worked out, and what they were worked out from (the texture matrix's scale
+     * and the sizes): the same for every frame until the stream's size or the view's changes,
+     * so not made again for each.
+     */
+    private var grid: SharpGrid? = null
+    private var chroma: SharpGrid? = null
+    private val gridFrom = FloatArray(8)
+
     override fun drawOes(
         oesTextureId: Int,
         texMatrix: FloatArray,
@@ -107,11 +116,11 @@ class SharpDrawer : RendererCommon.GlDrawer {
         shader.setVertexAttribArray("in_pos", 2, FULL_RECTANGLE)
         shader.setVertexAttribArray("in_tc", 2, FULL_RECTANGLE_TEXTURE)
         GLES20.glUniformMatrix4fv(uniforms[0], 1, false, texMatrix, 0)
-        val grid = SharpGrid.of(texMatrix, frameWidth, frameHeight, viewportWidth, viewportHeight)
+        val grid = grid(texMatrix, frameWidth, frameHeight, viewportWidth, viewportHeight)
         GLES20.glUniform4f(uniforms[1], grid.width, grid.height, grid.scaleX, grid.scaleY)
         if (kind == Kind.Yuv) {
             // Chroma is half the size: ⌈w/2⌉ × ⌈h/2⌉ of the frame's luma.
-            val chroma = grid.halved(frameWidth, frameHeight)
+            val chroma = chroma ?: grid.halved(frameWidth, frameHeight).also { chroma = it }
             GLES20.glUniform4f(
                 uniforms[2],
                 chroma.width,
@@ -120,6 +129,35 @@ class SharpDrawer : RendererCommon.GlDrawer {
                 chroma.scaleY,
             )
         }
+    }
+
+    private fun grid(
+        texMatrix: FloatArray,
+        frameWidth: Int,
+        frameHeight: Int,
+        viewportWidth: Int,
+        viewportHeight: Int,
+    ): SharpGrid {
+        val from = gridFrom
+        val known = grid
+        if (known != null && from[0] == texMatrix[0] && from[1] == texMatrix[1] &&
+            from[2] == texMatrix[4] && from[3] == texMatrix[5] &&
+            from[4] == frameWidth.toFloat() && from[5] == frameHeight.toFloat() &&
+            from[6] == viewportWidth.toFloat() && from[7] == viewportHeight.toFloat()
+        ) {
+            return known
+        }
+        from[0] = texMatrix[0]
+        from[1] = texMatrix[1]
+        from[2] = texMatrix[4]
+        from[3] = texMatrix[5]
+        from[4] = frameWidth.toFloat()
+        from[5] = frameHeight.toFloat()
+        from[6] = viewportWidth.toFloat()
+        from[7] = viewportHeight.toFloat()
+        chroma = null
+        return SharpGrid.of(texMatrix, frameWidth, frameHeight, viewportWidth, viewportHeight)
+            .also { grid = it }
     }
 
     private fun newShader(kind: Kind): GlShader {
@@ -261,13 +299,15 @@ data class SharpGrid(val width: Float, val height: Float, val scaleX: Float, val
         ): SharpGrid {
             // How far along the texture's x and y the frame's width (column 0) and height
             // (column 1) run.
-            val (wx, wy) = abs(texMatrix[0]) to abs(texMatrix[1])
-            val (hx, hy) = abs(texMatrix[4]) to abs(texMatrix[5])
+            val wx = abs(texMatrix[0])
+            val wy = abs(texMatrix[1])
+            val hx = abs(texMatrix[4])
+            val hy = abs(texMatrix[5])
             val turned = wy > wx
-            val (alongX, alongY) =
-                if (turned) frameHeight to frameWidth else frameWidth to frameHeight
-            val (screenX, screenY) =
-                if (turned) viewportHeight to viewportWidth else viewportWidth to viewportHeight
+            val alongX = if (turned) frameHeight else frameWidth
+            val alongY = if (turned) frameWidth else frameHeight
+            val screenX = if (turned) viewportHeight else viewportWidth
+            val screenY = if (turned) viewportWidth else viewportHeight
             val spanX = (if (turned) hx else wx).coerceAtLeast(1e-6f)
             val spanY = (if (turned) wy else hy).coerceAtLeast(1e-6f)
             return SharpGrid(

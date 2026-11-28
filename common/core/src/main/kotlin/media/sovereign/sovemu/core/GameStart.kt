@@ -99,8 +99,27 @@ private const val NETWORK_TO = 0.97
 fun describeConnecting(waitedMs: Long, attempt: Int = 0): LaunchView {
     val seconds = waitedMs / 1000
     val label = if (attempt > 0) "Reconnecting" else "Connecting"
-    return LaunchView(label, if (seconds >= 3) "$seconds s" else "", NETWORK_FROM)
+    val fraction = creep(NETWORK_FROM, CONNECTING_TO, waitedMs, CONNECTING_CREEP_MS)
+    return LaunchView(label, if (seconds >= 3) "$seconds s" else "", fraction)
 }
+
+/**
+ * How far the bar creeps while connecting, and how fast: a little, so it never looks stuck,
+ * and never into the check of the connection's stretch, which starts again from [NETWORK_FROM].
+ */
+private const val CONNECTING_TO = 0.88
+private const val CONNECTING_CREEP_MS = 3_000.0
+
+/** Likewise while waiting for the first picture, which can take a BIOS's boot. */
+private const val PICTURE_TO = 0.995
+private const val PICTURE_CREEP_MS = 8_000.0
+
+/**
+ * [from], eased towards [to] over [waitedMs]: most of the way in a few [creepMs], never quite
+ * there, so a stretch whose end cannot be known still moves.
+ */
+private fun creep(from: Double, to: Double, waitedMs: Long, creepMs: Double): Double =
+    from + (to - from) * (1 - exp(-waitedMs.coerceAtLeast(0) / creepMs))
 
 /** The loading screen once reconnecting has given up ([Reconnect]), as the web words it. */
 fun describeConnectionFailed(): LaunchView = LaunchView(
@@ -139,7 +158,11 @@ fun describeFirstPicture(waitedMs: Long): LaunchView {
     val parts = mutableListOf<String>()
     if (seconds >= 3) parts += "$seconds s"
     if (waitedMs >= NO_PICTURE_HINT_MS) parts += "still no picture: Back opens the menu"
-    return LaunchView("Starting the game", parts.joinToString(" · "), NETWORK_TO)
+    return LaunchView(
+        "Starting the game",
+        parts.joinToString(" · "),
+        creep(NETWORK_TO, PICTURE_TO, waitedMs, PICTURE_CREEP_MS),
+    )
 }
 
 /**
