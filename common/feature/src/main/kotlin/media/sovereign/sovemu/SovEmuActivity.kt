@@ -131,6 +131,8 @@ abstract class SovEmuActivity : ComponentActivity() {
             window.decorView.requestUnbufferedDispatch(InputDevice.SOURCE_JOYSTICK)
         }
         ClientEvents.attach(this, api, lifecycleScope)
+        // WebRTC's factory and the device's decoders, ready before the first game asks.
+        lifecycleScope.launch { WebRtc.warm(applicationContext) }
         controller.start(this)
         presence = InputPresence(this, controller, tv)
         music = MenuMusic(this, lifecycleScope)

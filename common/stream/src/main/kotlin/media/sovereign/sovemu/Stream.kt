@@ -16,9 +16,11 @@ import kotlin.coroutines.suspendCoroutine
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
@@ -40,6 +42,7 @@ import media.sovereign.sovemu.core.InputMixer
 import media.sovereign.sovemu.core.InputPump
 import media.sovereign.sovemu.core.InputPumpDefaults
 import media.sovereign.sovemu.core.InputSequence
+import media.sovereign.sovemu.core.PeerState
 import media.sovereign.sovemu.core.Protocol
 import media.sovereign.sovemu.core.RecentRtts
 import media.sovereign.sovemu.core.ScreenMode
@@ -81,6 +84,19 @@ object WebRtc {
      */
     @Volatile var onFrameEntered: ((Long, Long) -> Unit)? = null
 
+    /**
+     * Builds the factory and asks the device's decoders now, off the main thread, so the first
+     * game does not wait for either: called as the app starts.
+     */
+    suspend fun warm(context: Context, compute: CoroutineDispatcher = Dispatchers.Default) =
+        withContext(compute) {
+            factory(context)
+            // Asks the decoders, once for the app's life.
+            capabilities(context)
+        }
+
+    /** Built once, by whichever thread asks first (the app's warm-up or a game's stream). */
+    @Synchronized
     fun factory(context: Context): PeerConnectionFactory = factory ?: run {
         PeerConnectionFactory.initialize(
             PeerConnectionFactory.InitializationOptions.builder(
@@ -168,7 +184,6 @@ private const val AUDIO_BUFFER_MAX_PACKETS = 15
 class Stream(
     context: Context,
     private val api: SovEmuApi,
-    private val sessionId: String,
     /** This app, named in the offer for the server's sessions page ([ClientEvents.clientName]). */
     private val client: String,
     iceServers: List<IceServer>,
@@ -256,12 +271,18 @@ class Stream(
      */
     val link: StateFlow<Protocol.Link?> = _link.asStateFlow()
 
+    private val _peerState = MutableStateFlow(PeerState.NEW)
+
+    /** The connection's state, as [keepConnected] watches it. */
+    val peerState: StateFlow<PeerState> = _peerState.asStateFlow()
+
     private val observer = object : PeerConnection.Observer {
         override fun onIceGatheringChange(state: PeerConnection.IceGatheringState) {
             if (state == PeerConnection.IceGatheringState.COMPLETE) iceGathered.complete(Unit)
         }
         override fun onConnectionChange(state: PeerConnection.PeerConnectionState) {
             Log.i(TAG, "connection $state")
+            _peerState.value = PeerState.valueOf(state.name)
             onState(state)
         }
         override fun onTrack(transceiver: RtpTransceiver) {
@@ -380,7 +401,34 @@ class Stream(
             s.credential?.let { setPassword(it) }
         }.createIceServer()
 
-    suspend fun connect() {
+    /**
+     * The offer, made and set as soon as it is asked for ([prepare]), with ICE gathering under
+     * way: while the game loads, rather than after it is ready.
+     */
+    private val offered: Deferred<SessionDescription> by lazy { scope.async { makeOffer() } }
+
+    /** Starts the offer and ICE gathering now, before there is a session to send it to. */
+    fun prepare() {
+        offered.start()
+    }
+
+    /**
+     * Offers this connection to [sessionId] (the complete offer, non-trickle) and takes the
+     * answer, then starts sending input. Made ready by [prepare], or made now.
+     */
+    suspend fun connect(sessionId: String) {
+        val offer = offered.await()
+        // Long since complete when prepared while the game loaded.
+        withTimeoutOrNull(1500) { iceGathered.await() }
+        val local = pc.localDescription ?: offer
+        // The screen as it is now: its mode can change between games.
+        val capabilities = withContext(compute) { WebRtc.capabilities(appContext) }
+        val answer = api.offer(sessionId, local.description, client, capabilities)
+        setRemote(SessionDescription(SessionDescription.Type.ANSWER, answer))
+        pump = scope.launch(pumpThread) { pumpInput() }
+    }
+
+    private suspend fun makeOffer(): SessionDescription {
         val offer = suspendCoroutine<SessionDescription?> { cont ->
             pc.createOffer(
                 object : SdpAdapter() {
@@ -391,13 +439,7 @@ class Stream(
             )
         } ?: error("could not create an offer")
         setLocal(offer)
-        withTimeoutOrNull(1500) { iceGathered.await() }
-        val local = pc.localDescription ?: offer
-        // The first call asks the device's codecs, so not on the main thread.
-        val capabilities = withContext(compute) { WebRtc.capabilities(appContext) }
-        val answer = api.offer(sessionId, local.description, client, capabilities)
-        setRemote(SessionDescription(SessionDescription.Type.ANSWER, answer))
-        pump = scope.launch(pumpThread) { pumpInput() }
+        return offer
     }
 
     private suspend fun setLocal(sdp: SessionDescription) = suspendCoroutine { cont ->
