@@ -39,6 +39,13 @@ object DecoderLatency {
      * showed its picture over a second late, where software decodes a console's picture in a
      * few milliseconds. A device with no hardware decoder, or one named as software, or one
      * with a low-latency mode, is left as it is.
+     *
+     * MediaCodec's realtime hints do not make such a decoder usable, so they are not set:
+     * measured on a Fire TV Stick 4K Max (`OMX.MTK.VIDEO.DECODER.VPX`, Android 11) with the 240p
+     * Test Suite, button→frame was 255 and 231 ms with the hardware decoder, 252 ms with
+     * `KEY_PRIORITY` 0 (realtime), and 357 ms with `KEY_OPERATING_RATE` at its maximum as well,
+     * a quarter to a third of the frames dropped each time; libvpx gave 22 and 21 ms with none
+     * dropped. getStats' `decode_ms` read 3.3 ms throughout and does not show the hold.
      */
     fun prefersSoftware(
         hardwareName: String?,
