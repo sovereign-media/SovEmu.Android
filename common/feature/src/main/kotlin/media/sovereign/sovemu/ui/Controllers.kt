@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -30,6 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -45,12 +47,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import media.sovereign.sovemu.Controller
 import media.sovereign.sovemu.SovEmuApi
 import media.sovereign.sovemu.attempt
 import media.sovereign.sovemu.core.Binding
 import media.sovereign.sovemu.core.Button
+import media.sovereign.sovemu.core.ControllerSettingsModel
 import media.sovereign.sovemu.core.Controllers
 import media.sovereign.sovemu.core.InputDeviceInfo
 import media.sovereign.sovemu.core.Mapping
@@ -59,32 +63,29 @@ import media.sovereign.sovemu.core.MappingScope
 import media.sovereign.sovemu.core.Protocol
 import media.sovereign.sovemu.core.RebindCapture
 import media.sovereign.sovemu.core.SystemStick
+import media.sovereign.sovemu.core.SystemSummary
 import media.sovereign.sovemu.core.highlight
 
 /**
- * The in-game controller settings: every connected device with its player, and per device its
- * bindings, rebound by pressing an input on it. Mappings save to the server per controller
- * model; players are for this session only. Works with a controller: D-pad to move, A to pick,
- * B (Back) to go back.
+ * The controller settings, one component for both ways in: the in-game menu's *Controllers*,
+ * opened on the game's system, and the account menu's, opened on the system last chosen. Every
+ * connected device with its player, a choice of [systems] whose mappings to edit, and per device
+ * its bindings, rebound by pressing an input on it. Mappings save to the server per controller
+ * model, for the chosen system or for every system ([settings] holds them and tells a game
+ * playing of each change); players are for this session only. Works with a controller: D-pad to
+ * move, A to pick, B (Back) to go back.
  */
 @Composable
-fun ControllersScreen(
+fun ControllerSettings(
     controller: Controller,
-    book: MappingBook,
-    controls: Controls,
-    systemShort: String,
-    /** Saves a model's mapping for a scope on the server, and reads back what is in force. */
-    save: suspend (
-        model: String,
-        scope: MappingScope,
-        name: String,
-        bindings: List<Binding>,
-    ) -> Unit,
-    /** Removes the user's own mapping for a model in a scope, and reads back what is in force. */
-    reset: suspend (model: String, scope: MappingScope) -> Unit,
+    settings: ControllerSettingsModel,
+    systems: List<SystemSummary>,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Another system was chosen (the account menu remembers it). */
+    onSystem: (String) -> Unit = {},
 ) {
+    val state by settings.state.collectAsStateWithLifecycle()
     val devices by controller.devices.collectAsState()
     var selected by remember { mutableStateOf<Int?>(null) }
     val device = devices.firstOrNull { it.device == selected }
@@ -93,12 +94,14 @@ fun ControllersScreen(
 
     BackHandler { if (selected != null) selected = null else onClose() }
 
+    val systemShort = systems.firstOrNull { it.id == state.system }?.short ?: state.system.orEmpty()
+    val book = state.book
     Column(
         // The device list is as tall as its devices (centred by the overlay; it scrolls if it ever
         // outgrows the screen); the bindings page takes the screen for its diagrams.
         modifier
             .then(
-                if (device == null) {
+                if (device == null || book == null) {
                     Modifier.width(560.dp)
                 } else {
                     Modifier.fillMaxWidth(0.97f).fillMaxHeight(0.96f)
@@ -109,35 +112,48 @@ fun ControllersScreen(
             .border(1.dp, Sov.Edge, RoundedCornerShape(16.dp))
             .padding(20.dp),
     ) {
-        if (device == null) {
-            DeviceList(devices, controller, onOpen = { selected = it }, onClose = onClose)
-        } else {
-            Bindings(
+        if (device == null || book == null) {
+            DeviceList(
+                devices,
                 controller,
-                book,
-                controls,
-                systemShort,
-                device,
-                // Saving and resetting go to the server, then everything in force is read again
-                // (both scopes), so the game and this page use what now applies.
-                save = { model, scope, name, bindings ->
-                    save(model, scope, name, bindings)
-                    controller.mixer.setMappings(book.forSystem)
+                systems,
+                state,
+                onSystem = { id ->
+                    settings.select(id)
+                    onSystem(id)
                 },
-                reset = { model, scope ->
-                    reset(model, scope)
-                    controller.mixer.setMappings(book.forSystem)
-                },
-                onBack = { selected = null },
+                onOpen = { selected = it },
+                onClose = onClose,
             )
+        } else {
+            // Another system's bindings start afresh: nothing of the last one's page carries over.
+            key(state.system) {
+                Bindings(
+                    controller,
+                    book,
+                    Controls(state.controls, state.layouts),
+                    systemShort,
+                    device,
+                    save = settings::save,
+                    reset = settings::reset,
+                    onBack = { selected = null },
+                )
+            }
         }
     }
 }
+
+/** The systems [ControllerSettings] offers: those with games, and [current] whatever it holds. */
+fun controllerSystems(systems: List<SystemSummary>, current: String?): List<SystemSummary> =
+    systems.filter { it.gameCount > 0 || it.id == current }
 
 @Composable
 private fun ColumnScope.DeviceList(
     devices: List<InputDeviceInfo>,
     controller: Controller,
+    systems: List<SystemSummary>,
+    state: ControllerSettingsModel.State,
+    onSystem: (String) -> Unit,
     onOpen: (Int) -> Unit,
     onClose: () -> Unit,
 ) {
@@ -163,6 +179,24 @@ private fun ColumnScope.DeviceList(
         lineHeight = 19.sp,
         modifier = Modifier.padding(top = 6.dp, bottom = 12.dp),
     )
+    // Whose mappings the Buttons pages edit: one system at a time (or every system, chosen there).
+    if (systems.isNotEmpty()) {
+        Row(
+            Modifier.horizontalScroll(rememberScrollState()).padding(bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Eyebrow("System", Modifier.padding(end = 6.dp))
+            for (s in systems) {
+                Toggle(on = s.id == state.system, onClick = { onSystem(s.id) }) {
+                    Text(s.short, color = Color.White, fontSize = 14.sp)
+                }
+            }
+        }
+    }
+    state.error?.let {
+        Text(it, color = Sov.Amber200, fontSize = 13.sp, modifier = Modifier.padding(bottom = 8.dp))
+    }
     Column(
         Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -228,8 +262,8 @@ private fun ColumnScope.DeviceList(
                         )
                     }
                     SovButton(
-                        "Buttons",
-                        { onOpen(d.device) },
+                        if (state.loading) "Loading…" else "Buttons",
+                        { if (state.book != null) onOpen(d.device) },
                         variant = Variant.Glass,
                         icon = Lucide.SlidersHorizontal,
                         large = false,

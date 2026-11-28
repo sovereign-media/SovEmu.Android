@@ -177,6 +177,8 @@ sealed interface Start {
 fun PlayerScreen(
     model: PlayerViewModel,
     system: SystemSummary,
+    /** Every system, for the controller settings' choice ([controllerSystems]). */
+    systems: List<SystemSummary>,
     game: Game,
     start: Start,
     controller: Controller,
@@ -237,8 +239,6 @@ fun PlayerScreen(
 
     /** The disc in the tray (1-based), for a multi-disc game. */
     val disc by model.disc.collectAsStateWithLifecycle()
-    val book = model.book
-    val controls by model.controls.collectAsStateWithLifecycle()
 
     /**
      * Waiting for Continue or Start over (there is an auto save and the player was not asked yet).
@@ -522,13 +522,10 @@ fun PlayerScreen(
                     .safeDrawingPadding(),
                 contentAlignment = Alignment.Center,
             ) {
-                ControllersScreen(
+                ControllerSettings(
                     controller,
-                    book,
-                    controls,
-                    system.short,
-                    save = model::saveMapping,
-                    reset = model::resetMapping,
+                    model.controllerSettings,
+                    controllerSystems(systems, system.id),
                     onClose = {
                         controllersOpen = false
                         menuOpen = true

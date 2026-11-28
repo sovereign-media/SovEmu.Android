@@ -15,6 +15,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -27,6 +28,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -55,6 +57,8 @@ import media.sovereign.sovemu.core.Game
 import media.sovereign.sovemu.core.IdlePicker
 import media.sovereign.sovemu.core.SystemSummary
 import media.sovereign.sovemu.core.User
+import media.sovereign.sovemu.ui.ControllerSettings
+import media.sovereign.sovemu.ui.ControllerSettingsViewModel
 import media.sovereign.sovemu.ui.HomeViewModel
 import media.sovereign.sovemu.ui.LaunchPage
 import media.sovereign.sovemu.ui.LaunchScreens
@@ -68,14 +72,17 @@ import media.sovereign.sovemu.ui.QuitOnRootBack
 import media.sovereign.sovemu.ui.Screensaver
 import media.sovereign.sovemu.ui.SearchViewModel
 import media.sovereign.sovemu.ui.SignInTvViewModel
+import media.sovereign.sovemu.ui.Sov
 import media.sovereign.sovemu.ui.SovTheme
 import media.sovereign.sovemu.ui.Start
+import media.sovereign.sovemu.ui.controllerSystems
 import media.sovereign.sovemu.ui.rememberViewModelStoreOwner
 import media.sovereign.sovemu.ui.scanlines
 
 /**
  * The screens every surface draws alike, until each surface has its own (`TvSurface`,
- * `MobileSurface`): the player.
+ * `MobileSurface`): the player, and the account menu's controller settings (the in-game menu's
+ * component, outside a game).
  */
 fun EntryProviderScope<Route>.sharedRoutes(app: AppRoutes) = with(app) {
     with(shell) {
@@ -89,6 +96,7 @@ fun EntryProviderScope<Route>.sharedRoutes(app: AppRoutes) = with(app) {
             PlayerScreen(
                 player,
                 r.system,
+                systems,
                 r.game,
                 r.start,
                 controller,
@@ -106,6 +114,26 @@ fun EntryProviderScope<Route>.sharedRoutes(app: AppRoutes) = with(app) {
                 },
                 onPaused = { gamePaused = it },
             )
+        }
+        entry<Route.Controllers>({ it.key }) {
+            val model = hiltViewModel<ControllerSettingsViewModel>()
+            val state by model.controllerSettings.state.collectAsStateWithLifecycle()
+            val offered =
+                remember(systems, state.system) { controllerSystems(systems, state.system) }
+            // The systems arrive with the library: the first chosen once they have.
+            LaunchedEffect(offered) { model.open(offered.map { it.id }) }
+            Box(
+                Modifier.fillMaxSize().background(Sov.Surface).safeDrawingPadding(),
+                contentAlignment = Alignment.Center,
+            ) {
+                ControllerSettings(
+                    controller,
+                    model.controllerSettings,
+                    offered,
+                    onClose = pop,
+                    onSystem = model::chose,
+                )
+            }
         }
     }
 }
