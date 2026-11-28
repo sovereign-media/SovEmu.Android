@@ -16,8 +16,8 @@ class Sessions(private val api: SovEmuApi, private val scope: CoroutineScope) {
      * Starts [gameId] now, named [startId] (its progress: [SovEmuApi.startProgress]); the player
      * awaits it.
      */
-    fun start(gameId: Int, startId: String): Deferred<SessionInfo> =
-        scope.async { api.startSession(gameId, startId) }
+    fun start(gameId: Int, startId: String, slot: Int? = null): Deferred<SessionInfo> =
+        scope.async { api.startSession(gameId, startId, slot) }
 
     /** Stops [session] once it has started (if it does), then runs [after]. */
     fun stop(session: Deferred<SessionInfo>, after: () -> Unit) {
