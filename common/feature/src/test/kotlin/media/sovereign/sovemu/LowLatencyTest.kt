@@ -55,7 +55,7 @@ class LowLatencyTest {
         var playing by mutableStateOf(false)
         rule.setContent {
             TvGameMode(enabled = true)
-            if (playing) LowLatencyWhilePlaying()
+            if (playing) rememberLowLatencyWifi()
         }
         rule.waitForIdle()
         assertEquals(0, wifiLocks)
@@ -75,7 +75,7 @@ class LowLatencyTest {
     fun theWifiLockDoesNotNeedGameMode() {
         rule.setContent {
             TvGameMode(enabled = false)
-            LowLatencyWhilePlaying()
+            rememberLowLatencyWifi()
         }
         rule.waitForIdle()
         assertFalse("no picture mode switch, so no blink", prefersMinimalPostProcessing)

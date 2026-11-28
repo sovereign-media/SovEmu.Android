@@ -10,6 +10,9 @@ import android.view.Display
 import android.view.Window
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 
 /**
@@ -34,19 +37,26 @@ fun TvGameMode(enabled: Boolean) {
  * While a game is on screen, a low-latency Wi-Fi lock, released when the player closes: it turns
  * off power saving that batches incoming packets. A batched stream arrives in bursts, and the
  * jitter buffer then holds frames back to smooth them. Android 10+ (high-performance before); it
- * has no effect on Ethernet.
+ * has no effect on Ethernet. Its state is whether the lock is held, for the worker's stats
+ * (`wifi_lock`).
  */
 @Composable
-fun LowLatencyWhilePlaying() {
+fun rememberLowLatencyWifi(): State<Boolean> {
     val context = LocalContext.current
+    val held = remember { mutableStateOf(false) }
     DisposableEffect(context) {
         val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
         val lock = wifi?.createWifiLock(WIFI_LOCK_MODE, "SovEmu:game")?.apply {
             setReferenceCounted(false)
             acquire()
         }
-        onDispose { lock?.release() }
+        held.value = lock?.isHeld == true
+        onDispose {
+            lock?.release()
+            held.value = false
+        }
     }
+    return held
 }
 
 @Suppress("DEPRECATION") // WIFI_MODE_FULL_HIGH_PERF is the only choice before Android 10.

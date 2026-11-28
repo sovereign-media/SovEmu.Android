@@ -97,7 +97,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import media.sovereign.sovemu.ClientEvents
 import media.sovereign.sovemu.Controller
-import media.sovereign.sovemu.LowLatencyWhilePlaying
 import media.sovereign.sovemu.Sessions
 import media.sovereign.sovemu.SovEmuApi
 import media.sovereign.sovemu.Stream
@@ -139,6 +138,7 @@ import media.sovereign.sovemu.core.starsText
 import media.sovereign.sovemu.core.streamInfo
 import media.sovereign.sovemu.core.year
 import media.sovereign.sovemu.minimalPostProcessingSupported
+import media.sovereign.sovemu.rememberLowLatencyWifi
 import org.webrtc.PeerConnection
 
 /** Systems whose picture keeps its own shape rather than a TV's 4:3: the handhelds, and the
@@ -311,7 +311,21 @@ fun PlayerScreen(
     // lines (`client stats` in the server's log). With the overlay on
     // they are also shown, and echoed to logcat (`adb logcat -s SovEmu.Stats`).
     val currentGameMode by rememberUpdatedState(gameMode)
-    LaunchedEffect(stats, stream) {
+    // Wi-Fi without power saving, for as long as the player is open (the TV's game mode is the
+    // whole app's: TvGameMode); whether it is held goes to the worker with the stats.
+    val wifiLock = rememberLowLatencyWifi()
+    // Keyed on the stream alone: the overlay's switch only changes what is shown, and restarting
+    // the loop would lose the sampler's last reading, costing the worker a second or more of
+    // the input it adapts by.
+    val showStats by rememberUpdatedState(stats)
+    LaunchedEffect(stats) {
+        if (!stats) {
+            readout = null
+            latencyHistory.clear()
+            latencySamples = 0
+        }
+    }
+    LaunchedEffect(stream) {
         readout = null
         latencyHistory.clear()
         latencySamples = 0
@@ -330,10 +344,10 @@ fun PlayerScreen(
             // each second, since the display can change (another HDMI input, another TV).
             val gameModeState =
                 GameModeState.of(currentGameMode, minimalPostProcessingSupported(context))
-            s.sendStats(sample.encode(client, gameModeState.applied, setup))
+            s.sendStats(sample.encode(client, gameModeState.applied, wifiLock.value, setup))
             // The audio's delays, every ten seconds, overlay or not.
             if (++audioTick % 10 == 0) sample.audioLogfmt()?.let { Log.i(STATS_TAG, it) }
-            if (!stats) continue
+            if (!showStats) continue
             readout = sample.rows() + ("TV game mode" to gameModeState.label) +
                 pipelineRows(s.pipeline.value, sample.decoder, setup) +
                 networkRows(
@@ -416,10 +430,6 @@ fun PlayerScreen(
             toast = null
         }
     }
-
-    // Wi-Fi without power saving, for as long as the player is open (the TV's game mode is the
-    // whole app's: TvGameMode).
-    LowLatencyWhilePlaying()
 
     // The window's part goes with the screen; the session stops when the ViewModel is cleared.
     DisposableEffect(Unit) {
@@ -1252,7 +1262,7 @@ private fun MenuItem(
 
 /** An on-screen pad: D-pad bottom left, face buttons bottom right, Select/Start centre. */
 @Composable
-private fun TouchController(controller: Controller, modifier: Modifier) {
+internal fun TouchController(controller: Controller, modifier: Modifier) {
     Box(modifier.padding(24.dp)) {
         Column(
             Modifier.align(Alignment.BottomStart),
@@ -1321,11 +1331,17 @@ private fun Pad(
                     awaitFirstDown(requireUnconsumed = false)
                     pressed = true
                     controller.setTouch(button, true)
-                    do {
-                        val event = awaitPointerEvent()
-                    } while (event.changes.any { it.pressed })
-                    pressed = false
-                    controller.setTouch(button, false)
+                    // When the overlay goes mid-press, Compose ends the gesture with a cancel
+                    // event; if its coroutine is cancelled without one, the button must still
+                    // be let go, never left held in the game.
+                    try {
+                        do {
+                            val event = awaitPointerEvent()
+                        } while (event.changes.any { it.pressed })
+                    } finally {
+                        pressed = false
+                        controller.setTouch(button, false)
+                    }
                 }
             },
         contentAlignment = Alignment.Center,
