@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import media.sovereign.sovemu.core.Button
+import media.sovereign.sovemu.core.ControllerMapping
 import media.sovereign.sovemu.core.ControllerModel
 import media.sovereign.sovemu.core.Controllers
 import media.sovereign.sovemu.core.InputDeviceInfo
@@ -71,6 +72,8 @@ class Controller {
         set(value) {
             if (!value) mixer.release()
             field = value
+            menuHeld = false
+            wake()
         }
 
     private val listener = object : InputManager.InputDeviceListener {
@@ -225,17 +228,51 @@ class Controller {
     fun assign(device: Int, port: Int) {
         mixer.assign(device, port)
         publish()
+        wake()
+    }
+
+    /** The mappings in force ([InputMixer.setMappings]), sent to the game at once. */
+    fun setMappings(inForce: List<ControllerMapping>) {
+        mixer.setMappings(inForce)
+        wake()
     }
 
     /**
-     * Told (at most once per wait) whenever a key, a stick, a trigger or a touch button changes,
-     * so the stream sends the new state at once instead of at its next look. A missed signal
-     * costs nothing: the stream still looks every few milliseconds.
+     * Told (at most once per wait) whenever anything the game is sent changes: a key, a stick, a
+     * trigger or a touch button, the player a device is on, the mappings, input going to the game
+     * or not. The stream's pump sleeps until then or its next heartbeat, so every change must
+     * say so ([wake]); one that did not would wait for the heartbeat.
      */
     val changes = Channel<Unit>(Channel.CONFLATED)
 
+    /** Wakes the stream's pump to look at the input now. */
+    fun wake() {
+        changes.trySend(Unit)
+    }
+
+    /**
+     * When the input event behind the last change happened, on [android.os.SystemClock]'s
+     * uptime clock (`KeyEvent.eventTime`, the clock acks are measured on): the pump stamps the
+     * change with it, so the round trip includes the hop from the event to the pump.
+     */
+    @Volatile var changedAtMs = 0L
+        private set
+
+    /** Select+Start is held (after mapping), as last read; its press opens the menu. */
+    private var menuHeld = false
+    private val menuCheck = InputMixer.Snapshot()
+
+    /** An input changed at [atMs]: Select+Start's press asks for the menu, and the pump wakes. */
+    private fun changed(atMs: Long) {
+        changedAtMs = atMs
+        mixer.read(menuCheck)
+        if (menuCheck.menu && !menuHeld) requestMenu()
+        menuHeld = menuCheck.menu
+        wake()
+    }
+
     /** A key from any device while playing. Returns true if the game took it. */
-    fun onKey(event: KeyEvent): Boolean = key(event).also { if (it) changes.trySend(Unit) }
+    fun onKey(event: KeyEvent): Boolean = key(event).also { if (it) changed(event.eventTime) }
 
     private fun key(event: KeyEvent): Boolean {
         val down = when (event.action) {
@@ -260,7 +297,8 @@ class Controller {
     }
 
     /** Sticks, triggers and the hat from a joystick. Returns true if consumed. */
-    fun onMotion(event: MotionEvent): Boolean = motion(event).also { if (it) changes.trySend(Unit) }
+    fun onMotion(event: MotionEvent): Boolean =
+        motion(event).also { if (it) changed(event.eventTime) }
 
     private fun motion(event: MotionEvent): Boolean {
         if (!event.isFromSource(InputDevice.SOURCE_JOYSTICK)) return false
@@ -304,7 +342,7 @@ class Controller {
 
     fun setTouch(button: Button, pressed: Boolean) {
         mixer.touch(button, pressed)
-        changes.trySend(Unit)
+        changed(now())
     }
 
     /**
@@ -314,6 +352,8 @@ class Controller {
     fun lostFocus() {
         Log.w(TAG, "window lost focus: releasing held input")
         mixer.release()
+        menuHeld = false
+        wake()
     }
 
     /** Lets go of everything (leaving the game). */
@@ -323,16 +363,14 @@ class Controller {
         toGame = true
     }
 
-    fun read(): InputMixer.Reading = mixer.read()
-
-    /** Select+Start (after mapping) opens the in-game menu. */
-    val menuCombo: Boolean get() = mixer.read().menu
+    /** The controllers' state, into the reader's own [into]. */
+    fun read(into: InputMixer.Snapshot) = mixer.read(into)
 
     private val _menuRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
     /**
-     * Asks for the in-game menu: the guide/home button, or the touch controller's menu button.
-     * With Back and Select+Start, the ways out of a game.
+     * Asks for the in-game menu: the guide/home button, the touch controller's menu button, or
+     * Select+Start's press. With Back, the ways out of a game.
      */
     val menuRequests: SharedFlow<Unit> = _menuRequests.asSharedFlow()
 

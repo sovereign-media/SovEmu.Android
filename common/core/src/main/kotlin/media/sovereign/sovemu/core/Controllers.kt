@@ -415,27 +415,46 @@ object Hotkeys {
     )
 
     fun apply(ports: List<Int>): Result {
-        var ff = false
-        var rewind = false
-        var menu = false
-        val masked = ports.map { state ->
-            if (state and Button.SELECT.bit == 0) return@map state
+        val masked = ports.toIntArray()
+        val found = applyInPlace(masked)
+        return Result(
+            masked.toList(),
+            found and FAST_FORWARD != 0,
+            found and REWIND != 0,
+            found and MENU != 0,
+        )
+    }
+
+    /** What [applyInPlace] found held, as bits. */
+    const val FAST_FORWARD = 1
+    const val REWIND = 2
+    const val MENU = 4
+
+    /**
+     * [apply] without allocating, for the input pump: takes the combos out of [ports] where they
+     * are, and returns the hotkeys found ([FAST_FORWARD], [REWIND], [MENU]).
+     */
+    fun applyInPlace(ports: IntArray): Int {
+        var found = 0
+        for (i in ports.indices) {
+            val state = ports[i]
+            if (state and Button.SELECT.bit == 0) continue
             var mask = 0
             if (state and Button.R.bit != 0) {
-                ff = true
+                found = found or FAST_FORWARD
                 mask = mask or Button.SELECT.bit or Button.R.bit
             }
             if (state and Button.L.bit != 0) {
-                rewind = true
+                found = found or REWIND
                 mask = mask or Button.SELECT.bit or Button.L.bit
             }
             if (state and Button.START.bit != 0) {
-                menu = true
+                found = found or MENU
                 mask = mask or Button.SELECT.bit or Button.START.bit
             }
-            state and mask.inv()
+            ports[i] = state and mask.inv()
         }
-        return Result(masked, ff, rewind, menu)
+        return found
     }
 }
 
@@ -523,6 +542,9 @@ fun axisInputs(
 
 /** Two devices on one port: each axis takes whichever is further from centre. */
 fun mixAnalog(a: Protocol.Analog, b: Protocol.Analog): Protocol.Analog {
+    // The usual case, a stick at rest: nothing to make.
+    if (b.centred) return a
+    if (a.centred) return b
     fun pick(x: Int, y: Int) = if (kotlin.math.abs(y) > kotlin.math.abs(x)) y else x
     return Protocol.Analog(
         pick(a.lx, b.lx),
@@ -737,9 +759,38 @@ class InputMixer {
         touch = 0
     }
 
-    fun read(): Reading = synchronized(lock) {
+    /**
+     * The mixer's state, read into one [Snapshot] the reader keeps ([read] with it): the input
+     * pump reads on every change and heartbeat, and allocates nothing to do so.
+     */
+    class Snapshot {
         val ports = IntArray(Protocol.MAX_PORTS)
-        val analog = MutableList(Protocol.MAX_PORTS) { Protocol.Analog.CENTRED }
+        val analog = Array(Protocol.MAX_PORTS) { Protocol.Analog.CENTRED }
+        var count = 1
+        var fastForward = false
+        var rewind = false
+        var menu = false
+    }
+
+    fun read(): Reading {
+        val s = Snapshot()
+        read(s)
+        return Reading(
+            s.ports.toList(),
+            s.analog.toList(),
+            s.count,
+            s.fastForward,
+            s.rewind,
+            s.menu,
+        )
+    }
+
+    /** Reads into [into], overwriting all of it. */
+    fun read(into: Snapshot) = synchronized(lock) {
+        val ports = into.ports
+        val analog = into.analog
+        ports.fill(0)
+        analog.fill(Protocol.Analog.CENTRED)
         var count = 1
         ports[0] = touch
         for ((device, pad) in pads) {
@@ -757,15 +808,11 @@ class InputMixer {
             ports[keyboardPort] = ports[keyboardPort] or map.buttons(keys)
             count = maxOf(count, keyboardPort + 1)
         }
-        val hot = Hotkeys.apply(ports.toList())
-        Reading(
-            ports = hot.ports,
-            analog = analog,
-            count = count,
-            fastForward = hot.fastForward || Keys.FAST_FORWARD in keys,
-            rewind = hot.rewind || Keys.REWIND in keys,
-            menu = hot.menu,
-        )
+        val hot = Hotkeys.applyInPlace(ports)
+        into.count = count
+        into.fastForward = hot and Hotkeys.FAST_FORWARD != 0 || Keys.FAST_FORWARD in keys
+        into.rewind = hot and Hotkeys.REWIND != 0 || Keys.REWIND in keys
+        into.menu = hot and Hotkeys.MENU != 0
     }
 
     /** The keyboard (if any) first, then the controllers in the order they connected. */

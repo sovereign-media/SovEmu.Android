@@ -27,7 +27,7 @@ class TouchControllerTest {
 
     private val controller = Controller()
 
-    private fun held() = controller.read().ports[0] and Button.A.bit
+    private fun held() = controller.mixer.read().ports[0] and Button.A.bit
 
     @Test
     fun aButtonHeldAsTheOverlayGoesIsLetGo() {
