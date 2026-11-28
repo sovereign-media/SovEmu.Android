@@ -1,7 +1,9 @@
 package media.sovereign.sovemu
 
+import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
+import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.WindowManager
@@ -122,6 +124,12 @@ abstract class SovEmuActivity : ComponentActivity() {
         // Compose paints every pixel: the window's own background would be a wasted full-screen
         // fill on every frame (fill rate is what a TV's GPU runs out of first).
         window.setBackgroundDrawable(null)
+        // Joystick motion is batched to the display's frame by default, so a D-pad that reports
+        // as hat axes (Xbox, DualSense) and the sticks reached the game up to a frame late.
+        // Unbuffered, each event is dispatched as it arrives (API 30+; Fire OS 7 keeps batching).
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.decorView.requestUnbufferedDispatch(InputDevice.SOURCE_JOYSTICK)
+        }
         ClientEvents.attach(this, api, lifecycleScope)
         controller.start(this)
         presence = InputPresence(this, controller, tv)

@@ -37,6 +37,8 @@ import media.sovereign.sovemu.core.HomeCollection
 import media.sovereign.sovemu.core.HomeFeed
 import media.sovereign.sovemu.core.IceServer
 import media.sovereign.sovemu.core.KeyValue
+import media.sovereign.sovemu.core.LONG_WAIT_HEADER
+import media.sovereign.sovemu.core.LongWaitInterceptor
 import media.sovereign.sovemu.core.OAuthException
 import media.sovereign.sovemu.core.PadLayout
 import media.sovereign.sovemu.core.SaveSlot
@@ -255,7 +257,10 @@ class SovEmuApi(
      * Shared with Apollo, the image loader and the video players: GraphQL requests carry the
      * access token; `/media/…` URLs are signed and need nothing.
      */
-    val client: OkHttpClient = plain.newBuilder().addInterceptor(BearerInterceptor(session)).build()
+    val client: OkHttpClient = plain.newBuilder()
+        .addInterceptor(BearerInterceptor(session))
+        .addInterceptor(LongWaitInterceptor)
+        .build()
 
     /** One Apollo client per server address (the address changes at sign-in). */
     private var apollo: Pair<String, ApolloClient>? = null
@@ -315,6 +320,12 @@ class SovEmuApi(
         session.retryingUnauthenticated { apollo().query(q).execute().orThrow() }
     private suspend fun <D : Mutation.Data> mutate(m: Mutation<D>): D =
         session.retryingUnauthenticated { apollo().mutation(m).execute().orThrow() }
+
+    /** [mutate], for a mutation answered only once its work is done ([LongWaitInterceptor]). */
+    private suspend fun <D : Mutation.Data> mutateWaiting(m: Mutation<D>): D =
+        session.retryingUnauthenticated {
+            apollo().mutation(m).addHttpHeader(LONG_WAIT_HEADER, "1").execute().orThrow()
+        }
 
     /** An absolute URL for a path the API hands out (`/media/games/7/thumb`). */
     fun media(path: String?): String? = path?.let {
@@ -488,7 +499,8 @@ class SovEmuApi(
 
     /** Starts [gameId]; [startId] names the start, for [startProgress] meanwhile. */
     suspend fun startSession(gameId: Int, startId: String): SessionInfo =
-        mutate(StartSessionMutation(gameId, Optional.present(startId))).startSession.sessionFields
+        mutateWaiting(StartSessionMutation(gameId, Optional.present(startId)))
+            .startSession.sessionFields
 
     /** How far the start [startId] has got. */
     suspend fun startProgress(startId: String): StartStatus =

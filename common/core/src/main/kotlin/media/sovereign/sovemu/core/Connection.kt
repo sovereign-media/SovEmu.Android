@@ -1,5 +1,6 @@
 package media.sovereign.sovemu.core
 
+import java.util.concurrent.TimeUnit
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.Response
@@ -210,5 +211,26 @@ class CustomHeaderInterceptor(
         val builder = request.newBuilder()
         for (h in all) builder.header(h.name, h.value)
         return chain.proceed(builder.build())
+    }
+}
+
+/** Marks a request the server answers only when its work is done ([LongWaitInterceptor]). */
+const val LONG_WAIT_HEADER = "X-SovEmu-Long-Wait"
+
+/**
+ * How long a marked request may take to answer: past the server's own start timeout
+ * (`SovEmu__Sessions__StartTimeoutSeconds`, 120 s by default), so the server is the one that
+ * gives up and says why. `startSession` holds its answer until the game is loaded, and a slow
+ * disc read outlasted the client's ordinary 30 s, failing a start the server went on with.
+ */
+const val LONG_WAIT_SECONDS = 600
+
+/** Gives a request marked [LONG_WAIT_HEADER] [LONG_WAIT_SECONDS] to answer; drops the mark. */
+object LongWaitInterceptor : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val request = chain.request()
+        if (request.header(LONG_WAIT_HEADER) == null) return chain.proceed(request)
+        return chain.withReadTimeout(LONG_WAIT_SECONDS, TimeUnit.SECONDS)
+            .proceed(request.newBuilder().removeHeader(LONG_WAIT_HEADER).build())
     }
 }
