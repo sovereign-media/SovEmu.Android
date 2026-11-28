@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -20,6 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRestorer
@@ -30,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import media.sovereign.sovemu.Load
 import media.sovereign.sovemu.SovEmuApi
 import media.sovereign.sovemu.attempt
@@ -64,10 +67,29 @@ fun SearchScreen(
     LaunchedEffect(query) { onQuery(query) }
 
     val found = (results as? SearchResults.Found)?.games.orEmpty()
+    val grid = rememberLazyGridState()
+    val scope = rememberCoroutineScope()
+
+    /** Scrolls to the [i]th game found (after the header) and focuses it. */
+    fun focusGame(i: Int) {
+        val g = found.getOrNull(i) ?: return
+        scope.launch {
+            if (grid.layoutInfo.visibleItemsInfo.none { it.key == g.id }) grid.scrollToItem(i + 1)
+            withFrameNanos { }
+            memory.focus("game:${g.id}")
+        }
+    }
     Box(modifier.fillMaxSize()) {
         LazyVerticalGrid(
             columns = GridCells.Adaptive(160.dp),
-            modifier = Modifier.fillMaxSize().focusRestorer(),
+            state = grid,
+            // L1 and R1 move a page of games.
+            modifier = Modifier.fillMaxSize().focusRestorer().shoulderPaging(
+                grid,
+                current = { focusedGame(memory, found) },
+                count = { found.size },
+                focus = ::focusGame,
+            ),
             contentPadding = PaddingValues(start = 32.dp, end = 32.dp, bottom = 112.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp),
