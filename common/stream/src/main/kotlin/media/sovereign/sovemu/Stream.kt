@@ -3,6 +3,7 @@ package media.sovereign.sovemu
 import android.content.Context
 import android.hardware.display.DisplayManager
 import android.media.AudioAttributes
+import android.os.SystemClock
 import android.util.Log
 import android.view.Display
 import java.nio.ByteBuffer
@@ -259,6 +260,10 @@ class Stream(
     private val pc: PeerConnection = WebRtc.factory(context).createPeerConnection(
         PeerConnection.RTCConfiguration(iceServers.map(::toIceServer)).apply {
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
+            // Video, audio and the channel over one transport, as the server answers (and as
+            // a browser offers): one ICE check, one port through the relay.
+            bundlePolicy = PeerConnection.BundlePolicy.MAXBUNDLE
+            rtcpMuxPolicy = PeerConnection.RtcpMuxPolicy.REQUIRE
             // Sound waits in a buffer that grows to smooth uneven arrival, and by default may
             // grow to hundreds of milliseconds (measured: 150-390 ms behind the picture). Cap
             // what it may hold, and let it drain quickly after a hiccup, so sound stays close
@@ -307,15 +312,18 @@ class Stream(
                     _pipeline.value = pipeline
                     // The check's result comes again with the pipeline: a lost `0x83` is not
                     // missed.
-                    if (pipeline.link != null && _link.value?.done != true) {
-                        _link.value = pipeline.link
-                    }
+                    pipeline.link?.let(::setLink)
                     return
                 }
                 // Anything else this app does not know is ignored, for newer workers' sake.
-                Protocol.decodeLink(bytes)?.let { _link.value = it }
+                Protocol.decodeLink(bytes)?.let(::setLink)
             }
         })
+    }
+
+    /** A late probing report, after a later one or the result, is dropped ([Protocol.Link]). */
+    private fun setLink(link: Protocol.Link) {
+        if (link.supersedes(_link.value)) _link.value = link
     }
 
     private fun toIceServer(s: IceServer): PeerConnection.IceServer =
@@ -392,7 +400,8 @@ class Stream(
                 val hotkeys =
                     (if (r.fastForward) 1 else 0) or (if (r.rewind) 2 else 0) or
                         (if (paused) 4 else 0)
-                val now = System.currentTimeMillis()
+                // Monotonic: a wall clock set back would stop the heartbeats until it caught up.
+                val now = SystemClock.elapsedRealtime()
                 if (buttons != sent || hotkeys != sentHotkeys || now - lastSend > 100) {
                     seq++
                     send(Protocol.encodeInput(seq, now32().toInt(), buttons.toIntArray()))

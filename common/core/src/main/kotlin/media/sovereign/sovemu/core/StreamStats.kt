@@ -159,14 +159,20 @@ data class StreamStats(
     /**
      * The worker's `client stats` message, sent every second while playing (the worker lowers
      * the bitrate for a client that is not keeping up, and logs it): these values, the client
-     * ([client], `android 0.1.0 (Pixel 7, Android 14)`), whether TV game mode was asked for, and
-     * once the hardware decoder is configured, its name and whether it decodes in low-latency
-     * mode ([decoder]), and the path ([clientPath]). Sent from the moment the channel opens,
-     * before any video: the worker checks the connection first (#243), and needs the round trip
-     * and the relay's transport, which only this client can tell, to judge it.
+     * ([client], `android 0.1.0 (Pixel 7, Android 14)`), whether TV game mode was asked for and
+     * the low-latency Wi-Fi lock is held, the decoder ([decoderName]) and the path
+     * ([clientPath]), in SovEmu.Protocol's `ClientStats` order. Sent from the moment the channel
+     * opens, before any video: the worker checks the connection first (#243), and needs the
+     * round trip and the relay's transport, which only this client can tell, to judge it.
      */
-    fun encode(client: String, gameMode: Boolean?, decoder: DecoderSetup? = null): ByteArray =
-        Protocol.encodeStats(
+    fun encode(
+        client: String,
+        gameMode: Boolean?,
+        wifiLock: Boolean?,
+        setup: DecoderSetup? = null,
+    ): ByteArray {
+        val software = softwareDecoder(setup)
+        return Protocol.encodeStats(
             listOf(
                 "client" to client,
                 "estimate_ms" to estimateMs,
@@ -183,11 +189,23 @@ data class StreamStats(
                 "packets_lost" to packetsLost,
                 "frames_dropped" to framesDropped,
                 "game_mode" to gameMode,
-                "decoder" to decoder?.codec,
-                "low_latency_decode" to decoder?.lowLatency,
+                "wifi_lock" to wifiLock,
+                // A software decoder has no low-latency mode to report.
+                "low_latency_decode" to if (software != null) null else setup?.lowLatency,
+                "decoder" to (software?.implementation ?: setup?.codec),
                 "path" to path,
             ),
         )
+    }
+
+    /**
+     * The decoder WebRTC's stats name, when it is decoding in software: from the start (no
+     * hardware decoder was ever configured, [setup] is null), or after the hardware one failed
+     * mid-stream and WebRTC fell back (the stats say it is not power-efficient, while [setup]
+     * still names the hardware decoder configured first).
+     */
+    private fun softwareDecoder(setup: DecoderSetup?): VideoDecoder? =
+        decoder?.takeIf { setup == null || it.powerEfficient == false }
 
     private fun ms(x: Double?, digits: Int) = x?.let { "${num(it, digits)} ms" } ?: "–"
     private fun num(x: Double, digits: Int) = String.format(Locale.ROOT, "%.${digits}f", x)
@@ -233,7 +251,8 @@ class StatsSampler {
             height = now.height,
             fps = now.framesPerSecond,
             kbps = seconds?.let { (now.bytesReceived - prev!!.bytesReceived) * 8 / 1000 / it },
-            packetsLost = now.packetsLost,
+            // WebRTC's count is signed: duplicates outnumbering losses make it negative.
+            packetsLost = now.packetsLost.coerceAtLeast(0),
             decoder = now.decoder,
             inputToFrameMs = inputToFrameMs,
             framesDropped = now.framesDropped,

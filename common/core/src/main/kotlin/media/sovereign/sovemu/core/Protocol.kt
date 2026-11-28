@@ -4,6 +4,8 @@ import com.apollographql.apollo.api.json.JsonReader
 import com.apollographql.apollo.api.json.jsonReader
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.abs
+import kotlin.math.floor
 import okio.Buffer
 
 /**
@@ -30,12 +32,23 @@ object Protocol {
     /** The longest link message the worker sends (and the longest decoded). */
     const val MAX_LINK_BYTES = 1024
 
+    /** The longest `0x04` the worker reads (`MAX_STATS_LEN` in SovEmu.Protocol). */
+    const val MAX_STATS_BYTES = 2048
+
     /**
      * This client's view of the stream for the worker (`client stats`): `0x04`, the version,
      * then a JSON object of the known values. [fields] are `ClientStats`'s keys in its order;
-     * nulls and non-finite numbers are left out, numbers rounded to one decimal.
+     * nulls and non-finite numbers are left out, numbers rounded to one decimal. A message past [MAX_STATS_BYTES] would be dropped by the worker, so one
+     * that grows past it is sent without its text (the client's name, the decoder, the path):
+     * the numbers are what the worker adapts the stream by.
      */
     fun encodeStats(fields: List<Pair<String, Any?>>): ByteArray {
+        val all = statsMessage(fields)
+        if (all.size <= MAX_STATS_BYTES) return all
+        return statsMessage(fields.filter { (_, v) -> v !is CharSequence })
+    }
+
+    private fun statsMessage(fields: List<Pair<String, Any?>>): ByteArray {
         val body = fields.mapNotNull { (key, value) ->
             val json = when (value) {
                 null -> null
@@ -51,12 +64,17 @@ object Protocol {
     }
 
     /**
-     * One decimal, no trailing zeros: as JavaScript's JSON.stringify writes
-     * `Math.round(x * 10) / 10`.
+     * One decimal, no trailing zero, exactly as JavaScript's `JSON.stringify` writes
+     * `Math.round(x * 10) / 10`: a half rounds up (towards +∞, so -0.25 is -0.2), on the
+     * product as a double (so 1.05, which is 10.5 once multiplied, is 1.1), and -0 is 0.
      */
-    private fun number(x: Double): String = java.math.BigDecimal(
-        x,
-    ).setScale(1, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()
+    internal fun number(x: Double): String {
+        val n = floor(x * 10 + 0.5).toLong()
+        val whole = abs(n) / 10
+        val tenth = abs(n) % 10
+        val sign = if (n < 0) "-" else ""
+        return if (tenth == 0L) "$sign$whole" else "$sign$whole.$tenth"
+    }
 
     private fun quote(s: String): String = buildString {
         append('"')
@@ -205,6 +223,18 @@ object Protocol {
     ) {
         val probing: Boolean get() = state == PROBING
         val done: Boolean get() = state == DONE
+
+        /**
+         * Whether this report replaces [current], the one shown, as the web's `supersedes`
+         * decides: the first report, a later probing one, or the result. A probing report sent
+         * before the result can arrive after it (the channel is unordered), and must not turn
+         * a finished check back into "Checking your connection".
+         */
+        fun supersedes(current: Link?): Boolean = when {
+            current == null -> true
+            current.done -> done
+            else -> done || elapsedMs >= current.elapsedMs
+        }
 
         companion object {
             const val PROBING = "probing"

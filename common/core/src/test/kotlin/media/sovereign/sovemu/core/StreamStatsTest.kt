@@ -275,7 +275,7 @@ class StreamStatsTest {
     @Test
     fun `the stats message carries the measurement and the decoder only when known`() {
         fun json(stats: StreamStats, decoder: DecoderSetup?) =
-            String(stats.encode("app", true, decoder).let { it.copyOfRange(2, it.size) })
+            String(stats.encode("app", true, true, decoder).let { it.copyOfRange(2, it.size) })
         val unknown = StatsSampler().sample(reading(0), emptyList())
         assertEquals(false, json(unknown, null).contains("input_to_frame_ms"))
         assertEquals(false, json(unknown, null).contains("decoder"))
@@ -283,9 +283,8 @@ class StreamStatsTest {
         val known = StatsSampler().sample(reading(0), emptyList(), inputToFrameMs = 41)
         assertEquals(
             """{"client":"app","input_to_frame_ms":41,"net_rtt_ms":4.3,"width":256,""" +
-                """"height":240,"fps":60,"packets_lost":3,"game_mode":true,""" +
-                """"decoder":"c2.amlogic.avc.decoder",""" +
-                """"low_latency_decode":false}""",
+                """"height":240,"fps":60,"packets_lost":3,"game_mode":true,"wifi_lock":true,""" +
+                """"low_latency_decode":false,"decoder":"c2.amlogic.avc.decoder"}""",
             json(known, DecoderSetup("c2.amlogic.avc.decoder", "video/avc", emptyList())),
         )
         assertEquals(
@@ -293,6 +292,36 @@ class StreamStatsTest {
             json(known, DecoderSetup("c2.qti.avc.decoder", "video/avc", listOf("low-latency")))
                 .contains(""""low_latency_decode":true"""),
         )
+    }
+
+    @Test
+    fun `a software decoder is reported by its own name, from the start or after a fallback`() {
+        fun json(reading: StatsReading, setup: DecoderSetup?): String {
+            val bytes = StatsSampler().sample(reading, emptyList()).encode("app", null, null, setup)
+            return String(bytes.copyOfRange(2, bytes.size))
+        }
+        val libvpx = reading(0).copy(decoder = VideoDecoder("libvpx", false))
+        // Never a hardware decoder: no setup, the stats' name.
+        assertEquals(true, json(libvpx, null).endsWith(""""decoder":"libvpx"}"""))
+        // The hardware decoder failed mid-stream: its setup stays, but the stats know better.
+        val hardware = DecoderSetup("c2.qti.vp8.decoder", "video/x-vnd.on2.vp8", listOf("x"))
+        val fellBack = json(libvpx, hardware)
+        assertEquals(true, fellBack.endsWith(""""decoder":"libvpx"}"""))
+        assertEquals(false, fellBack.contains("low_latency_decode"))
+        // Still on the hardware decoder: its own name and mode.
+        val onHardware = reading(0).copy(decoder = VideoDecoder("MediaCodecVideoDecoder", true))
+        assertEquals(
+            true,
+            json(onHardware, hardware)
+                .endsWith(""""low_latency_decode":true,"decoder":"c2.qti.vp8.decoder"}"""),
+        )
+    }
+
+    @Test
+    fun `a negative packet count is sent as none lost`() {
+        // WebRTC's packetsLost goes negative when duplicates outnumber losses.
+        val sample = StatsSampler().sample(reading(0).copy(packetsLost = -4), emptyList())
+        assertEquals(0L, sample.packetsLost)
     }
 
     @Test
@@ -357,7 +386,7 @@ class StreamStatsTest {
             remote = host,
         )
         val sample = StatsSampler().sample(probing, emptyList())
-        val json = String(sample.encode("app", null).let { it.copyOfRange(2, it.size) })
+        val json = String(sample.encode("app", null, null).let { it.copyOfRange(2, it.size) })
         assertEquals(
             """{"client":"app","net_rtt_ms":24,"packets_lost":0,"path":"relay-tcp"}""",
             json,

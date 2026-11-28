@@ -109,6 +109,44 @@ class ProtocolTest {
         )
     }
 
+    @Test
+    fun `stats round as JavaScript's Math round does`() {
+        // Halves go up, towards +infinity, on the product as a double; -0 is 0.
+        val cases = mapOf(
+            1.05 to "1.1",
+            -0.25 to "-0.2",
+            -0.04 to "0",
+            0.15 to "0.2",
+            2.675 to "2.7",
+            59.94 to "59.9",
+            -12.36 to "-12.4",
+            1234567.0 to "1234567",
+        )
+        for ((x, want) in cases) assertEquals("$x", want, Protocol.number(x))
+    }
+
+    @Test
+    fun `a stats message too long for the worker drops its text first`() {
+        val long = "x".repeat(Protocol.MAX_STATS_BYTES)
+        val encoded = Protocol.encodeStats(listOf("client" to long, "fps" to 60.0))
+        assertEquals("""{"fps":60}""", String(encoded.copyOfRange(2, encoded.size)))
+        val short = Protocol.encodeStats(listOf("client" to "app", "fps" to 60.0))
+        assertEquals("""{"client":"app","fps":60}""", String(short.copyOfRange(2, short.size)))
+    }
+
+    @Test
+    fun `a link report supersedes the first, a later probing one, and the result`() {
+        // The same cases as `supersedes` in SovEmu.Web's link.test.ts.
+        fun probing(elapsedMs: Int) = Protocol.Link(Protocol.Link.PROBING, elapsedMs)
+        val done = Protocol.Link(Protocol.Link.DONE, 1600, startKbps = 12_000)
+        assertEquals(true, probing(0).supersedes(null))
+        assertEquals(true, probing(400).supersedes(probing(200)))
+        assertEquals(true, done.supersedes(probing(400)))
+        assertEquals(false, probing(200).supersedes(probing(400)))
+        assertEquals(false, probing(1800).supersedes(done))
+        assertEquals(true, done.copy(startKbps = 9000).supersedes(done))
+    }
+
     private fun pipeline(json: String) =
         byteArrayOf(0x82.toByte(), 1) + json.toByteArray(Charsets.UTF_8)
 
