@@ -266,7 +266,13 @@ abstract class SovEmuActivity : ComponentActivity() {
 /** The screensaver's choices, in minutes without input (0: never). */
 internal val SCREENSAVER_CHOICES = listOf(3, 5, 10, 0)
 
-private fun stickMoved(e: MotionEvent): Boolean = listOf(
+private fun stickMoved(e: MotionEvent): Boolean {
+    for (axis in STICK_AXES) if (kotlin.math.abs(e.getAxisValue(axis)) > 0.5f) return true
+    return false
+}
+
+/** The axes [stickMoved] looks at: made once, not on every motion event. */
+private val STICK_AXES = intArrayOf(
     MotionEvent.AXIS_X,
     MotionEvent.AXIS_Y,
     MotionEvent.AXIS_Z,
@@ -274,4 +280,3 @@ private fun stickMoved(e: MotionEvent): Boolean = listOf(
     MotionEvent.AXIS_HAT_X,
     MotionEvent.AXIS_HAT_Y,
 )
-    .any { kotlin.math.abs(e.getAxisValue(it)) > 0.5f }

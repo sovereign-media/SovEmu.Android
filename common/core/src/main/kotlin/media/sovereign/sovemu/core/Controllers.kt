@@ -1,6 +1,7 @@
 package media.sovereign.sovemu.core
 
 import java.util.Locale
+import kotlin.math.abs
 
 /*
  * Controllers as every SovEmu client names them (docs/CONTROLLERS.md in SovEmu): controller IDs,
@@ -525,13 +526,34 @@ fun axisInputs(
     ly: Float = 0f,
     rx: Float = 0f,
     ry: Float = 0f,
-): Set<String> = buildSet {
-    for ((side, x, y) in listOf(Triple("ls", lx, ly), Triple("rs", rx, ry))) {
-        if (x < -0.5f) add("${side}_left")
-        if (x > 0.5f) add("${side}_right")
-        if (y < -0.5f) add("${side}_up")
-        if (y > 0.5f) add("${side}_down")
+): Set<String> {
+    // Most motion events hold nothing over the line (a stick drifting near centre): nothing made.
+    if (abs(hatX) <= 0.5f && abs(hatY) <= 0.5f && leftTrigger <= 0.5f && rightTrigger <= 0.5f &&
+        abs(lx) <= 0.5f && abs(ly) <= 0.5f && abs(rx) <= 0.5f && abs(ry) <= 0.5f
+    ) {
+        return emptySet()
     }
+    return heldAxes(hatX, hatY, leftTrigger, rightTrigger, lx, ly, rx, ry)
+}
+
+private fun heldAxes(
+    hatX: Float,
+    hatY: Float,
+    leftTrigger: Float,
+    rightTrigger: Float,
+    lx: Float,
+    ly: Float,
+    rx: Float,
+    ry: Float,
+): Set<String> = buildSet {
+    if (lx < -0.5f) add("ls_left")
+    if (lx > 0.5f) add("ls_right")
+    if (ly < -0.5f) add("ls_up")
+    if (ly > 0.5f) add("ls_down")
+    if (rx < -0.5f) add("rs_left")
+    if (rx > 0.5f) add("rs_right")
+    if (ry < -0.5f) add("rs_up")
+    if (ry > 0.5f) add("rs_down")
     if (hatX < -0.5f) add("left")
     if (hatX > 0.5f) add("right")
     if (hatY < -0.5f) add("up")

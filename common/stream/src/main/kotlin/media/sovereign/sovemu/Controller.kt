@@ -328,7 +328,11 @@ class Controller {
     private fun rightTrigger(e: MotionEvent) =
         maxOf(e.getAxisValue(MotionEvent.AXIS_RTRIGGER), e.getAxisValue(MotionEvent.AXIS_GAS))
 
-    /** The hat as `up`/`down`/`left`/`right`, the analog triggers as `l2`/`r2`. */
+    /**
+     * The hat as `up`/`down`/`left`/`right`, the analog triggers as `l2`/`r2`. Asked of each
+     * motion event twice (the remap screen's capture keeps what is held, then the game), which
+     * costs a few comparisons: nothing is made unless something is over the line.
+     */
     private fun axes(e: MotionEvent): Set<String> = axisInputs(
         e.getAxisValue(MotionEvent.AXIS_HAT_X),
         e.getAxisValue(MotionEvent.AXIS_HAT_Y),

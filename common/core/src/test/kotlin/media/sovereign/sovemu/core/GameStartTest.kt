@@ -61,6 +61,20 @@ class GameStartTest {
     }
 
     @Test
+    fun `the bar creeps through the stretches whose end cannot be known`() {
+        // Connecting: from 0.85, a little way, never into the check's stretch beyond 0.88.
+        val connecting = listOf(0L, 1_000, 5_000, 60_000).map { describeConnecting(it).fraction }
+        assertEquals(connecting, connecting.sorted())
+        assertTrue(connecting.zipWithNext().all { (a, b) -> b > a })
+        assertTrue(connecting.last() < 0.88)
+        // The first picture: from 0.97, never quite full.
+        val picture = listOf(0L, 2_000, 10_000, 120_000).map { describeFirstPicture(it).fraction }
+        assertEquals(0.97, picture.first(), 1e-9)
+        assertTrue(picture.zipWithNext().all { (a, b) -> b > a })
+        assertTrue(picture.last() < 1.0)
+    }
+
+    @Test
     fun `the bar never moves backwards`() {
         val bar = ForwardOnly()
         assertEquals(0.5, bar.next(0.5), 0.0)
@@ -75,7 +89,8 @@ class GameStartTest {
 
     @Test
     fun `waiting for the first picture counts the wait and says how to leave`() {
-        assertEquals(LaunchView("Starting the game", "", 0.97), describeFirstPicture(500))
+        assertEquals("Starting the game", describeFirstPicture(500).label)
+        assertEquals("", describeFirstPicture(500).detail)
         assertEquals("6 s", describeFirstPicture(6200).detail)
         assertEquals(
             "21 s · still no picture: Back opens the menu",
@@ -115,7 +130,8 @@ class GameStartTest {
     fun `it says it is connecting until the worker is reached`() {
         // Otherwise the screen read "Starting the game" for a second or two before it went back
         // to checking the connection.
-        assertEquals(LaunchView("Connecting", "", 0.85), describeConnecting(500))
+        assertEquals(LaunchView("Connecting", "", 0.85), describeConnecting(0))
+        assertEquals("", describeConnecting(500).detail)
         assertEquals("4 s", describeConnecting(4200).detail)
     }
 

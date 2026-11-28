@@ -22,9 +22,11 @@ object Protocol {
     private const val TYPE_HOTKEYS: Byte = 0x02
     private const val TYPE_ANALOG: Byte = 0x03
     private const val TYPE_STATS: Byte = 0x04
-    private const val TYPE_ACK: Byte = 0x81.toByte()
-    private const val TYPE_PIPELINE: Byte = 0x82.toByte()
-    private const val TYPE_LINK: Byte = 0x83.toByte()
+
+    /** The worker's messages, by their first byte. */
+    const val TYPE_ACK: Byte = 0x81.toByte()
+    const val TYPE_PIPELINE: Byte = 0x82.toByte()
+    const val TYPE_LINK: Byte = 0x83.toByte()
 
     /** The longest pipeline message the worker sends (and the longest decoded). */
     const val MAX_PIPELINE_BYTES = 4096
@@ -146,6 +148,21 @@ object Protocol {
     }
 
     data class Ack(val seq: Long, val clientTimeMs: Long, val frame: Long)
+
+    /**
+     * An ack's `client_time_ms`, read where it lies in [data] (from its position, which is left
+     * where it was), or -1 if it is not an ack: acks come with every frame that took input, and
+     * this reads them without a copy or an object each.
+     */
+    fun ackClientTimeMs(data: ByteBuffer): Long {
+        val at = data.position()
+        if (data.remaining() < 14 || data.get(at) != TYPE_ACK ||
+            data.get(at + 1) != INPUT_VERSION
+        ) {
+            return -1
+        }
+        return data.order(ByteOrder.LITTLE_ENDIAN).getInt(at + 6).toLong() and 0xffff_ffffL
+    }
 
     /** Decodes an ack, or returns null for anything else. */
     fun decodeAck(bytes: ByteArray): Ack? {
