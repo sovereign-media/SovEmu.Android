@@ -1,6 +1,8 @@
 package media.sovereign.sovemu.core
 
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 
 /** The words *Who's watching?* and its neighbours use, as Sovereign.Android's. */
 object LaunchText {
@@ -149,24 +151,35 @@ class ServerChooser(private val service: ServerService, private val session: Ses
      * Removes [server] from [servers] (the list as shown) and everyone on it. When it was the one
      * in use, the app moves to the server that took its place in the list (even if that one does
      * not answer: its picker makes no request), or to no server at all.
+     *
+     * Once begun it finishes, even if the caller goes (#131): removing the server in use signs
+     * its account out, and the screens that asked go with the signed-in app. Stopped there, the
+     * app would be left signed out on the next server, its stored account never restored.
      */
     suspend fun remove(server: KnownServer, servers: List<KnownServer>): ServerMove {
         val inUse = server.inUse || StoredAccount.sameServer(server.address, service.server)
         val next = KnownServers.successor(servers, server)
-        session.removeServer(server.address)
-        if (!inUse) return ServerMove.Stayed
-        if (next == null) {
-            service.setServer("")
-            session.launch()
-            return ServerMove.NoServer
+        return withContext(NonCancellable) {
+            session.removeServer(server.address)
+            when {
+                !inUse -> ServerMove.Stayed
+
+                next == null -> {
+                    service.setServer("")
+                    session.launch()
+                    ServerMove.NoServer
+                }
+
+                else -> {
+                    try {
+                        service.bootstrapAt(next.address)
+                    } catch (_: Exception) {
+                        // Its picker makes no request: the app lands there all the same.
+                        service.setServer(next.address)
+                    }
+                    ServerMove.Moved(session.launch())
+                }
+            }
         }
-        try {
-            service.bootstrapAt(next.address)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: Exception) {
-            service.setServer(next.address)
-        }
-        return ServerMove.Moved(session.launch())
     }
 }
