@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.VibrationEffect
+import android.provider.Settings
 import android.util.Log
 import android.view.InputDevice
 import android.view.KeyEvent
@@ -188,6 +189,23 @@ class Controller {
         val blinked = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
             blink(d, pulses, (port ?: 0) + 1, scope)
         return rumbled || blinked
+    }
+
+    /**
+     * What [Identify.unsupported] says when [controllerName] cannot rumble here, naming this
+     * device by the name its owner gave it (Settings, *Device name*: `DEV-FIRESTICK`), else its
+     * model, with `Fire TV` and the model in brackets where they add something.
+     */
+    fun cannotIdentify(context: Context, controllerName: String): String {
+        val model = Build.MODEL.orEmpty()
+        val name = Settings.Global.getString(context.contentResolver, Settings.Global.DEVICE_NAME)
+            ?.takeIf { it.isNotBlank() } ?: model
+        val fireTv = context.packageManager.hasSystemFeature(FIRE_TV_FEATURE)
+        return Identify.unsupported(
+            controllerName,
+            name,
+            Identify.deviceDetails(name, model, fireTv),
+        )
     }
 
     private fun rumble(d: InputDevice, pulses: Int): Boolean {
@@ -561,3 +579,6 @@ class Controller {
         fun trigger(v: Float): Int = (v.coerceIn(0f, 1f) * 32767).roundToInt()
     }
 }
+
+/** The system feature every Fire TV device declares. */
+private const val FIRE_TV_FEATURE = "amazon.hardware.fire_tv"

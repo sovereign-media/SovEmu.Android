@@ -41,6 +41,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -142,6 +143,10 @@ private fun ColumnScope.DeviceList(
 ) {
     val first = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
+
+    /** Controllers *Identify* could neither rumble nor light up on this device: each says why. */
+    var cannot by remember { mutableStateOf(emptySet<Int>()) }
+    val context = LocalContext.current
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -209,7 +214,14 @@ private fun ColumnScope.DeviceList(
                     if (!d.isKeyboard) {
                         SovButton(
                             "Identify",
-                            { controller.identify(d.device, scope) },
+                            {
+                                // Neither rumble nor lights: say so, rather than do nothing.
+                                cannot = if (controller.identify(d.device, scope)) {
+                                    cannot - d.device
+                                } else {
+                                    cannot + d.device
+                                }
+                            },
                             variant = Variant.Glass,
                             icon = Lucide.Vibrate,
                             large = false,
@@ -221,6 +233,14 @@ private fun ColumnScope.DeviceList(
                         variant = Variant.Glass,
                         icon = Lucide.SlidersHorizontal,
                         large = false,
+                    )
+                }
+                if (d.device in cannot) {
+                    Text(
+                        remember(d.name) { controller.cannotIdentify(context, d.name) },
+                        color = Sov.Amber200,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
                     )
                 }
                 Row(
