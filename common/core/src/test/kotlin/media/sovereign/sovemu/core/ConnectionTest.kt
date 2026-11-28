@@ -1,5 +1,6 @@
 package media.sovereign.sovemu.core
 
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -138,5 +139,28 @@ class ConnectionTest {
         refused.check("http://tv.local:8080", secureOnly = true)
         assertEquals(ServerAddress.INSECURE, refused.error.value)
         assertEquals(1, strict.asked.size)
+    }
+
+    @Test
+    fun aLongWaitRequestGetsItsOwnReadTimeoutAndNoMark() {
+        MockWebServer().use { server ->
+            server.start()
+            val timeouts = mutableListOf<Int>()
+            val client = OkHttpClient.Builder()
+                .readTimeout(30, TimeUnit.SECONDS)
+                .addInterceptor(LongWaitInterceptor)
+                .addInterceptor { chain ->
+                    timeouts += chain.readTimeoutMillis()
+                    chain.proceed(chain.request())
+                }
+                .build()
+            repeat(2) { server.enqueue(MockResponse.Builder().code(200).build()) }
+            val url = server.url("/graphql")
+            client.newCall(Request.Builder().url(url).header(LONG_WAIT_HEADER, "1").build())
+                .execute().close()
+            client.newCall(Request.Builder().url(url).build()).execute().close()
+            assertEquals(listOf(LONG_WAIT_SECONDS * 1000, 30_000), timeouts)
+            assertNull(server.takeRequest().headers[LONG_WAIT_HEADER])
+        }
     }
 }
