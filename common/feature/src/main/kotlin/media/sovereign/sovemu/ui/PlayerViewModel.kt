@@ -31,6 +31,7 @@ import media.sovereign.sovemu.core.ControllerMapping
 import media.sovereign.sovemu.core.ForwardOnly
 import media.sovereign.sovemu.core.Game
 import media.sovereign.sovemu.core.GameDecoration
+import media.sovereign.sovemu.core.InputSequence
 import media.sovereign.sovemu.core.MappingBook
 import media.sovereign.sovemu.core.MappingScope
 import media.sovereign.sovemu.core.SaveSlot
@@ -204,6 +205,9 @@ class PlayerViewModel @AssistedInject constructor(
         }
     }
 
+    /** This game's input packet numbers, over all its connections ([InputSequence]). */
+    private val sequence = InputSequence()
+
     /**
      * Builds the game's stream for [session], drawing into [video] and sending [controller]'s
      * input: WebRTC's factory and peer connection are slow to build, so not on the main thread,
@@ -226,6 +230,7 @@ class PlayerViewModel @AssistedInject constructor(
                 servers,
                 controller,
                 video,
+                sequence,
                 onState = onState,
             )
         }

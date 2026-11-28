@@ -84,15 +84,15 @@ import androidx.compose.ui.unit.max
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import media.sovereign.sovemu.ClientEvents
@@ -115,6 +115,8 @@ import media.sovereign.sovemu.core.GameStart
 import media.sovereign.sovemu.core.LatencyHistory
 import media.sovereign.sovemu.core.LoadingBackground
 import media.sovereign.sovemu.core.MappingBook
+import media.sovereign.sovemu.core.PeerLink
+import media.sovereign.sovemu.core.PeerState
 import media.sovereign.sovemu.core.Protocol
 import media.sovereign.sovemu.core.QualityNotice
 import media.sovereign.sovemu.core.SAVE_SLOTS
@@ -127,6 +129,7 @@ import media.sovereign.sovemu.core.StatsSampler
 import media.sovereign.sovemu.core.SystemSummary
 import media.sovereign.sovemu.core.describeStart
 import media.sovereign.sovemu.core.formatAgo
+import media.sovereign.sovemu.core.keepConnected
 import media.sovereign.sovemu.core.loadingBackground
 import media.sovereign.sovemu.core.networkLabel
 import media.sovereign.sovemu.core.networkRows
@@ -223,6 +226,15 @@ fun PlayerScreen(
     /** The stream has connected once: a failure after that is a lost connection. */
     var everConnected by remember { mutableStateOf(false) }
 
+    /** Connections given up on and made again so far ([Reconnect]). */
+    var reconnects by remember { mutableIntStateOf(0) }
+
+    /** Reconnecting gave up before the game's first picture. */
+    var connectionFailed by remember { mutableStateOf(false) }
+
+    /** The game has drawn, on this connection or an earlier one: a reconnect keeps it shown. */
+    var pictured by remember { mutableStateOf(false) }
+
     /** The disc in the tray (1-based), for a multi-disc game. */
     val disc by model.disc.collectAsStateWithLifecycle()
     val book = model.book
@@ -253,40 +265,30 @@ fun PlayerScreen(
     }
 
     // The game's stream, once its session has started: built by the ViewModel (it holds the API
-    // and the ICE servers) into this screen's video view, and closed by this screen as it goes.
+    // and the ICE servers) into this screen's video view. A connection that fails, stays
+    // disconnected or never connects is made again to the same session ([keepConnected]), up to
+    // Reconnect.ATTEMPTS times; only one that never recovers is reported, and ends the game.
     LaunchedEffect(info) {
         val session = info ?: return@LaunchedEffect
-        try {
-            val s = model.stream(context, session, controller, renderer) { state ->
-                if (state == PeerConnection.PeerConnectionState.FAILED) {
-                    lost = "Connection failed"
-                }
-                when (state) {
-                    PeerConnection.PeerConnectionState.CONNECTED -> everConnected = true
-
-                    PeerConnection.PeerConnectionState.FAILED,
-                    PeerConnection.PeerConnectionState.DISCONNECTED,
-                    -> {
-                        val kind = if (everConnected) "CONNECTION_LOST" else "CONNECTION_FAILED"
-                        ClientEvents.report(kind, "WebRTC ${state.name.lowercase()}", session.id)
-                    }
-
-                    else -> {}
-                }
-            }
-            if (!isActive) {
-                s.close()
-                return@LaunchedEffect
+        keepConnected({ attempt ->
+            reconnects = attempt
+            if (attempt > 0 && pictured) toast = "Reconnecting…"
+            val state = MutableStateFlow(PeerState.NEW)
+            val s = model.stream(context, session, controller, renderer) { webrtc ->
+                state.value = PeerState.valueOf(webrtc.name)
+                if (webrtc == PeerConnection.PeerConnectionState.CONNECTED) everConnected = true
             }
             stream = s
-            s.connect()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            lost = "Could not start: ${e.message}"
-        }
+            object : PeerLink {
+                override val state: StateFlow<PeerState> = state
+                override suspend fun connect() = s.connect()
+                override fun close() = s.close()
+            }
+        })
+        val kind = if (everConnected) "CONNECTION_LOST" else "CONNECTION_FAILED"
+        ClientEvents.report(kind, "no connection after $reconnects reconnects", session.id)
+        if (pictured) lost = "Lost the connection to the game" else connectionFailed = true
     }
-
     // Select+Start (polled from the mixer), and the guide button or on-screen menu button.
     LaunchedEffect(Unit) {
         while (true) {
@@ -389,13 +391,16 @@ fun PlayerScreen(
     }
     // The loading screen stays until the game's first picture: a console's BIOS can boot for
     // seconds after the session is ready. A long wait adds a hint.
-    val pictureShown by remember(stream) { stream?.firstFrame ?: flowOf(false) }
+    val streamPicture by remember(stream) { stream?.firstFrame ?: flowOf(false) }
         .collectAsStateWithLifecycle(false)
+    LaunchedEffect(streamPicture) { if (streamPicture) pictured = true }
+    val pictureShown = pictured || streamPicture
 
     // The worker's check of the connection, which comes between connecting and the picture.
     val link by remember(stream) { stream?.link ?: flowOf(null) }
         .collectAsStateWithLifecycle(null)
-    LaunchedEffect(info, pictureShown) {
+    // Counted again from each new connection, as the web does.
+    LaunchedEffect(info, stream, pictureShown) {
         if (info == null || pictureShown) return@LaunchedEffect
         val since = SystemClock.uptimeMillis()
         while (true) {
@@ -463,6 +468,8 @@ fun PlayerScreen(
             pictureShown,
             waitedMs,
             link,
+            reconnects,
+            connectionFailed,
         )?.let {
             Splash(
                 game,
@@ -475,7 +482,9 @@ fun PlayerScreen(
                 covered = menuOpen || controllersOpen,
             )
         }
-        if (touchControls && !menuOpen && !controllersOpen && info != null && error == null) {
+        if (touchControls && !menuOpen && !controllersOpen && info != null && error == null &&
+            !connectionFailed
+        ) {
             TouchController(controller, Modifier.fillMaxSize().safeDrawingPadding())
         }
         readout?.let {
