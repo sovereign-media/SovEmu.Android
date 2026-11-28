@@ -31,6 +31,7 @@ import media.sovereign.sovemu.core.Button
 import media.sovereign.sovemu.core.ControllerMapping
 import media.sovereign.sovemu.core.ControllerModel
 import media.sovereign.sovemu.core.Controllers
+import media.sovereign.sovemu.core.Identify
 import media.sovereign.sovemu.core.InputDeviceInfo
 import media.sovereign.sovemu.core.InputMixer
 import media.sovereign.sovemu.core.Keys
@@ -172,54 +173,71 @@ class Controller {
     }
 
     /**
-     * Shows which physical controller [device] is: rumbles it and blinks its lights, each where
-     * Android can drive them (a PlayStation pad's light bar, a Switch pad's player LEDs; an Xbox
-     * pad over Bluetooth only rumbles). Needs Android 12; false when it can do neither.
+     * *Identify*: rumbles [device] and blinks its lights, once for each player number it is on
+     * ([Identify]): player four's pad pulses four times. Rumble works from Android 9 (the
+     * device's own vibrator before Android 12, its VibratorManager after); lights only from
+     * Android 12, the first that lets an app drive a controller's (a DualSense's light bar, a
+     * Switch Pro pad's player LEDs, which show the player's number while lit). An Xbox pad
+     * over Bluetooth exposes no lights, so it rumbles. Returns whether it could do either.
      */
     fun identify(device: Int, scope: CoroutineScope): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return false
         val d = InputDevice.getDevice(device) ?: return false
-        var did = false
-        val vibrator = d.vibratorManager.defaultVibrator
-        if (vibrator.hasVibrator()) {
-            vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 180, 140, 180), -1))
-            did = true
+        val port = mixer.devices().firstOrNull { it.device == device }?.port
+        val pulses = Identify.pulses(port)
+        val rumbled = rumble(d, pulses)
+        val blinked = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            blink(d, pulses, (port ?: 0) + 1, scope)
+        return rumbled || blinked
+    }
+
+    private fun rumble(d: InputDevice, pulses: Int): Boolean {
+        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            d.vibratorManager.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION") // The only way to a controller's vibrator before Android 12.
+            d.vibrator
         }
+        if (!vibrator.hasVibrator()) return false
+        vibrator.vibrate(VibrationEffect.createWaveform(Identify.rumble(pulses), -1))
+        return true
+    }
+
+    @RequiresApi(Build.VERSION_CODES.S)
+    private fun blink(d: InputDevice, pulses: Int, player: Int, scope: CoroutineScope): Boolean {
         val lights = d.lightsManager.lights.filter {
             it.hasRgbControl() || it.type == Light.LIGHT_TYPE_PLAYER_ID ||
                 it.type == Light.LIGHT_TYPE_INPUT
         }
-        if (lights.isNotEmpty()) {
-            scope.launch {
-                val session = d.lightsManager.openSession()
-                try {
-                    repeat(3) {
-                        session.requestLights(lightsRequest(lights, on = true))
-                        delay(250)
-                        session.requestLights(lightsRequest(lights, on = false))
-                        delay(250)
-                    }
-                } finally {
-                    // Closing hands the lights back to the system (its own colour, player number).
-                    session.close()
+        if (lights.isEmpty()) return false
+        scope.launch {
+            val session = d.lightsManager.openSession()
+            try {
+                repeat(pulses) {
+                    session.requestLights(lightsRequest(lights, player))
+                    delay(Identify.BLINK_MS)
+                    session.requestLights(lightsRequest(lights, null))
+                    delay(Identify.BLINK_MS)
                 }
+            } finally {
+                // Closing hands the lights back to the system (its own colour, player number).
+                session.close()
             }
-            did = true
         }
-        return did
+        return true
     }
 
+    /** The lights lit (showing [player] where they can), or dark when [player] is null. */
     @RequiresApi(Build.VERSION_CODES.S)
-    private fun lightsRequest(lights: List<Light>, on: Boolean): LightsRequest =
+    private fun lightsRequest(lights: List<Light>, player: Int?): LightsRequest =
         LightsRequest.Builder().apply {
             for (light in lights) {
                 val state = LightState.Builder()
                 if (light.hasRgbControl()) {
                     state.setColor(
-                        if (on) 0xFFFFFFFF.toInt() else 0xFF000000.toInt(),
+                        if (player != null) 0xFFFFFFFF.toInt() else 0xFF000000.toInt(),
                     )
                 }
-                if (light.type == Light.LIGHT_TYPE_PLAYER_ID) state.setPlayerId(if (on) 4 else 0)
+                if (light.type == Light.LIGHT_TYPE_PLAYER_ID) state.setPlayerId(player ?: 0)
                 addLight(light, state.build())
             }
         }.build()
