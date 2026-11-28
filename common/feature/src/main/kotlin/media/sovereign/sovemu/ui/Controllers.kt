@@ -4,7 +4,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -43,7 +42,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -56,6 +54,7 @@ import media.sovereign.sovemu.core.Binding
 import media.sovereign.sovemu.core.Button
 import media.sovereign.sovemu.core.ControllerSettingsModel
 import media.sovereign.sovemu.core.Controllers
+import media.sovereign.sovemu.core.Identify
 import media.sovereign.sovemu.core.InputDeviceInfo
 import media.sovereign.sovemu.core.Mapping
 import media.sovereign.sovemu.core.MappingBook
@@ -65,6 +64,8 @@ import media.sovereign.sovemu.core.RebindCapture
 import media.sovereign.sovemu.core.SystemStick
 import media.sovereign.sovemu.core.SystemSummary
 import media.sovereign.sovemu.core.highlight
+import media.sovereign.sovemu.ui.ChoiceField
+import media.sovereign.sovemu.ui.FilterOption
 
 /**
  * The controller settings, one component for both ways in: the in-game menu's *Controllers*,
@@ -94,7 +95,6 @@ fun ControllerSettings(
 
     BackHandler { if (selected != null) selected = null else onClose() }
 
-    val systemShort = systems.firstOrNull { it.id == state.system }?.short ?: state.system.orEmpty()
     val book = state.book
     Column(
         // The device list is as tall as its devices (centred by the overlay; it scrolls if it ever
@@ -112,18 +112,20 @@ fun ControllerSettings(
             .border(1.dp, Sov.Edge, RoundedCornerShape(16.dp))
             .padding(20.dp),
     ) {
-        if (device == null || book == null) {
+        if (device == null) {
             DeviceList(
                 devices,
                 controller,
-                systems,
                 state,
-                onSystem = { id ->
-                    settings.select(id)
-                    onSystem(id)
-                },
                 onOpen = { selected = it },
                 onClose = onClose,
+            )
+        } else if (book == null) {
+            // Another system chosen on the bindings page: its mappings load in place.
+            Text(
+                state.error ?: "Loading ${systemName(systems, state.system)}…",
+                color = if (state.error != null) Sov.Amber200 else Sov.Slate300,
+                modifier = Modifier.padding(vertical = 8.dp),
             )
         } else {
             // Another system's bindings start afresh: nothing of the last one's page carries over.
@@ -132,8 +134,12 @@ fun ControllerSettings(
                     controller,
                     book,
                     Controls(state.controls, state.layouts),
-                    systemShort,
+                    systems,
                     device,
+                    onSystem = { id ->
+                        settings.select(id)
+                        onSystem(id)
+                    },
                     save = settings::save,
                     reset = settings::reset,
                     onBack = { selected = null },
@@ -143,6 +149,10 @@ fun ControllerSettings(
     }
 }
 
+/** A system's full name (`Super Nintendo`), or its id when it is not among [systems]. */
+private fun systemName(systems: List<SystemSummary>, id: String?): String =
+    systems.firstOrNull { it.id == id }?.name ?: id.orEmpty()
+
 /** The systems [ControllerSettings] offers: those with games, and [current] whatever it holds. */
 fun controllerSystems(systems: List<SystemSummary>, current: String?): List<SystemSummary> =
     systems.filter { it.gameCount > 0 || it.id == current }
@@ -151,9 +161,7 @@ fun controllerSystems(systems: List<SystemSummary>, current: String?): List<Syst
 private fun ColumnScope.DeviceList(
     devices: List<InputDeviceInfo>,
     controller: Controller,
-    systems: List<SystemSummary>,
     state: ControllerSettingsModel.State,
-    onSystem: (String) -> Unit,
     onOpen: (Int) -> Unit,
     onClose: () -> Unit,
 ) {
@@ -162,7 +170,6 @@ private fun ColumnScope.DeviceList(
 
     /** Controllers *Identify* could neither rumble nor light up on this device: each says why. */
     var cannot by remember { mutableStateOf(emptySet<Int>()) }
-    val context = LocalContext.current
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -171,29 +178,12 @@ private fun ColumnScope.DeviceList(
         Text("Controllers", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
     }
     Text(
-        "Each controller is its own player; choose another for this session. " +
-            "A player is only ever one device. " +
-            "The keyboard and touch controls are player 1 unless moved.",
+        "Any paired controller appears here.",
         color = Sov.Muted,
         fontSize = 13.sp,
         lineHeight = 19.sp,
         modifier = Modifier.padding(top = 6.dp, bottom = 12.dp),
     )
-    // Whose mappings the Buttons pages edit: one system at a time (or every system, chosen there).
-    if (systems.isNotEmpty()) {
-        Row(
-            Modifier.horizontalScroll(rememberScrollState()).padding(bottom = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Eyebrow("System", Modifier.padding(end = 6.dp))
-            for (s in systems) {
-                Toggle(on = s.id == state.system, onClick = { onSystem(s.id) }) {
-                    Text(s.short, color = Color.White, fontSize = 14.sp)
-                }
-            }
-        }
-    }
     state.error?.let {
         Text(it, color = Sov.Amber200, fontSize = 13.sp, modifier = Modifier.padding(bottom = 8.dp))
     }
@@ -271,7 +261,7 @@ private fun ColumnScope.DeviceList(
                 }
                 if (d.device in cannot) {
                     Text(
-                        remember(d.name) { controller.cannotIdentify(context, d.name) },
+                        Identify.unsupported(d.name),
                         color = Sov.Amber200,
                         fontSize = 13.sp,
                         lineHeight = 18.sp,
@@ -326,8 +316,11 @@ private fun ColumnScope.Bindings(
     controller: Controller,
     book: MappingBook,
     controls: Controls,
-    systemShort: String,
+    /** The systems the dropdown offers, by their full names. */
+    systems: List<SystemSummary>,
     device: InputDeviceInfo,
+    /** Another system was chosen: its mappings load in place of [book]'s. */
+    onSystem: (String) -> Unit,
     /** Saves a model's [Mapping]'s bindings for a scope, and reads back what is in force. */
     save: suspend (
         model: String,
@@ -348,9 +341,6 @@ private fun ColumnScope.Bindings(
     var canReset by remember(model.id, mappingScope) {
         mutableStateOf(book.canReset(model.id, mappingScope))
     }
-    var inForce by remember(model.id) {
-        mutableStateOf(MappingBook.sourceText(book.entry(model.id, MappingScope.SYSTEM)))
-    }
     var capturing by remember { mutableStateOf<Button?>(null) }
     var focused by remember { mutableStateOf<Button?>(null) }
     var focusedStick by remember { mutableStateOf<SystemStick?>(null) }
@@ -363,7 +353,6 @@ private fun ColumnScope.Bindings(
     fun refreshed() {
         mapping = book.mapping(model.id, mappingScope)
         canReset = book.canReset(model.id, mappingScope)
-        inForce = MappingBook.sourceText(book.entry(model.id, MappingScope.SYSTEM))
     }
 
     fun save(m: Mapping) {
@@ -423,7 +412,7 @@ private fun ColumnScope.Bindings(
             ?: controls.layouts.firstOrNull { it.id == "generic" }
     }
 
-    // Header: the device, what is in force, and the scope as a capsule of chips.
+    // Header: the device, and whose mappings these are: one system's, or every system's.
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -442,27 +431,24 @@ private fun ColumnScope.Bindings(
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
             )
-            Text("In force here: $inForce", color = Sov.Slate400, fontSize = 12.sp)
         }
-        ChipStrip {
-            val scopes = listOf(
-                MappingScope.SYSTEM to "This system ($systemShort)",
-                MappingScope.ALL to "All systems",
-            )
-            for ((s, label) in scopes) {
-                Chip(
-                    label,
-                    if (s == MappingScope.SYSTEM) Lucide.Gamepad2 else Lucide.LayoutGrid,
-                    on = mappingScope == s,
-                    onClick = {
-                        controller.cancelCapture()
-                        capturing = null
-                        message = null
-                        mappingScope = s
-                    },
-                )
-            }
-        }
+        ChoiceField(
+            "System",
+            listOf(FilterOption<String?>(null, "All systems")) +
+                systems.map { FilterOption<String?>(it.id, it.name) },
+            selected = if (mappingScope == MappingScope.ALL) null else book.system,
+            onSelect = { id ->
+                controller.cancelCapture()
+                capturing = null
+                message = null
+                when (id) {
+                    null -> mappingScope = MappingScope.ALL
+                    book.system -> mappingScope = MappingScope.SYSTEM
+                    else -> onSystem(id)
+                }
+            },
+            modifier = Modifier.width(280.dp),
+        )
     }
     val back = Controllers.inputLabel(model.id, model.family, RebindCapture.backInput(model.id))
     // What to do now: a bright banner while waiting for an input, else a quiet hint (or the
@@ -609,7 +595,6 @@ private fun ColumnScope.Bindings(
                         reset(model.id, s)
                         mapping = book.mapping(model.id, s)
                         canReset = book.canReset(model.id, s)
-                        inForce = MappingBook.sourceText(book.entry(model.id, MappingScope.SYSTEM))
                     }.fold(
                         {
                             runCatching { first.requestFocus() }
