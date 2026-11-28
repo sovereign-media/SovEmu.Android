@@ -217,30 +217,35 @@ class PlayerViewModel @AssistedInject constructor(
     private val sequence = InputSequence()
 
     /**
-     * Builds the game's stream for [session], drawing into [video] and sending [controller]'s
-     * input: WebRTC's factory and peer connection are slow to build, so not on the main thread,
-     * and built whatever happens, so the caller can close it whatever happens.
+     * Builds a stream for this game, drawing into [video] and sending [controller]'s input, with
+     * its offer under way ([Stream.prepare]): the first while the game is still loading, to be
+     * connected once it is ready. WebRTC's factory and peer connection are slow to build, so not
+     * on the main thread, and built whatever happens, so the caller can close it whatever
+     * happens.
      */
     suspend fun stream(
         context: Context,
-        session: SessionInfo,
         controller: Controller,
         video: VideoSink,
         onState: (PeerConnection.PeerConnectionState) -> Unit,
+        /** Told of the stream as soon as it exists, even if the caller has gone by then. */
+        built: (Stream) -> Unit,
     ): Stream {
         val servers = ice.await()
         return withContext(NonCancellable + Dispatchers.Default) {
             Stream(
                 context,
                 api,
-                session.id,
                 ClientEvents.clientName(context),
                 servers,
                 controller,
                 video,
                 sequence,
                 onState = onState,
-            )
+            ).also {
+                built(it)
+                it.prepare()
+            }
         }
     }
 

@@ -47,6 +47,7 @@ import media.sovereign.sovemu.core.Session
 import media.sovereign.sovemu.core.SessionInfo
 import media.sovereign.sovemu.core.SignInConfig
 import media.sovereign.sovemu.core.SignInService
+import media.sovereign.sovemu.core.StartService
 import media.sovereign.sovemu.core.StartStatus
 import media.sovereign.sovemu.core.SystemControls
 import media.sovereign.sovemu.core.SystemSummary
@@ -63,6 +64,7 @@ import media.sovereign.sovemu.core.graphql.CollectionChoicesQuery
 import media.sovereign.sovemu.core.graphql.ControllerMappingsQuery
 import media.sovereign.sovemu.core.graphql.ControlsQuery
 import media.sovereign.sovemu.core.graphql.CreateCollectionMutation
+import media.sovereign.sovemu.core.graphql.CurrentSessionQuery
 import media.sovereign.sovemu.core.graphql.DeleteCheatMutation
 import media.sovereign.sovemu.core.graphql.GameDecorationQuery
 import media.sovereign.sovemu.core.graphql.HomeQuery
@@ -230,6 +232,7 @@ class SovEmuApi(
     private val device: String = "SovEmu for Android",
 ) : CheatService,
     CollectionService,
+    StartService,
     SignInService,
     ServerService {
     /**
@@ -512,7 +515,7 @@ class SovEmuApi(
         ).startSession.sessionFields
 
     /** How far the start [startId] has got. */
-    suspend fun startProgress(startId: String): StartStatus =
+    override suspend fun startProgress(startId: String): StartStatus =
         query(StartProgressQuery(startId)).startProgress.toStartStatus()
 
     /**
@@ -532,7 +535,12 @@ class SovEmuApi(
             Optional.present(capabilities),
         ),
     ).sessionOffer
-    suspend fun stopSession(sessionId: String) {
+
+    /** This user's running game, if any (the server runs one a user). */
+    override suspend fun currentSession(): SessionInfo? =
+        query(CurrentSessionQuery()).currentSession?.sessionFields
+
+    override suspend fun stopSession(sessionId: String) {
         mutate(StopSessionMutation(sessionId))
     }
     suspend fun states(gameId: Int): List<SaveSlot> =
