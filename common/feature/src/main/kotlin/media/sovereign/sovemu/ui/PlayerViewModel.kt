@@ -64,8 +64,16 @@ class PlayerViewModel @AssistedInject constructor(
 ) : ViewModel() {
     private val startId = newStartId()
 
+    /**
+     * The save the start itself continues from, when it was chosen before the game started
+     * (Continue, or a slot from the game panel's saves): loaded as the game loads, not by a
+     * request of its own once it is ready. A choice asked for meanwhile ([Start.Ask]) is loaded
+     * afterwards.
+     */
+    private val startedFrom = (start as? Start.FromSlot)?.slot
+
     /** Started at once, and owned by the app: leaving now still stops it once it exists. */
-    private val starting = sessions.start(game.id, startId)
+    private val starting = sessions.start(game.id, startId, startedFrom)
 
     /** The mappings in force for this system and for all, read as the game starts. */
     val book = MappingBook(system.id)
@@ -193,7 +201,7 @@ class PlayerViewModel @AssistedInject constructor(
                 }
             }
             val session = starting.await()
-            if (how is Start.FromSlot) {
+            if (how is Start.FromSlot && how.slot != startedFrom) {
                 attempt { api.loadState(session.id, how.slot) }
                     .onFailure { e -> _notice.value = "Could not load: ${e.message}" }
             }

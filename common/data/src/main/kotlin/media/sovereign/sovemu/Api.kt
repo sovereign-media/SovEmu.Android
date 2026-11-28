@@ -497,10 +497,19 @@ class SovEmuApi(
         query(SystemGamesQuery(system)).system?.games?.map { it.gameFields }
             ?: throw ApiException("NOT_FOUND", "No such system")
 
-    /** Starts [gameId]; [startId] names the start, for [startProgress] meanwhile. */
-    suspend fun startSession(gameId: Int, startId: String): SessionInfo =
-        mutateWaiting(StartSessionMutation(gameId, Optional.present(startId)))
-            .startSession.sessionFields
+    /**
+     * Starts [gameId]; [startId] names the start, for [startProgress] meanwhile. With a [slot],
+     * the game continues from that save state, loaded as it starts (one the server cannot load
+     * is logged, and the game starts afresh).
+     */
+    suspend fun startSession(gameId: Int, startId: String, slot: Int? = null): SessionInfo =
+        mutateWaiting(
+            StartSessionMutation(
+                gameId,
+                Optional.present(startId),
+                Optional.presentIfNotNull(slot),
+            ),
+        ).startSession.sessionFields
 
     /** How far the start [startId] has got. */
     suspend fun startProgress(startId: String): StartStatus =
