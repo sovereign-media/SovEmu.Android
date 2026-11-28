@@ -1,14 +1,11 @@
 package media.sovereign.sovemu.core
 
 /**
- * Whether the TV's game picture mode is in effect, as far as the device can tell: the "TV game
- * mode" setting only asks for it, and not every display reports back (a streaming stick's TV
- * over HDMI may switch without saying so).
+ * Whether the TV's game picture mode is in effect, as far as the device can tell: the app always
+ * asks for it, and not every display reports back (a streaming stick's TV over HDMI may switch
+ * without saying so).
  */
 enum class GameModeState(val label: String) {
-    /** The setting is off: nothing is asked of the display. */
-    OFF("off"),
-
     /** Asked for, and the display says it can switch. */
     ON("on"),
 
@@ -27,12 +24,8 @@ enum class GameModeState(val label: String) {
     val applied: Boolean get() = this == ON
 
     companion object {
-        /**
-         * [setting]: the "TV game mode" setting. [supported]: what the display says; null before
-         * Android 11.
-         */
-        fun of(setting: Boolean, supported: Boolean?): GameModeState = when {
-            !setting -> OFF
+        /** [supported]: what the display says; null before Android 11. */
+        fun of(supported: Boolean?): GameModeState = when {
             supported == null -> UNAVAILABLE
             supported -> ON
             else -> UNSUPPORTED

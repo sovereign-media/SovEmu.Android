@@ -94,7 +94,6 @@ fun EntryProviderScope<Route>.sharedRoutes(app: AppRoutes) = with(app) {
                 controller,
                 touchControls,
                 stats = statsOn,
-                gameMode = gameMode,
                 onStatsChange = {
                     statsOn = it
                     settings.stats = it

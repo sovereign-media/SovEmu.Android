@@ -128,8 +128,7 @@ class Shell(
     /** Leave the app (Back on Home, confirmed). */
     val quit: () -> Unit,
 ) {
-    /** The TV's game mode, asked for app-wide; the menus' music. */
-    var gameMode by mutableStateOf(settings.gameMode)
+    /** The menus' music. */
     var musicOn by mutableStateOf(settings.music)
 
     /** A game is paused (its menu is open): the screensaver may start over it. */
@@ -212,7 +211,7 @@ fun SovEmuApp(shell: Shell, surface: Surface): Unit = with(shell) {
     // Each account's own library: whatever the last one loaded, or still has in flight, goes.
     LaunchedEffect(account) { store.showFor(account) }
     // The TV's game mode for the whole app, not per game: each switch blinks some TVs.
-    TvGameMode(gameMode)
+    TvGameMode()
     if (account == null) {
         SideEffect { showing(playing = false, music = musicOn) }
         // Who's watching, the sign-in form, or Choose a server: started again whenever the
@@ -250,7 +249,6 @@ private fun SignedIn(shell: Shell, surface: Surface): Unit = with(shell) {
     fun pop() {
         if (stack.size > 1) stack.removeAt(stack.lastIndex)
     }
-    var crt by remember { mutableStateOf(settings.scanlines) }
     var idleMinutes by remember { mutableIntStateOf(settings.screensaverMinutes) }
     val stats = remember { mutableStateOf(settings.stats) }
     val nav = remember {
@@ -258,7 +256,6 @@ private fun SignedIn(shell: Shell, surface: Surface): Unit = with(shell) {
             home = { stack.removeRange(1, stack.size) },
             search = { push(Route.Search) },
             system = { push(Route.System(it)) },
-            scanlines = { crt },
             music = { musicOn },
             screensaver = { idleMinutes },
             nextScreensaver = {
@@ -269,15 +266,6 @@ private fun SignedIn(shell: Shell, surface: Surface): Unit = with(shell) {
             toggleMusic = {
                 musicOn = !musicOn
                 settings.music = musicOn
-            },
-            toggleScanlines = {
-                crt = !crt
-                settings.scanlines = crt
-            },
-            gameMode = { gameMode },
-            toggleGameMode = {
-                gameMode = !gameMode
-                settings.gameMode = gameMode
             },
             signOut = {
                 // The revoke is sent without waiting: this works with the server down.
@@ -338,7 +326,7 @@ private fun SignedIn(shell: Shell, surface: Surface): Unit = with(shell) {
         if (BrowserSignIn.redirect.value != null) push(Route.Accounts)
     }
     val background by store.background.collectAsStateWithLifecycle()
-    Box(Modifier.fillMaxSize().scanlines(crt && (route !is Route.Play || idle.on))) {
+    Box(Modifier.fillMaxSize().scanlines(route !is Route.Play || idle.on)) {
         Box(Modifier.fillMaxSize().focusRequester(screenFocus).focusRestorer().focusGroup()) {
             CompositionLocalProvider(LocalBackground provides background) {
                 NavDisplay(

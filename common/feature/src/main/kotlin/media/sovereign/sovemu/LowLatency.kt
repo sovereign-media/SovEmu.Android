@@ -16,18 +16,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 
 /**
- * The TV's game mode for as long as the app is on screen, when [enabled] (the "TV game mode"
- * setting): minimal post-processing. Over HDMI this is ALLM, which switches the TV to its game
- * picture mode; a TV's own processing otherwise adds 50-100 ms or more after the frame has
- * arrived. Asked for once, not per game: some TVs (a Mi TV among them) blank the screen for a
- * moment at every switch. Released only when the setting is turned off; the system drops it by
- * itself while the app is not in the foreground. Android 11+; ignored by displays that cannot.
+ * The TV's game mode for as long as the app is on screen, always (there is no setting: a display
+ * that can switch does, one that cannot ignores it): minimal post-processing. Over HDMI this is
+ * ALLM, which switches the TV to its game picture mode; a TV's own processing otherwise adds
+ * 50-100 ms or more after the frame has arrived. Asked for once, not per game: some TVs (a Mi TV
+ * among them) blank the screen for a moment at every switch. The system drops it by itself
+ * while the app is not in the foreground. Android 11+.
  */
 @Composable
-fun TvGameMode(enabled: Boolean) {
+fun TvGameMode() {
     val context = LocalContext.current
-    DisposableEffect(context, enabled) {
-        val window = context.findActivity()?.window?.takeIf { enabled }
+    DisposableEffect(context) {
+        val window = context.findActivity()?.window
         window?.preferMinimalPostProcessing(true)
         onDispose { window?.preferMinimalPostProcessing(false) }
     }
