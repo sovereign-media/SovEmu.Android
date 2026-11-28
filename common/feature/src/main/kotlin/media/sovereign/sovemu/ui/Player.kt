@@ -84,13 +84,13 @@ import androidx.compose.ui.unit.max
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import java.util.Collections
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
@@ -268,20 +268,28 @@ fun PlayerScreen(
     // and the ICE servers) into this screen's video view. A connection that fails, stays
     // disconnected or never connects is made again to the same session ([keepConnected]), up to
     // Reconnect.ATTEMPTS times; only one that never recovers is reported, and ends the game.
+    // Every stream this screen built, closed with it (closing is idempotent): one finished
+    // building as the screen left is closed too.
+    val built = remember { Collections.synchronizedList(mutableListOf<Stream>()) }
+    val newStream: suspend () -> Stream = {
+        model.stream(context, controller, renderer, { webrtc ->
+            if (webrtc == PeerConnection.PeerConnectionState.CONNECTED) everConnected = true
+        }, built::add)
+    }
+    // The first connection is built as the screen opens, its offer made and ICE gathered while
+    // the game loads: once the game is ready, only the offer's round trip is left.
+    val firstStream = remember { CompletableDeferred<Stream>() }
+    LaunchedEffect(Unit) { firstStream.complete(newStream()) }
     LaunchedEffect(info) {
         val session = info ?: return@LaunchedEffect
         keepConnected({ attempt ->
             reconnects = attempt
             if (attempt > 0 && pictured) toast = "Reconnecting…"
-            val state = MutableStateFlow(PeerState.NEW)
-            val s = model.stream(context, session, controller, renderer) { webrtc ->
-                state.value = PeerState.valueOf(webrtc.name)
-                if (webrtc == PeerConnection.PeerConnectionState.CONNECTED) everConnected = true
-            }
+            val s = if (attempt == 0) firstStream.await() else newStream()
             stream = s
             object : PeerLink {
-                override val state: StateFlow<PeerState> = state
-                override suspend fun connect() = s.connect()
+                override val state: StateFlow<PeerState> = s.peerState
+                override suspend fun connect() = s.connect(session.id)
                 override fun close() = s.close()
             }
         })
@@ -439,7 +447,7 @@ fun PlayerScreen(
     // The window's part goes with the screen; the session stops when the ViewModel is cleared.
     DisposableEffect(Unit) {
         onDispose {
-            stream?.close()
+            synchronized(built) { built.forEach(Stream::close) }
             renderer.release()
         }
     }
