@@ -255,7 +255,7 @@ fun PlayerScreen(
     // The mappings in force go to the controllers' mixer as they arrive; anything the ViewModel
     // has to say shows for a moment.
     val mappings by model.mappings.collectAsStateWithLifecycle()
-    LaunchedEffect(mappings) { mappings?.let(controller.mixer::setMappings) }
+    LaunchedEffect(mappings) { mappings?.let(controller::setMappings) }
     val notice by model.notice.collectAsStateWithLifecycle()
     LaunchedEffect(notice) {
         notice?.let {
@@ -297,13 +297,8 @@ fun PlayerScreen(
         ClientEvents.report(kind, "no connection after $reconnects reconnects", session.id)
         if (pictured) lost = "Lost the connection to the game" else connectionFailed = true
     }
-    // Select+Start (polled from the mixer), and the guide button or on-screen menu button.
-    LaunchedEffect(Unit) {
-        while (true) {
-            if (!menuOpen && !controllersOpen && controller.menuCombo) menuOpen = true
-            delay(50)
-        }
-    }
+    // Select+Start's press, the guide button or the on-screen menu button (Controller), for as
+    // long as the screen is open.
     LaunchedEffect(Unit) {
         controller.menuRequests.collect { if (!controllersOpen) menuOpen = !menuOpen }
     }

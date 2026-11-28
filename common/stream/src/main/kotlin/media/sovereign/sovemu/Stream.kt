@@ -3,11 +3,13 @@ package media.sovereign.sovemu
 import android.content.Context
 import android.hardware.display.DisplayManager
 import android.media.AudioAttributes
+import android.os.Process
 import android.os.SystemClock
 import android.util.Log
 import android.view.Display
 import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentLinkedDeque
+import java.util.concurrent.Executors
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
@@ -17,6 +19,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
@@ -36,6 +39,8 @@ import media.sovereign.sovemu.core.DecoderSetup
 import media.sovereign.sovemu.core.FrameLatency
 import media.sovereign.sovemu.core.IceServer
 import media.sovereign.sovemu.core.InputMixer
+import media.sovereign.sovemu.core.InputPump
+import media.sovereign.sovemu.core.InputPumpDefaults
 import media.sovereign.sovemu.core.InputSequence
 import media.sovereign.sovemu.core.PeerState
 import media.sovereign.sovemu.core.Protocol
@@ -190,11 +195,24 @@ class Stream(
     private val onState: (PeerConnection.PeerConnectionState) -> Unit,
 ) {
     private val scope = CoroutineScope(compute)
+
+    /** The input pump's own thread, at the priority Android gives display work. */
+    private val pumpThread = Executors.newSingleThreadExecutor { work ->
+        Thread({
+            Process.setThreadPriority(Process.THREAD_PRIORITY_DISPLAY)
+            work.run()
+        }, "SovEmu.Input")
+    }.asCoroutineDispatcher()
     private val appContext = context.applicationContext
     private val iceGathered = CompletableDeferred<Unit>()
     private var pump: Job? = null
 
+    /** The in-game menu is open: the game is sent nothing held, and told to pause. */
     @Volatile var suspended = false
+        set(value) {
+            field = value
+            controller.wake()
+        }
 
     /** Recent input round trips in ms (input → applied on a frame → ack). */
     val inputRtts = ConcurrentLinkedDeque<Long>()
@@ -321,6 +339,8 @@ class Stream(
             // The worker lets go of held input when this closes; say so, for the log.
             override fun onStateChange() {
                 Log.i(TAG, "input channel ${channel.state()}")
+                // Open: the game's input goes now, not at the pump's next look.
+                controller.wake()
             }
             override fun onMessage(buffer: DataChannel.Buffer) {
                 val bytes = ByteArray(buffer.data.remaining()).also { buffer.data.get(it) }
@@ -380,7 +400,7 @@ class Stream(
         val capabilities = withContext(compute) { WebRtc.capabilities(appContext) }
         val answer = api.offer(sessionId, local.description, client, capabilities)
         setRemote(SessionDescription(SessionDescription.Type.ANSWER, answer))
-        pump = scope.launch { pumpInput() }
+        pump = scope.launch(pumpThread) { pumpInput() }
     }
 
     private suspend fun makeOffer(): SessionDescription {
@@ -420,60 +440,22 @@ class Stream(
     }
 
     /**
-     * Sends every player's buttons on any change and at least every 100 ms; hotkeys likewise
-     * (pause among them, held while the menu is open).
-     * Ports in use only grow during a session, so a player who disconnects is sent released
-     * rather than left holding whatever they last pressed.
+     * The input pump ([InputPump] decides what to send): on its own thread at display priority,
+     * so a press is not queued behind the shared pool's work, asleep until an input changes
+     * ([Controller.changes]) or its next heartbeat or resend is due.
      */
     private suspend fun pumpInput() {
-        var count = 1
-        var sent = emptyList<Int>()
-        var sentHotkeys = 0
-        var lastSend = 0L
-        var sentAnalog = listOf(Protocol.Analog.CENTRED)
-        var lastAnalogSend = 0L
+        val pump = InputPump(sequence, ::send)
+        val reading = InputMixer.Snapshot()
         while (scope.isActive) {
+            var wait = InputPumpDefaults.HEARTBEAT_MS
             if (channel.state() == DataChannel.State.OPEN) {
-                // Suspended (the in-game menu is open): no input, and the game is paused.
-                val paused = suspended
-                val r = if (paused) IDLE else controller.read()
-                count = maxOf(count, r.count)
-                val buttons = r.ports.take(count)
-                val analog = r.analog.take(count)
-                val hotkeys =
-                    (if (r.fastForward) 1 else 0) or (if (r.rewind) 2 else 0) or
-                        (if (paused) 4 else 0)
+                controller.read(reading)
+                val event = controller.changedAtMs and 0xffff_ffffL
                 // Monotonic: a wall clock set back would stop the heartbeats until it caught up.
-                val now = SystemClock.elapsedRealtime()
-                if (buttons != sent || hotkeys != sentHotkeys || now - lastSend > 100) {
-                    send(
-                        Protocol.encodeInput(
-                            sequence.nextInput(),
-                            now32().toInt(),
-                            buttons.toIntArray(),
-                        ),
-                    )
-                    if (hotkeys != sentHotkeys ||
-                        hotkeys != 0
-                    ) {
-                        send(Protocol.encodeHotkeys(r.fastForward, r.rewind, paused))
-                    }
-                    sent = buttons
-                    sentHotkeys = hotkeys
-                    lastSend = now
-                }
-                // Sticks: on change, and as a heartbeat while any is off-centre.
-                if (analog != sentAnalog ||
-                    (analog.any { !it.centred } && now - lastAnalogSend > 100)
-                ) {
-                    send(Protocol.encodeAnalog(sequence.nextAnalog(), analog))
-                    sentAnalog = analog
-                    lastAnalogSend = now
-                }
+                wait = pump.tick(reading, suspended, SystemClock.elapsedRealtime(), now32(), event)
             }
-            // Until an input changes, or 4 ms: a press is sent as it happens, where a fixed wait
-            // held it for up to 4 ms; the timer keeps the heartbeats and anything unsignalled.
-            withTimeoutOrNull(4) { controller.changes.receive() }
+            withTimeoutOrNull(wait) { controller.changes.receive() }
         }
     }
 
@@ -570,6 +552,7 @@ class Stream(
         // The pump sends on the channel from another thread: it must have stopped before the
         // channel goes (sending on a disposed one crashes in native code). One loop is ~4 ms.
         runBlocking { pump?.cancelAndJoin() }
+        pumpThread.close()
         scope.cancel()
         channel.unregisterObserver()
         channel.close()
@@ -582,16 +565,6 @@ class Stream(
 
     private companion object {
         const val TAG = "SovEmu.Stream"
-
-        /** Nothing held: what the game gets while the menu is open. */
-        val IDLE = InputMixer.Reading(
-            ports = List(Protocol.MAX_PORTS) { 0 },
-            analog = List(Protocol.MAX_PORTS) { Protocol.Analog.CENTRED },
-            count = 1,
-            fastForward = false,
-            rewind = false,
-            menu = false,
-        )
     }
 }
 
