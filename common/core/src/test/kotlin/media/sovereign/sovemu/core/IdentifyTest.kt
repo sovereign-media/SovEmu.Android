@@ -24,6 +24,16 @@ class IdentifyTest {
     }
 
     @Test
+    fun `a controller that cannot rumble here says it is this device's kernel and this pad`() {
+        assertEquals(
+            "Xbox Wireless Controller can't rumble on this Fire TV: its kernel has no rumble " +
+                "support for this controller, so no app can make it vibrate here, and it has no " +
+                "lights apps can use. It may rumble on another device.",
+            Identify.unsupported("Xbox Wireless Controller", "this Fire TV"),
+        )
+    }
+
+    @Test
     fun `every player from one to four`() {
         assertEquals(listOf(1, 2, 3, 4), (0..3).map(Identify::pulses))
         assertEquals(

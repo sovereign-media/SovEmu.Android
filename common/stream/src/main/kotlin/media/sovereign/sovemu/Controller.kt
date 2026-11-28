@@ -190,6 +190,17 @@ class Controller {
         return rumbled || blinked
     }
 
+    /**
+     * This device, as [Identify.unsupported] names it: `this Fire TV` on Amazon's, else `this
+     * device` and its model, so the message says which machine the controller cannot rumble on.
+     */
+    fun hostName(context: Context): String =
+        if (context.packageManager.hasSystemFeature(FIRE_TV_FEATURE)) {
+            "this Fire TV"
+        } else {
+            "this device (${Build.MODEL})"
+        }
+
     private fun rumble(d: InputDevice, pulses: Int): Boolean {
         val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             d.vibratorManager.defaultVibrator
@@ -561,3 +572,6 @@ class Controller {
         fun trigger(v: Float): Int = (v.coerceIn(0f, 1f) * 32767).roundToInt()
     }
 }
+
+/** The system feature every Fire TV device declares. */
+private const val FIRE_TV_FEATURE = "amazon.hardware.fire_tv"

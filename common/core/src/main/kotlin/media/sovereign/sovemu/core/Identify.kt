@@ -13,6 +13,18 @@ object Identify {
     /** One blink of the lights, lit then dark. */
     const val BLINK_MS = 250L
 
+    /**
+     * What *Identify* says when [controller] can neither rumble nor light up on [host] (`this
+     * Fire TV`, `this device (MiTV-AFMU1)`). It is the pair that fails, not either alone: the
+     * device's kernel has no rumble driver for this controller, so Android sees no vibrator and
+     * no app can reach one (an Xbox pad over Bluetooth on a Fire TV Stick, which rumbles on a TV
+     * with a newer kernel).
+     */
+    fun unsupported(controller: String, host: String): String =
+        "$controller can't rumble on $host: its kernel has no rumble support for this " +
+            "controller, so no app can make it vibrate here, and it has no lights apps can use. " +
+            "It may rumble on another device."
+
     /** The pulses for [port] (0-3): its player number. A pad on no player pulses once. */
     fun pulses(port: Int?): Int = (port ?: 0).coerceIn(0, Protocol.MAX_PORTS - 1) + 1
 
