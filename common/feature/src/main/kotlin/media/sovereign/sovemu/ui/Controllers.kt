@@ -52,7 +52,6 @@ import media.sovereign.sovemu.attempt
 import media.sovereign.sovemu.core.Binding
 import media.sovereign.sovemu.core.Button
 import media.sovereign.sovemu.core.Controllers
-import media.sovereign.sovemu.core.Identify
 import media.sovereign.sovemu.core.InputDeviceInfo
 import media.sovereign.sovemu.core.Mapping
 import media.sovereign.sovemu.core.MappingBook
@@ -147,7 +146,7 @@ private fun ColumnScope.DeviceList(
 
     /** Controllers *Identify* could neither rumble nor light up on this device: each says why. */
     var cannot by remember { mutableStateOf(emptySet<Int>()) }
-    val host = controller.hostName(LocalContext.current)
+    val context = LocalContext.current
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -238,7 +237,7 @@ private fun ColumnScope.DeviceList(
                 }
                 if (d.device in cannot) {
                     Text(
-                        Identify.unsupported(d.name, host),
+                        remember(d.name) { controller.cannotIdentify(context, d.name) },
                         color = Sov.Amber200,
                         fontSize = 13.sp,
                         lineHeight = 18.sp,

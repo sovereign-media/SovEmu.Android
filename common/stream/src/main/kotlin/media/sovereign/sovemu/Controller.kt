@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.VibrationEffect
+import android.provider.Settings
 import android.util.Log
 import android.view.InputDevice
 import android.view.KeyEvent
@@ -191,15 +192,21 @@ class Controller {
     }
 
     /**
-     * This device, as [Identify.unsupported] names it: `this Fire TV` on Amazon's, else `this
-     * device` and its model, so the message says which machine the controller cannot rumble on.
+     * What [Identify.unsupported] says when [controllerName] cannot rumble here, naming this
+     * device by the name its owner gave it (Settings, *Device name*: `DEV-FIRESTICK`), else its
+     * model, with `Fire TV` and the model in brackets where they add something.
      */
-    fun hostName(context: Context): String =
-        if (context.packageManager.hasSystemFeature(FIRE_TV_FEATURE)) {
-            "this Fire TV"
-        } else {
-            "this device (${Build.MODEL})"
-        }
+    fun cannotIdentify(context: Context, controllerName: String): String {
+        val model = Build.MODEL.orEmpty()
+        val name = Settings.Global.getString(context.contentResolver, Settings.Global.DEVICE_NAME)
+            ?.takeIf { it.isNotBlank() } ?: model
+        val fireTv = context.packageManager.hasSystemFeature(FIRE_TV_FEATURE)
+        return Identify.unsupported(
+            controllerName,
+            name,
+            Identify.deviceDetails(name, model, fireTv),
+        )
+    }
 
     private fun rumble(d: InputDevice, pulses: Int): Boolean {
         val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {

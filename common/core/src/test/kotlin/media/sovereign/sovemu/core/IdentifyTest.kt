@@ -24,12 +24,29 @@ class IdentifyTest {
     }
 
     @Test
-    fun `a controller that cannot rumble here says it is this device's kernel and this pad`() {
+    fun `a controller that cannot rumble here names the device and the controller`() {
+        val details = Identify.deviceDetails("DEV-FIRESTICK", "AFTMA08C15", fireTv = true)
+        assertEquals("Fire TV, AFTMA08C15", details)
         assertEquals(
-            "Xbox Wireless Controller can't rumble on this Fire TV: its kernel has no rumble " +
-                "support for this controller, so no app can make it vibrate here, and it has no " +
-                "lights apps can use. It may rumble on another device.",
-            Identify.unsupported("Xbox Wireless Controller", "this Fire TV"),
+            "Xbox Wireless Controller can't rumble on DEV-FIRESTICK (Fire TV, AFTMA08C15). " +
+                "DEV-FIRESTICK's kernel has no rumble support for Xbox Wireless Controller, so " +
+                "no app can make the controller vibrate on this device, and the controller has " +
+                "no lights apps can use. It may rumble on other devices.",
+            Identify.unsupported("Xbox Wireless Controller", "DEV-FIRESTICK", details),
+        )
+    }
+
+    @Test
+    fun `the brackets leave out what the name already says`() {
+        // No name set: the model is the name, and is not said twice.
+        assertEquals(null, Identify.deviceDetails("MiTV-AFMU1", "MiTV-AFMU1", fireTv = false))
+        assertEquals("Fire TV", Identify.deviceDetails("AFTMA08C15", "AFTMA08C15", fireTv = true))
+        assertEquals(
+            "8BitDo SN30 Pro can't rumble on MiTV-AFMU1. MiTV-AFMU1's kernel has no rumble " +
+                "support for 8BitDo SN30 Pro, so no app can make the controller vibrate on this " +
+                "device, and the controller has no lights apps can use. It may rumble on other " +
+                "devices.",
+            Identify.unsupported("8BitDo SN30 Pro", "MiTV-AFMU1"),
         )
     }
 
