@@ -178,9 +178,7 @@ private fun ColumnScope.DeviceList(
         Text("Controllers", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
     }
     Text(
-        "Each controller is its own player; choose another for this session. " +
-            "A player is only ever one device. " +
-            "The keyboard and touch controls are player 1 unless moved.",
+        "Any paired controller appears here.",
         color = Sov.Muted,
         fontSize = 13.sp,
         lineHeight = 19.sp,
