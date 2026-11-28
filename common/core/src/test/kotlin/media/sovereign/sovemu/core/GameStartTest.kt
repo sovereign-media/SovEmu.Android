@@ -120,6 +120,32 @@ class GameStartTest {
     }
 
     @Test
+    fun `a connection made again says so, and giving up says why`() {
+        assertEquals("Reconnecting", describeConnecting(500, attempt = 1).label)
+        val ready = { failed: Boolean ->
+            GameStart.screen(
+                "Nova",
+                error = null,
+                progress = null,
+                bar = 0.9,
+                ready = true,
+                pictureShown = false,
+                waitedMs = 0,
+                attempt = 2,
+                connectionFailed = failed,
+            )
+        }
+        assertEquals(StartScreen("Reconnecting", "", 0.85), ready(false))
+        assertEquals(
+            StartScreen(
+                "Could not connect to the game",
+                "The server's game ports may be unreachable from here",
+            ),
+            ready(true),
+        )
+    }
+
+    @Test
     fun `where the player is shows in its own chip, never on the detail line`() {
         assertEquals("", describeLink(link(path = "lan")).detail)
         assertEquals("", describeLink(link(path = "relay-tcp")).detail)

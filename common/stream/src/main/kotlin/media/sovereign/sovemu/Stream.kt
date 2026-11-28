@@ -34,6 +34,7 @@ import media.sovereign.sovemu.core.DecoderSetup
 import media.sovereign.sovemu.core.FrameLatency
 import media.sovereign.sovemu.core.IceServer
 import media.sovereign.sovemu.core.InputMixer
+import media.sovereign.sovemu.core.InputSequence
 import media.sovereign.sovemu.core.Protocol
 import media.sovereign.sovemu.core.ScreenMode
 import media.sovereign.sovemu.core.StatsReading
@@ -167,6 +168,8 @@ class Stream(
     iceServers: List<IceServer>,
     private val controller: Controller,
     private val videoSink: VideoSink,
+    /** The game's packet numbers, carried over from its earlier connections ([InputSequence]). */
+    private val sequence: InputSequence = InputSequence(),
     /** Where the stream's own work runs (statistics, capability checks): off the main thread. */
     private val compute: CoroutineDispatcher = Dispatchers.Default,
     private val onState: (PeerConnection.PeerConnectionState) -> Unit,
@@ -381,12 +384,10 @@ class Stream(
      * rather than left holding whatever they last pressed.
      */
     private suspend fun pumpInput() {
-        var seq = 0
         var count = 1
         var sent = emptyList<Int>()
         var sentHotkeys = 0
         var lastSend = 0L
-        var analogSeq = 0
         var sentAnalog = listOf(Protocol.Analog.CENTRED)
         var lastAnalogSend = 0L
         while (scope.isActive) {
@@ -403,8 +404,13 @@ class Stream(
                 // Monotonic: a wall clock set back would stop the heartbeats until it caught up.
                 val now = SystemClock.elapsedRealtime()
                 if (buttons != sent || hotkeys != sentHotkeys || now - lastSend > 100) {
-                    seq++
-                    send(Protocol.encodeInput(seq, now32().toInt(), buttons.toIntArray()))
+                    send(
+                        Protocol.encodeInput(
+                            sequence.nextInput(),
+                            now32().toInt(),
+                            buttons.toIntArray(),
+                        ),
+                    )
                     if (hotkeys != sentHotkeys ||
                         hotkeys != 0
                     ) {
@@ -418,8 +424,7 @@ class Stream(
                 if (analog != sentAnalog ||
                     (analog.any { !it.centred } && now - lastAnalogSend > 100)
                 ) {
-                    analogSeq++
-                    send(Protocol.encodeAnalog(analogSeq, analog))
+                    send(Protocol.encodeAnalog(sequence.nextAnalog(), analog))
                     sentAnalog = analog
                     lastAnalogSend = now
                 }

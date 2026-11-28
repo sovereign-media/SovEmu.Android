@@ -93,12 +93,21 @@ private const val NETWORK_TO = 0.97
 
 /**
  * The session is ready and this app is reaching it (ICE, then DTLS): nothing to show of the
- * game yet, and the worker's check of the connection comes once connected.
+ * game yet, and the worker's check of the connection comes once connected. "Reconnecting" once
+ * an earlier connection was given up on ([attempt] > 0, [Reconnect]).
  */
-fun describeConnecting(waitedMs: Long): LaunchView {
+fun describeConnecting(waitedMs: Long, attempt: Int = 0): LaunchView {
     val seconds = waitedMs / 1000
-    return LaunchView("Connecting", if (seconds >= 3) "$seconds s" else "", NETWORK_FROM)
+    val label = if (attempt > 0) "Reconnecting" else "Connecting"
+    return LaunchView(label, if (seconds >= 3) "$seconds s" else "", NETWORK_FROM)
 }
+
+/** The loading screen once reconnecting has given up ([Reconnect]), as the web words it. */
+fun describeConnectionFailed(): LaunchView = LaunchView(
+    "Could not connect to the game",
+    "The server's game ports may be unreachable from here",
+    0.0,
+)
 
 /**
  * The check of the player's connection before the stream starts (`0x83`, #243): the worker
@@ -196,7 +205,8 @@ object GameStart {
      * error); then, until [pictureShown], connecting until the worker's [link] check is heard
      * from, the check while it is probing, and the wait for the picture, [waitedMs] since the
      * session was ready. An older worker never sends a check: it reads "Connecting" until its
-     * picture, which comes at once.
+     * picture, which comes at once. [attempt] counts the connections given up on so far
+     * ([Reconnect]); [connectionFailed]: reconnecting has given up before any picture.
      */
     fun screen(
         title: String,
@@ -207,8 +217,13 @@ object GameStart {
         pictureShown: Boolean,
         waitedMs: Long,
         link: Protocol.Link? = null,
+        attempt: Int = 0,
+        connectionFailed: Boolean = false,
     ): StartScreen? {
         if (error != null) return StartScreen(error)
+        if (connectionFailed) {
+            return describeConnectionFailed().let { StartScreen(it.label, it.detail) }
+        }
         if (!ready) {
             progress ?: return StartScreen("Starting $title…", fraction = bar)
             val view = describeStart(progress)
@@ -220,7 +235,7 @@ object GameStart {
         }
         if (pictureShown) return null
         val view = when {
-            link == null -> describeConnecting(waitedMs)
+            link == null -> describeConnecting(waitedMs, attempt)
             link.probing -> describeLink(link)
             else -> describeFirstPicture(waitedMs)
         }
