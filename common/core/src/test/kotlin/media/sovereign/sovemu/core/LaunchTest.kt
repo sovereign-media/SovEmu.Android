@@ -1,6 +1,12 @@
 package media.sovereign.sovemu.core
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -111,5 +117,42 @@ class LaunchTest {
         assertEquals(ServerMove.NoServer, chooser.remove(list[0], list))
         assertEquals("", servers.current)
         assertEquals(AuthState.SignedOut, session.state.value)
+    }
+
+    @Test
+    fun removingTheServerInUseLandsEvenWhenTheScreenThatAskedGoes() = runBlocking {
+        // #131: removing the server in use signs its account out, and the app's signed-in
+        // screens (the account screens opened over it among them) go at once. The move to the
+        // next server must still finish, or the app is left signed out on a server whose
+        // stored account nobody restores.
+        val answer = CompletableDeferred<Unit>()
+        val servers = object : ServerService {
+            var current = "http://two"
+            override val server get() = current
+            override fun setServer(address: String) {
+                current = address
+            }
+            override suspend fun bootstrapAt(address: String): SignInConfig {
+                current = address
+                answer.await()
+                return SignInConfig(address, true, "c", "/t", "/r", "/p")
+            }
+        }
+        val store = AccountStore(prefs, FakeSealer(), newId = { "id${++ids}" })
+        store.upsert("9", "http://two", "c", "u9", 0)
+        store.upsert("7", "http://three", "c", "u7", 0)
+        val client = TokenClient(OkHttpClient(), { servers.current }, { null })
+        val session = Session(client, store, { servers.current })
+        session.launch()
+        val chooser = ServerChooser(servers, session)
+        val list = KnownServers.list(session.allAccounts.value, servers.current)
+        val removing = launch(Dispatchers.Default) { chooser.remove(list[0], list) }
+        // The next server is being asked how to sign in: the screen goes, cancelling its call.
+        withTimeout(5_000) { while (servers.current != "http://three") yield() }
+        removing.cancel()
+        answer.complete(Unit)
+        removing.join()
+        withTimeout(5_000) { session.state.first { it is AuthState.Authenticated } }
+        assertEquals("u7", session.active!!.userName)
     }
 }
