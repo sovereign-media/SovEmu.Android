@@ -21,7 +21,9 @@ import media.sovereign.sovemu.Load
 import media.sovereign.sovemu.Settings
 import media.sovereign.sovemu.SovEmuApi
 import media.sovereign.sovemu.Store
+import media.sovereign.sovemu.controllersSystem
 import media.sovereign.sovemu.core.CollectionsModel
+import media.sovereign.sovemu.core.ControllerSettingsModel
 import media.sovereign.sovemu.core.Game
 import media.sovereign.sovemu.core.GameIndex
 import media.sovereign.sovemu.core.GamePatch
@@ -153,4 +155,31 @@ class SignInTvViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.Eagerly, store.user.value?.username.orEmpty())
 
     suspend fun approve(code: String) = api.approveDeviceCode(code)
+}
+
+/**
+ * The account menu's *Controllers* ([ControllerSettings]): the same settings as the in-game
+ * menu's, outside a game, opened on the system last chosen here (kept in [Settings]), else the
+ * first offered.
+ */
+@HiltViewModel
+class ControllerSettingsViewModel @Inject constructor(
+    api: SovEmuApi,
+    private val settings: Settings,
+) : ViewModel() {
+    val controllerSettings = ControllerSettingsModel(api, viewModelScope)
+
+    /** Shows a system once [offered] are known: the one last chosen, if still offered. */
+    fun open(offered: List<String>) {
+        if (controllerSettings.state.value.system != null || offered.isEmpty()) return
+        controllerSettings.select(
+            settings.controllersSystem?.takeIf {
+                it in offered
+            } ?: offered[0],
+        )
+    }
+
+    fun chose(system: String) {
+        settings.controllersSystem = system
+    }
 }

@@ -298,6 +298,14 @@ private fun AccountMenu(
                 leading = { LucideIcon(Lucide.Play, tint = Sov.Slate300, size = 16.dp) },
             )
             MenuRow(
+                "Controllers",
+                onClick = {
+                    expanded = false
+                    nav.controllers()
+                },
+                leading = { LucideIcon(Lucide.Gamepad2, tint = Sov.Slate300, size = 16.dp) },
+            )
+            MenuRow(
                 LaunchText.CHANGE_USER_OR_SERVER,
                 onClick = {
                     expanded = false

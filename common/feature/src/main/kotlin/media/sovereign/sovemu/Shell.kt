@@ -101,6 +101,14 @@ sealed interface Route {
         override val key = "sign-in-tv"
     }
 
+    /**
+     * *Controllers*, from the account menu: the controller settings outside a game, the same
+     * component as the in-game menu's, on the system last chosen.
+     */
+    data object Controllers : Route {
+        override val key = "controllers"
+    }
+
     /** *Change user or server*, from the account menu: *Who's watching?* over the app. */
     data object Accounts : Route {
         override val key = "accounts"
@@ -273,6 +281,7 @@ private fun SignedIn(shell: Shell, surface: Surface): Unit = with(shell) {
             },
             signInTv = { push(Route.SignInTv) },
             accounts = { push(Route.Accounts) },
+            controllers = { push(Route.Controllers) },
         )
     }
 

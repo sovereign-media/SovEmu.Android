@@ -385,6 +385,14 @@ private fun AccountMenu(
                 onClick = nav.nextScreensaver,
                 leading = { LucideIcon(Lucide.Play, tint = Sov.Slate300, size = 16.dp) },
             )
+            MenuRow(
+                "Controllers",
+                onClick = {
+                    expanded = false
+                    nav.controllers()
+                },
+                leading = { LucideIcon(Lucide.Gamepad2, tint = Sov.Slate300, size = 16.dp) },
+            )
             // A TV signs itself in with a code; this approves one from this phone or tablet.
             run {
                 MenuRow(

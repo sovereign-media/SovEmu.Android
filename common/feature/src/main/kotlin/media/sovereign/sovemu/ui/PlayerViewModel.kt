@@ -25,14 +25,13 @@ import media.sovereign.sovemu.SovEmuApi
 import media.sovereign.sovemu.Store
 import media.sovereign.sovemu.Stream
 import media.sovereign.sovemu.core.AUTO_SLOT
-import media.sovereign.sovemu.core.Binding
 import media.sovereign.sovemu.core.CheatsModel
 import media.sovereign.sovemu.core.ControllerMapping
+import media.sovereign.sovemu.core.ControllerSettingsModel
 import media.sovereign.sovemu.core.Game
 import media.sovereign.sovemu.core.GameDecoration
 import media.sovereign.sovemu.core.InputSequence
 import media.sovereign.sovemu.core.MappingBook
-import media.sovereign.sovemu.core.MappingScope
 import media.sovereign.sovemu.core.SaveSlot
 import media.sovereign.sovemu.core.SessionInfo
 import media.sovereign.sovemu.core.StartStatus
@@ -105,10 +104,12 @@ class PlayerViewModel @AssistedInject constructor(
     /** The artwork framing the picture (its system's decoration), if any. */
     val decoration: StateFlow<GameDecoration?> = _decoration.asStateFlow()
 
-    private val _controls = MutableStateFlow(Controls())
-
-    /** The system's labels and the pads' diagrams, for the controllers screen. */
-    val controls: StateFlow<Controls> = _controls.asStateFlow()
+    /**
+     * The in-game menu's *Controllers* ([ControllerSettings]), on this game's system from the
+     * start, so the page opens with its controls loaded. Another system can be chosen there; any
+     * save or reset reads this game's mappings again, which the controllers' mixer then uses.
+     */
+    val controllerSettings = ControllerSettingsModel(api, viewModelScope, ::readMappings)
 
     private val _mappings = MutableStateFlow<List<ControllerMapping>?>(null)
 
@@ -148,10 +149,7 @@ class PlayerViewModel @AssistedInject constructor(
                 .onSuccess { _mappings.value = book.forSystem }
                 .onFailure { e -> _notice.value = "Default controls: ${e.message}" }
         }
-        viewModelScope.launch {
-            attempt { api.controls(system.id) }
-                .onSuccess { (sys, layouts) -> _controls.value = Controls(sys, layouts) }
-        }
+        controllerSettings.select(system.id)
         // The start's progress, polled while the session starts (as the web does). A failed poll
         // keeps the last word. The bar is drawn only forward (StartBar).
         viewModelScope.launch {
@@ -283,20 +281,12 @@ class PlayerViewModel @AssistedInject constructor(
         )
     }
 
-    /** Saves a mapping for [model] in [scope], then reads back what is in force. */
-    suspend fun saveMapping(
-        model: String,
-        scope: MappingScope,
-        name: String,
-        bindings: List<Binding>,
-    ) {
-        api.saveControllerMapping(model, book.systemArg(scope), name, bindings)
-        book.refresh(api::controllerMappings)
-    }
-
-    /** Removes the user's mapping for [model] in [scope], then reads back what is in force. */
-    suspend fun resetMapping(model: String, scope: MappingScope) {
-        book.reset(model, scope, api::resetControllerMapping, api::controllerMappings)
+    /** This game's mappings, read again after a change in the controller settings. */
+    private fun readMappings() {
+        viewModelScope.launch {
+            attempt { book.refresh(api::controllerMappings) }
+                .onSuccess { _mappings.value = book.forSystem }
+        }
     }
 
     /** The player has gone: the session stops (its saves written first), and Home learns of it. */
