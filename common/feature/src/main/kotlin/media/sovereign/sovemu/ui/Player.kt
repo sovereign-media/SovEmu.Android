@@ -400,11 +400,13 @@ fun PlayerScreen(
         }
     }
     // The worker changed the stream's quality (its pipeline says so): a notice for a moment.
+    // Its frame rate goes to the display, which may match it if it can do so seamlessly.
     LaunchedEffect(stream) {
         val s = stream ?: return@LaunchedEffect
         var before: Protocol.Pipeline? = null
         s.pipeline.collect { now ->
             now ?: return@collect
+            renderer.setFrameRate(now.video.fps)
             qualityNotice(before, now)?.let { quality = it }
             before = now
         }

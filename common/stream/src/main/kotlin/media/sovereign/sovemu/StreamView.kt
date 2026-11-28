@@ -1,6 +1,9 @@
 package media.sovereign.sovemu
 
 import android.content.Context
+import android.os.Build
+import android.view.Surface
+import android.view.SurfaceHolder
 import android.view.SurfaceView
 import org.webrtc.EglBase
 import org.webrtc.RendererCommon
@@ -38,6 +41,40 @@ class StreamView(context: Context, egl: EglBase.Context) :
             SharpDrawer(),
         )
         holder.addCallback(renderer)
+        holder.addCallback(object : SurfaceHolder.Callback {
+            // A new surface has been told nothing yet.
+            override fun surfaceCreated(holder: SurfaceHolder) = applyFrameRate()
+            override fun surfaceChanged(holder: SurfaceHolder, f: Int, w: Int, h: Int) {}
+            override fun surfaceDestroyed(holder: SurfaceHolder) {}
+        })
+    }
+
+    /** The frame rate asked for ([setFrameRate]); 0 for none. */
+    private var frameRate = 0f
+
+    /**
+     * Tells the display the stream's frame rate (the console's own, from the worker's pipeline:
+     * 60.1 for a NES, 50 for a PAL game), so a display that can match it without a visible
+     * switch does, and frames are not shown on an uneven cadence. Seamless switches only: a
+     * mode change that blanks the screen mid-game is worse than the judder. Android 12+;
+     * Android 11's call has no seamless-only choice, so it is not made there.
+     */
+    fun setFrameRate(fps: Double) {
+        val rate = fps.toFloat()
+        if (rate <= 0f || rate == frameRate) return
+        frameRate = rate
+        applyFrameRate()
+    }
+
+    private fun applyFrameRate() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || frameRate <= 0f) return
+        val surface = holder.surface
+        if (!surface.isValid) return
+        surface.setFrameRate(
+            frameRate,
+            Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE,
+            Surface.CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS,
+        )
     }
 
     /** Frames received so far: a count that stops moving during play is a stalled stream. */
